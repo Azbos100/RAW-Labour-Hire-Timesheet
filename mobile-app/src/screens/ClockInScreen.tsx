@@ -13,12 +13,16 @@ import {
   Alert,
   ActivityIndicator,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList, COLORS } from '../../App';
-import { clockAPI, clientsAPI } from '../services/api';
+import { RootStackParamList } from '../../App';
+import { COLORS } from '../constants/colors';
+import api, { clockAPI, clientsAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 type ClockInScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'ClockIn'>;
@@ -32,6 +36,7 @@ interface JobSite {
 }
 
 export default function ClockInScreen({ navigation }: ClockInScreenProps) {
+  const { user } = useAuth();
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [address, setAddress] = useState<string>('');
   const [isLoadingLocation, setIsLoadingLocation] = useState(true);
@@ -47,10 +52,20 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
 
   const fetchJobSites = async () => {
     try {
+      // Debug: Check what headers are being sent
+      const debugResponse = await api.get('/debug/headers');
+      console.log('DEBUG HEADERS:', JSON.stringify(debugResponse.data, null, 2));
+      
       const response = await clientsAPI.getAllJobSites();
       setJobSites(response.data.job_sites || []);
-    } catch (error) {
-      console.error('Error fetching job sites:', error);
+    } catch (error: any) {
+      console.warn('Error fetching job sites:', error);
+      const status = error.response?.status;
+      const detail = error.response?.data?.detail || error.message || 'Unknown error';
+      Alert.alert(
+        'Job Sites Unavailable',
+        `Unable to load job sites.\n\nError: ${status ? `${status} - ` : ''}${detail}`
+      );
     }
   };
 
@@ -88,7 +103,7 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
         setAddress(parts.join(', '));
       }
     } catch (error) {
-      console.error('Error getting location:', error);
+      console.warn('Error getting location:', error);
       Alert.alert('Location Error', 'Unable to get your current location. Please try again.');
     } finally {
       setIsLoadingLocation(false);
@@ -113,6 +128,7 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
         longitude: location.coords.longitude,
         job_site_id: selectedJobSite.id,
         worked_as: workedAs || undefined,
+        user_id: user?.id,
       });
 
       Alert.alert(
@@ -129,7 +145,16 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
+    >
+    <ScrollView 
+      style={styles.scrollView}
+      contentContainerStyle={styles.scrollContent}
+      keyboardShouldPersistTaps="handled"
+    >
       {/* Location Status */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Your Location</Text>
@@ -234,6 +259,7 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
         </Text>
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -241,6 +267,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 40,
   },
   section: {
     padding: 16,
@@ -333,7 +366,7 @@ const styles = StyleSheet.create({
   },
   jobSiteItemSelected: {
     borderColor: COLORS.primary,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#EFF6FF',
   },
   jobSiteInfo: {
     flex: 1,

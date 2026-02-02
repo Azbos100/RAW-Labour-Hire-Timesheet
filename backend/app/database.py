@@ -12,12 +12,18 @@ DATABASE_URL = os.getenv(
     "sqlite+aiosqlite:///./raw_timesheet.db"
 )
 
-# For PostgreSQL in production:
-# DATABASE_URL = "postgresql+asyncpg://user:pass@localhost/raw_timesheet"
+# Railway and other providers use postgres:// but asyncpg needs postgresql+asyncpg://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+# Check if running in production
+IS_PRODUCTION = os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("PRODUCTION", "").lower() == "true"
 
 engine = create_async_engine(
     DATABASE_URL,
-    echo=True,  # Set to False in production
+    echo=not IS_PRODUCTION,  # Disable SQL logging in production
 )
 
 AsyncSessionLocal = async_sessionmaker(

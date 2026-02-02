@@ -4,12 +4,10 @@
     "slug": "raw-timesheet",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
     "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#E31837"
+      "backgroundColor": "#1E3A8A"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -17,6 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.rawlabourhire.timesheet",
+      "icon": "./assets/icon.png",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "RAW Timesheet needs your location to record clock in/out positions for timesheet verification.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "RAW Timesheet needs your location to record clock in/out positions for timesheet verification."
@@ -24,17 +23,14 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#E31837"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#1E3A8A"
       },
       "package": "com.rawlabourhire.timesheet",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"
       ]
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       [

@@ -10,14 +10,15 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList, COLORS } from '../../App';
+import { RootStackParamList } from '../../App';
+import { COLORS } from '../constants/colors';
 import { useAuth } from '../context/AuthContext';
 
 type LoginScreenProps = {
@@ -27,6 +28,7 @@ type LoginScreenProps = {
 export default function LoginScreen({ navigation }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
 
@@ -52,12 +54,13 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.content}>
-        {/* Logo */}
+        {/* Logo - RAW Labour Hire branding */}
         <View style={styles.logoContainer}>
-          <View style={styles.logoBox}>
-            <Text style={styles.logoText}>RAW</Text>
-            <Text style={styles.logoSubtext}>LABOUR HIRE</Text>
-          </View>
+          <Image 
+            source={require('../../assets/raw-logo.png')}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
           <Text style={styles.appTitle}>Timesheet</Text>
         </View>
 
@@ -76,14 +79,31 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           />
 
           <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your password"
-            placeholderTextColor="#9CA3AF"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
+          <View style={styles.passwordRow}>
+            <TextInput
+              style={[styles.input, styles.passwordInput]}
+              placeholder="Enter your password"
+              placeholderTextColor="#9CA3AF"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+            />
+            <TouchableOpacity
+              style={styles.passwordToggle}
+              onPress={() => setShowPassword((prev) => !prev)}
+            >
+              <Text style={styles.passwordToggleText}>
+                {showPassword ? 'Hide' : 'Show'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={styles.forgotPasswordLink}
+            onPress={() => navigation.navigate('ResetPassword')}
+          >
+            <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
@@ -93,7 +113,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
             {isLoading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.loginButtonText}>Clock In</Text>
+              <Text style={styles.loginButtonText}>Sign In</Text>
             )}
           </TouchableOpacity>
 
@@ -129,26 +149,12 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: 32,
   },
-  logoBox: {
-    backgroundColor: '#E31837',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  logoText: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    textAlign: 'center',
-  },
-  logoSubtext: {
-    fontSize: 12,
-    color: '#FFFFFF',
-    textAlign: 'center',
-    letterSpacing: 2,
+  logoImage: {
+    width: 280,
+    height: 160,
+    marginBottom: 16,
   },
   appTitle: {
     fontSize: 28,
@@ -176,15 +182,45 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#404040',
   },
+  passwordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  passwordInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  passwordToggle: {
+    marginLeft: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  passwordToggleText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  forgotPasswordLink: {
+    alignSelf: 'flex-end',
+    marginTop: -8,
+    marginBottom: 16,
+  },
+  forgotPasswordText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
   loginButton: {
-    backgroundColor: '#E31837',
+    backgroundColor: '#1E3A8A',
     borderRadius: 8,
     padding: 16,
     alignItems: 'center',
     marginTop: 8,
   },
   loginButtonDisabled: {
-    backgroundColor: '#7F1D1D',
+    backgroundColor: '#1E40AF',
+    opacity: 0.6,
   },
   loginButtonText: {
     color: '#FFFFFF',
@@ -200,7 +236,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   registerLinkBold: {
-    color: '#E31837',
+    color: '#3B82F6',
     fontWeight: '600',
   },
   footer: {

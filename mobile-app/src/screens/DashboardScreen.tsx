@@ -16,7 +16,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
-import { RootStackParamList, COLORS } from '../../App';
+import { RootStackParamList } from '../../App';
+import { COLORS } from '../constants/colors';
 import { useAuth } from '../context/AuthContext';
 import { clockAPI } from '../services/api';
 
@@ -29,6 +30,9 @@ interface ClockStatus {
   clock_in_time?: string;
   clock_in_address?: string;
   hours_worked_today: number;
+  week_days_worked: number;
+  week_total_hours: number;
+  week_overtime_hours: number;
 }
 
 export default function DashboardScreen({ navigation }: DashboardScreenProps) {
@@ -39,14 +43,17 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
 
   const fetchClockStatus = async () => {
     try {
-      const response = await clockAPI.getStatus();
+      const response = await clockAPI.getStatus(user?.id);
       setClockStatus(response.data);
     } catch (error) {
-      console.error('Error fetching clock status:', error);
+      console.warn('Error fetching clock status:', error);
       // Set default status if API fails
       setClockStatus({
         is_clocked_in: false,
         hours_worked_today: 0,
+        week_days_worked: 0,
+        week_total_hours: 0,
+        week_overtime_hours: 0,
       });
     } finally {
       setIsLoading(false);
@@ -68,10 +75,16 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
 
   const formatTime = (isoString?: string) => {
     if (!isoString) return '--:--';
-    const date = new Date(isoString);
+    // Ensure the timestamp is treated as UTC if no timezone specified
+    let dateString = isoString;
+    if (!isoString.endsWith('Z') && !isoString.includes('+') && !isoString.includes('-', 10)) {
+      dateString = isoString + 'Z';
+    }
+    const date = new Date(dateString);
     return date.toLocaleTimeString('en-AU', {
       hour: '2-digit',
       minute: '2-digit',
+      hour12: true,
     });
   };
 
@@ -182,17 +195,17 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
             <Ionicons name="calendar-outline" size={24} color={COLORS.primary} />
-            <Text style={styles.statValue}>0</Text>
+            <Text style={styles.statValue}>{clockStatus?.week_days_worked || 0}</Text>
             <Text style={styles.statLabel}>Days Worked</Text>
           </View>
           <View style={styles.statBox}>
             <Ionicons name="time-outline" size={24} color={COLORS.primary} />
-            <Text style={styles.statValue}>0h</Text>
+            <Text style={styles.statValue}>{formatHours(clockStatus?.week_total_hours || 0)}</Text>
             <Text style={styles.statLabel}>Total Hours</Text>
           </View>
           <View style={styles.statBox}>
             <Ionicons name="add-circle-outline" size={24} color="#F59E0B" />
-            <Text style={styles.statValue}>0h</Text>
+            <Text style={styles.statValue}>{formatHours(clockStatus?.week_overtime_hours || 0)}</Text>
             <Text style={styles.statLabel}>Overtime</Text>
           </View>
         </View>
@@ -222,7 +235,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
   },
   header: {
-    backgroundColor: '#E31837',
+    backgroundColor: '#1E3A8A',
     padding: 24,
     paddingTop: 16,
     paddingBottom: 32,
@@ -320,7 +333,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#10B981',
   },
   clockOutButton: {
-    backgroundColor: '#E31837',
+    backgroundColor: '#1E3A8A',
   },
   clockButtonText: {
     fontSize: 20,
@@ -349,7 +362,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#1A1A1A',
     marginTop: 8,

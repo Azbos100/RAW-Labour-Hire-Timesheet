@@ -16,8 +16,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
-import { RootStackParamList, COLORS } from '../../App';
+import { RootStackParamList } from '../../App';
+import { COLORS } from '../constants/colors';
 import { timesheetsAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 type TimesheetsScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList>;
@@ -31,9 +33,12 @@ interface Timesheet {
   status: string;
   total_hours: number;
   submitted_at?: string;
+  submitted_entries_count?: number;
+  approved_entries_count?: number;
 }
 
 export default function TimesheetsScreen({ navigation }: TimesheetsScreenProps) {
+  const { user } = useAuth();
   const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -41,7 +46,7 @@ export default function TimesheetsScreen({ navigation }: TimesheetsScreenProps) 
 
   const fetchTimesheets = async () => {
     try {
-      const response = await timesheetsAPI.list(filter === 'all' ? undefined : filter);
+      const response = await timesheetsAPI.list(filter === 'all' ? undefined : filter, user?.id);
       setTimesheets(response.data.timesheets || []);
     } catch (error) {
       console.error('Error fetching timesheets:', error);
@@ -69,7 +74,7 @@ export default function TimesheetsScreen({ navigation }: TimesheetsScreenProps) 
       case 'submitted':
         return '#F59E0B';
       case 'rejected':
-        return '#EF4444';
+        return '#6B7280';
       default:
         return '#6B7280';
     }
@@ -95,38 +100,65 @@ export default function TimesheetsScreen({ navigation }: TimesheetsScreenProps) 
     return `${startDate.toLocaleDateString('en-AU', options)} - ${endDate.toLocaleDateString('en-AU', options)}`;
   };
 
-  const renderTimesheet = ({ item }: { item: Timesheet }) => (
-    <TouchableOpacity
-      style={styles.timesheetCard}
-      onPress={() => navigation.navigate('TimesheetDetail', { timesheetId: item.id })}
-    >
-      <View style={styles.timesheetHeader}>
-        <View style={styles.docketBadge}>
-          <Text style={styles.docketText}>#{item.docket_number}</Text>
-        </View>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) + '20' }]}>
-          <Ionicons
-            name={getStatusIcon(item.status)}
-            size={14}
-            color={getStatusColor(item.status)}
-          />
-          <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
-            {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-          </Text>
-        </View>
-      </View>
+  const renderTimesheet = ({ item }: { item: Timesheet }) => {
+    // Determine display status based on entry counts
+    const hasSubmittedEntries = (item.submitted_entries_count || 0) > 0;
+    const hasApprovedEntries = (item.approved_entries_count || 0) > 0;
+    
+    let displayStatus = item.status;
+    let displayStatusColor = getStatusColor(item.status);
+    let displayStatusIcon: keyof typeof Ionicons.glyphMap = getStatusIcon(item.status);
+    let displayStatusText = item.status.charAt(0).toUpperCase() + item.status.slice(1);
+    
+    if (item.status === 'draft') {
+      if (hasApprovedEntries && !hasSubmittedEntries) {
+        // All submitted entries approved
+        displayStatus = 'approved';
+        displayStatusColor = '#10B981';
+        displayStatusIcon = 'checkmark-circle';
+        displayStatusText = `${item.approved_entries_count} Approved`;
+      } else if (hasSubmittedEntries) {
+        // Some entries still pending
+        displayStatus = 'pending';
+        displayStatusColor = '#F59E0B';
+        displayStatusIcon = 'time';
+        displayStatusText = `${item.submitted_entries_count} Pending`;
+      }
+    }
 
-      <Text style={styles.weekText}>{formatWeek(item.week_starting, item.week_ending)}</Text>
-
-      <View style={styles.timesheetFooter}>
-        <View style={styles.hoursBox}>
-          <Ionicons name="time-outline" size={16} color="#6B7280" />
-          <Text style={styles.hoursText}>{item.total_hours.toFixed(1)} hours</Text>
+    return (
+      <TouchableOpacity
+        style={styles.timesheetCard}
+        onPress={() => navigation.navigate('TimesheetDetail', { timesheetId: item.id })}
+      >
+        <View style={styles.timesheetHeader}>
+          <View style={styles.docketBadge}>
+            <Text style={styles.docketText}>#{item.docket_number}</Text>
+          </View>
+          <View style={[styles.statusBadge, { backgroundColor: displayStatusColor + '20' }]}>
+            <Ionicons
+              name={displayStatusIcon}
+              size={14}
+              color={displayStatusColor}
+            />
+            <Text style={[styles.statusText, { color: displayStatusColor }]}>
+              {displayStatusText}
+            </Text>
+          </View>
         </View>
-        <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-      </View>
-    </TouchableOpacity>
-  );
+
+        <Text style={styles.weekText}>{formatWeek(item.week_starting, item.week_ending)}</Text>
+
+        <View style={styles.timesheetFooter}>
+          <View style={styles.hoursBox}>
+            <Ionicons name="time-outline" size={16} color="#6B7280" />
+            <Text style={styles.hoursText}>{item.total_hours.toFixed(1)} hours</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   const FilterButton = ({ value, label }: { value: string; label: string }) => (
     <TouchableOpacity
@@ -199,15 +231,16 @@ const styles = StyleSheet.create({
   filterButton: {
     flex: 1,
     paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 4,
     borderRadius: 8,
     alignItems: 'center',
+    minWidth: 60,
   },
   filterButtonActive: {
     backgroundColor: COLORS.primary,
   },
   filterText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '500',
     color: '#6B7280',
   },

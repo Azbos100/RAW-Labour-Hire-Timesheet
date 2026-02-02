@@ -13,6 +13,8 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
@@ -29,22 +31,30 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { register } = useAuth();
 
   const handleRegister = async () => {
+    const trimmedFirstName = firstName.trim();
+    const trimmedSurname = surname.trim();
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+    const trimmedConfirmPassword = confirmPassword.trim();
+
     // Validation
-    if (!firstName || !surname || !email || !password) {
+    if (!trimmedFirstName || !trimmedSurname || !trimmedEmail || !trimmedPassword) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
 
-    if (password !== confirmPassword) {
+    if (trimmedPassword !== trimmedConfirmPassword) {
       Alert.alert('Error', 'Passwords do not match');
       return;
     }
 
-    if (password.length < 6) {
+    if (trimmedPassword.length < 6) {
       Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
@@ -52,11 +62,11 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
     setIsLoading(true);
     try {
       await register({
-        first_name: firstName,
-        surname: surname,
-        email: email,
-        phone: phone || undefined,
-        password: password,
+        first_name: trimmedFirstName,
+        surname: trimmedSurname,
+        email: trimmedEmail,
+        phone: phone.trim() || undefined,
+        password: trimmedPassword,
       });
       // Navigation will happen automatically via AuthContext
     } catch (error: any) {
@@ -67,8 +77,17 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.content}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.content}>
         <Text style={styles.title}>Join RAW Labour Hire</Text>
         <Text style={styles.subtitle}>Create your timesheet account</Text>
 
@@ -118,24 +137,44 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
           />
 
           <Text style={styles.label}>Password *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Minimum 6 characters"
-            placeholderTextColor="#9CA3AF"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
+          <View style={styles.passwordRow}>
+            <TextInput
+              style={[styles.input, styles.passwordInput]}
+              placeholder="Minimum 6 characters"
+              placeholderTextColor="#9CA3AF"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+            />
+            <TouchableOpacity
+              style={styles.passwordToggle}
+              onPress={() => setShowPassword((prev) => !prev)}
+            >
+              <Text style={styles.passwordToggleText}>
+                {showPassword ? 'Hide' : 'Show'}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           <Text style={styles.label}>Confirm Password *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Re-enter password"
-            placeholderTextColor="#9CA3AF"
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            secureTextEntry
-          />
+          <View style={styles.passwordRow}>
+            <TextInput
+              style={[styles.input, styles.passwordInput]}
+              placeholder="Re-enter password"
+              placeholderTextColor="#9CA3AF"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry={!showConfirmPassword}
+            />
+            <TouchableOpacity
+              style={styles.passwordToggle}
+              onPress={() => setShowConfirmPassword((prev) => !prev)}
+            >
+              <Text style={styles.passwordToggleText}>
+                {showConfirmPassword ? 'Hide' : 'Show'}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity
             style={[styles.registerButton, isLoading && styles.registerButtonDisabled]}
@@ -149,8 +188,9 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
             )}
           </TouchableOpacity>
         </View>
-      </View>
-    </ScrollView>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -161,6 +201,10 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 24,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 100,
   },
   title: {
     fontSize: 28,
@@ -199,15 +243,35 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#404040',
   },
+  passwordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  passwordInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  passwordToggle: {
+    marginLeft: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  passwordToggleText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   registerButton: {
-    backgroundColor: '#E31837',
+    backgroundColor: '#1E3A8A',
     borderRadius: 8,
     padding: 16,
     alignItems: 'center',
     marginTop: 16,
   },
   registerButtonDisabled: {
-    backgroundColor: '#7F1D1D',
+    backgroundColor: '#1E40AF',
+    opacity: 0.6,
   },
   registerButtonText: {
     color: '#FFFFFF',

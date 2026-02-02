@@ -5,13 +5,14 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import api from '../services/api';
+import api, { setAuthToken } from '../services/api';
 
 interface User {
   id: number;
   email: string;
   first_name: string;
   surname: string;
+  phone?: string;
   role: string;
 }
 
@@ -23,6 +24,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
+  updateUser: (userData: Partial<User>) => Promise<void>;
 }
 
 interface RegisterData {
@@ -56,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (storedToken && storedUser) {
         setToken(storedToken);
         setUser(JSON.parse(storedUser));
-        api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+        setAuthToken(storedToken);
       }
     } catch (error) {
       console.error('Error loading auth:', error);
@@ -84,12 +86,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await SecureStore.setItemAsync(TOKEN_KEY, access_token);
       await SecureStore.setItemAsync(USER_KEY, JSON.stringify(userData));
 
+      // Set auth header FIRST before updating state
+      setAuthToken(access_token);
+
       // Update state
       setToken(access_token);
       setUser(userData);
-
-      // Set default header for future requests
-      api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
     } catch (error: any) {
       const message = error.response?.data?.detail || 'Login failed';
       throw new Error(message);
@@ -113,14 +115,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await SecureStore.deleteItemAsync(TOKEN_KEY);
       await SecureStore.deleteItemAsync(USER_KEY);
 
+      // Clear auth header
+      setAuthToken(null);
+
       // Clear state
       setToken(null);
       setUser(null);
-
-      // Remove auth header
-      delete api.defaults.headers.common['Authorization'];
     } catch (error) {
       console.error('Error logging out:', error);
+    }
+  };
+
+  const updateUser = async (userData: Partial<User>) => {
+    try {
+      if (user) {
+        const updatedUser = { ...user, ...userData };
+        setUser(updatedUser);
+        await SecureStore.setItemAsync(USER_KEY, JSON.stringify(updatedUser));
+      }
+    } catch (error) {
+      console.error('Error updating user:', error);
     }
   };
 
@@ -134,6 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         register,
         logout,
+        updateUser,
       }}
     >
       {children}

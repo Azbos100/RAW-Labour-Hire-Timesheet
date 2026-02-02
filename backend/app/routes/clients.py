@@ -21,8 +21,10 @@ class ClientCreate(BaseModel):
     contact_email: Optional[str] = None
     contact_phone: Optional[str] = None
     address: Optional[str] = None
-    default_hourly_rate: float = 0
-    default_overtime_rate: float = 0
+    hourly_billing_rate: float = 0
+    overtime_billing_rate: float = 0
+    weekend_billing_rate: float = 0
+    night_billing_rate: float = 0
 
 
 class JobSiteCreate(BaseModel):
@@ -36,10 +38,9 @@ class JobSiteCreate(BaseModel):
 @router.get("/")
 async def list_clients(
     active_only: bool = True,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """List all clients"""
+    """List all clients (no auth for admin dashboard)"""
     query = select(Client)
     if active_only:
         query = query.where(Client.is_active == True)
@@ -56,7 +57,10 @@ async def list_clients(
                 "contact_email": c.contact_email,
                 "contact_phone": c.contact_phone,
                 "address": c.address,
-                "default_hourly_rate": c.default_hourly_rate,
+                "hourly_billing_rate": c.hourly_billing_rate or 0,
+                "overtime_billing_rate": c.overtime_billing_rate or 0,
+                "weekend_billing_rate": c.weekend_billing_rate or 0,
+                "night_billing_rate": c.night_billing_rate or 0,
                 "is_active": c.is_active
             }
             for c in clients
@@ -80,6 +84,49 @@ async def create_client(
     await db.refresh(client)
     
     return {"id": client.id, "name": client.name}
+
+
+@router.post("/admin")
+async def create_client_admin(
+    client_data: ClientCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a new client (admin dashboard - no auth)"""
+    client = Client(**client_data.model_dump())
+    db.add(client)
+    await db.commit()
+    await db.refresh(client)
+    
+    return {"id": client.id, "name": client.name, "message": "Client created successfully"}
+
+
+@router.put("/admin/{client_id}")
+async def update_client_admin(
+    client_id: int,
+    client_data: ClientCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update a client (admin dashboard - no auth)"""
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    # Update fields
+    client.name = client_data.name
+    client.contact_name = client_data.contact_name
+    client.contact_email = client_data.contact_email
+    client.contact_phone = client_data.contact_phone
+    client.address = client_data.address
+    client.hourly_billing_rate = client_data.hourly_billing_rate
+    client.overtime_billing_rate = client_data.overtime_billing_rate
+    client.weekend_billing_rate = client_data.weekend_billing_rate
+    client.night_billing_rate = client_data.night_billing_rate
+    
+    await db.commit()
+    
+    return {"id": client.id, "name": client.name, "message": "Client updated successfully"}
 
 
 @router.get("/{client_id}/job-sites")
@@ -137,10 +184,9 @@ async def create_job_site(
 
 @router.get("/job-sites/all")
 async def list_all_job_sites(
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """List all active job sites (for clock-in selection)"""
+    """List all active job sites (for clock-in selection) - temporarily no auth for testing"""
     result = await db.execute(
         select(JobSite, Client)
         .join(Client)

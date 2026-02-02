@@ -14,18 +14,23 @@ import {
   ActivityIndicator,
   TextInput,
   Switch,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList, COLORS } from '../../App';
+import { RootStackParamList } from '../../App';
+import { COLORS } from '../constants/colors';
 import { clockAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 type ClockOutScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'ClockOut'>;
 };
 
 export default function ClockOutScreen({ navigation }: ClockOutScreenProps) {
+  const { user } = useAuth();
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [address, setAddress] = useState<string>('');
   const [isLoadingLocation, setIsLoadingLocation] = useState(true);
@@ -107,6 +112,7 @@ export default function ClockOutScreen({ navigation }: ClockOutScreenProps) {
         longitude: location!.coords.longitude,
         comments: comments || undefined,
         first_aid_injury: firstAidInjury,
+        user_id: user?.id,
       });
 
       const { ordinary_hours, overtime_hours, total_hours } = response.data;
@@ -125,7 +131,16 @@ export default function ClockOutScreen({ navigation }: ClockOutScreenProps) {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
+    >
+    <ScrollView 
+      style={styles.scrollView}
+      contentContainerStyle={styles.scrollContent}
+      keyboardShouldPersistTaps="handled"
+    >
       {/* Location Status */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Your Location</Text>
@@ -177,13 +192,13 @@ export default function ClockOutScreen({ navigation }: ClockOutScreenProps) {
             <Switch
               value={firstAidInjury}
               onValueChange={setFirstAidInjury}
-              trackColor={{ false: '#D1D5DB', true: '#FCA5A5' }}
+              trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
               thumbColor={firstAidInjury ? COLORS.primary : '#F3F4F6'}
             />
           </View>
           {firstAidInjury && (
             <View style={styles.injuryWarning}>
-              <Ionicons name="warning" size={20} color="#DC2626" />
+              <Ionicons name="warning" size={20} color="#1E3A8A" />
               <Text style={styles.injuryWarningText}>
                 Injury reported - please provide details in comments
               </Text>
@@ -233,6 +248,7 @@ export default function ClockOutScreen({ navigation }: ClockOutScreenProps) {
         </Text>
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -240,6 +256,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 40,
   },
   section: {
     padding: 16,
@@ -339,7 +362,7 @@ const styles = StyleSheet.create({
   injuryWarning: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#EFF6FF',
     padding: 12,
     borderRadius: 8,
     marginTop: 16,
@@ -347,7 +370,7 @@ const styles = StyleSheet.create({
   injuryWarningText: {
     flex: 1,
     marginLeft: 8,
-    color: '#DC2626',
+    color: '#1E3A8A',
     fontSize: 14,
   },
   commentsInput: {

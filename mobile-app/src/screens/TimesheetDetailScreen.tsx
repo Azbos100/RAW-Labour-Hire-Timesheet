@@ -3,7 +3,7 @@
  * View and submit individual timesheet
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,11 +14,16 @@ import {
   ActivityIndicator,
   TextInput,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
-import { RootStackParamList, COLORS } from '../../App';
+import SignatureCanvas from 'react-native-signature-canvas';
+import { RootStackParamList } from '../../App';
+import { COLORS } from '../constants/colors';
 import { timesheetsAPI } from '../services/api';
 
 type TimesheetDetailScreenProps = {
@@ -32,6 +37,8 @@ interface TimesheetEntry {
   entry_date: string;
   time_start?: string;
   time_finish?: string;
+  clock_in_time?: string;
+  clock_out_time?: string;
   ordinary_hours: number;
   overtime_hours: number;
   total_hours: number;
@@ -39,6 +46,9 @@ interface TimesheetEntry {
   comments?: string;
   clock_in_address?: string;
   clock_out_address?: string;
+  entry_status?: string;
+  host_company_name?: string;
+  supervisor_name?: string;
 }
 
 interface TimesheetData {
@@ -58,9 +68,14 @@ export default function TimesheetDetailScreen({ navigation, route }: TimesheetDe
   const [timesheet, setTimesheet] = useState<TimesheetData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState<TimesheetEntry | null>(null);
+  const [companyName, setCompanyName] = useState('');
   const [supervisorName, setSupervisorName] = useState('');
   const [supervisorContact, setSupervisorContact] = useState('');
+  const [supervisorSignature, setSupervisorSignature] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const signatureRef = useRef<SignatureCanvas>(null);
 
   useEffect(() => {
     fetchTimesheet();
@@ -79,25 +94,64 @@ export default function TimesheetDetailScreen({ navigation, route }: TimesheetDe
   };
 
   const handleSubmit = async () => {
-    if (!supervisorName || !supervisorContact) {
-      Alert.alert('Error', 'Please enter supervisor name and contact');
+    if (!companyName || !supervisorName || !supervisorContact) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+    if (!supervisorSignature) {
+      Alert.alert('Error', 'Please get supervisor signature');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await timesheetsAPI.submit(timesheetId, {
-        supervisor_name: supervisorName,
-        supervisor_contact: supervisorContact,
-      });
+      if (selectedEntry) {
+        // Submit individual entry
+        await timesheetsAPI.submitEntry(selectedEntry.id, {
+          company_name: companyName,
+          supervisor_name: supervisorName,
+          supervisor_contact: supervisorContact,
+          supervisor_signature: supervisorSignature,
+        });
+        Alert.alert('Success', `Entry for ${selectedEntry.day_of_week} submitted for approval`);
+      } else {
+        // Submit entire timesheet
+        await timesheetsAPI.submit(timesheetId, {
+          company_name: companyName,
+          supervisor_name: supervisorName,
+          supervisor_contact: supervisorContact,
+          supervisor_signature: supervisorSignature,
+        });
+        Alert.alert('Success', 'Timesheet submitted for approval');
+      }
       setShowSubmitModal(false);
-      Alert.alert('Success', 'Timesheet submitted for approval');
+      // Reset form
+      setSelectedEntry(null);
+      setCompanyName('');
+      setSupervisorName('');
+      setSupervisorContact('');
+      setSupervisorSignature(null);
       fetchTimesheet();
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to submit timesheet');
+      Alert.alert('Error', error.response?.data?.detail || 'Failed to submit');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSignature = (signature: string) => {
+    setSupervisorSignature(signature);
+    setShowSignatureModal(false);
+    // Re-open submit modal after capturing signature
+    setTimeout(() => setShowSubmitModal(true), 300);
+  };
+
+  const handleClearSignature = () => {
+    signatureRef.current?.clearSignature();
+  };
+
+  const handleConfirmSignature = () => {
+    signatureRef.current?.readSignature();
   };
 
   const formatDate = (dateString: string) => {
@@ -109,7 +163,25 @@ export default function TimesheetDetailScreen({ navigation, route }: TimesheetDe
 
   const formatTime = (timeString?: string) => {
     if (!timeString) return '--:--';
+    // Handle both time format (HH:MM:SS) and datetime format
+    if (timeString.includes('T')) {
+      // ISO datetime format - ensure UTC is properly handled
+      let dateString = timeString;
+      if (!timeString.endsWith('Z') && !timeString.includes('+') && !timeString.includes('-', 10)) {
+        dateString = timeString + 'Z';
+      }
+      const date = new Date(dateString);
+      return date.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: true });
+    }
+    // Time only format - take first 5 chars (HH:MM)
     return timeString.substring(0, 5);
+  };
+
+  const formatHoursMinutes = (hours: number) => {
+    const h = Math.floor(hours);
+    const m = Math.round((hours - h) * 60);
+    if (h === 0) return `${m}m`;
+    return `${h}h ${m}m`;
   };
 
   const getStatusColor = (status: string) => {
@@ -119,10 +191,30 @@ export default function TimesheetDetailScreen({ navigation, route }: TimesheetDe
       case 'submitted':
         return '#F59E0B';
       case 'rejected':
-        return '#EF4444';
+        return '#6B7280';
       default:
         return '#6B7280';
     }
+  };
+
+  const getEntryStatusColor = (status?: string) => {
+    switch (status) {
+      case 'approved':
+        return '#10B981';
+      case 'submitted':
+        return '#F59E0B';
+      default:
+        return COLORS.primary;
+    }
+  };
+
+  const openEntrySubmit = (entry: TimesheetEntry) => {
+    if (entry.entry_status === 'submitted' || entry.entry_status === 'approved') {
+      Alert.alert('Already Submitted', `This entry was submitted to ${entry.host_company_name || 'N/A'}`);
+      return;
+    }
+    setSelectedEntry(entry);
+    setShowSubmitModal(true);
   };
 
   if (isLoading) {
@@ -193,24 +285,46 @@ export default function TimesheetDetailScreen({ navigation, route }: TimesheetDe
             </View>
           ) : (
             timesheet.entries.map((entry) => (
-              <View key={entry.id} style={styles.entryCard}>
+              <TouchableOpacity 
+                key={entry.id} 
+                style={styles.entryCard}
+                activeOpacity={0.7}
+                onPress={() => openEntrySubmit(entry)}
+              >
                 <View style={styles.entryHeader}>
                   <Text style={styles.entryDay}>{entry.day_of_week}</Text>
-                  <Text style={styles.entryDate}>{formatDate(entry.entry_date)}</Text>
+                  <View style={styles.entryHeaderRight}>
+                    {entry.entry_status === 'submitted' || entry.entry_status === 'approved' ? (
+                      <View style={[styles.entryStatusBadge, { backgroundColor: getEntryStatusColor(entry.entry_status) + '20' }]}>
+                        <Text style={[styles.entryStatusText, { color: getEntryStatusColor(entry.entry_status) }]}>
+                          {entry.entry_status === 'submitted' ? 'Pending' : 'Approved'}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.submitEntryHint}>
+                        <Text style={styles.submitEntryHintText}>Tap to Submit</Text>
+                        <Ionicons name="chevron-forward" size={14} color={COLORS.primary} />
+                      </View>
+                    )}
+                    <Text style={styles.entryDate}>{formatDate(entry.entry_date)}</Text>
+                  </View>
                 </View>
                 <View style={styles.entryDetails}>
                   <View style={styles.entryTimeRow}>
                     <Ionicons name="time-outline" size={16} color="#6B7280" />
                     <Text style={styles.entryTime}>
-                      {formatTime(entry.time_start)} - {formatTime(entry.time_finish)}
+                      {formatTime(entry.clock_in_time || entry.time_start)} - {formatTime(entry.clock_out_time || entry.time_finish)}
                     </Text>
                   </View>
                   <View style={styles.entryHours}>
-                    <Text style={styles.entryHoursText}>{entry.total_hours.toFixed(1)}h</Text>
+                    <Text style={styles.entryHoursText}>{formatHoursMinutes(entry.total_hours)}</Text>
                   </View>
                 </View>
                 {entry.worked_as && (
                   <Text style={styles.entryWorkedAs}>Worked as: {entry.worked_as}</Text>
+                )}
+                {entry.entry_status === 'submitted' && entry.host_company_name && (
+                  <Text style={styles.entryCompany}>Company: {entry.host_company_name}</Text>
                 )}
                 {entry.clock_in_address && (
                   <View style={styles.entryLocation}>
@@ -220,7 +334,7 @@ export default function TimesheetDetailScreen({ navigation, route }: TimesheetDe
                     </Text>
                   </View>
                 )}
-              </View>
+              </TouchableOpacity>
             ))
           )}
         </View>
@@ -246,50 +360,158 @@ export default function TimesheetDetailScreen({ navigation, route }: TimesheetDe
         transparent
         onRequestClose={() => setShowSubmitModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Submit Timesheet</Text>
+        <KeyboardAvoidingView 
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled">
+            <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              {selectedEntry ? `Submit ${selectedEntry.day_of_week}` : 'Submit Timesheet'}
+            </Text>
             <Text style={styles.modalSubtitle}>
-              Enter supervisor details for approval
+              {selectedEntry 
+                ? `Enter supervisor details for ${formatDate(selectedEntry.entry_date)}`
+                : 'Enter supervisor details for approval'}
             </Text>
 
-            <Text style={styles.inputLabel}>Supervisor Name</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter supervisor's name"
-              value={supervisorName}
-              onChangeText={setSupervisorName}
-            />
+              <Text style={styles.inputLabel}>Company</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter host company name"
+                placeholderTextColor="#9CA3AF"
+                value={companyName}
+                onChangeText={setCompanyName}
+              />
 
-            <Text style={styles.inputLabel}>Contact Number</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter contact number"
-              value={supervisorContact}
-              onChangeText={setSupervisorContact}
-              keyboardType="phone-pad"
-            />
+              <Text style={styles.inputLabel}>Supervisor Name</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter supervisor's name"
+                placeholderTextColor="#9CA3AF"
+                value={supervisorName}
+                onChangeText={setSupervisorName}
+              />
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => setShowSubmitModal(false)}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.confirmButton, isSubmitting && styles.confirmButtonDisabled]}
-                onPress={handleSubmit}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <Text style={styles.confirmButtonText}>Submit</Text>
-                )}
-              </TouchableOpacity>
+              <Text style={styles.inputLabel}>Contact Number</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter contact number"
+                placeholderTextColor="#9CA3AF"
+                value={supervisorContact}
+                onChangeText={setSupervisorContact}
+                keyboardType="phone-pad"
+              />
+
+              <Text style={styles.inputLabel}>Supervisor Signature</Text>
+              {supervisorSignature ? (
+                <View style={styles.signaturePreview}>
+                  <Text style={styles.signatureConfirmed}>Signature captured</Text>
+                  <TouchableOpacity
+                    style={styles.resignButton}
+                    onPress={() => {
+                      setSupervisorSignature(null);
+                      setShowSubmitModal(false);
+                      setTimeout(() => setShowSignatureModal(true), 300);
+                    }}
+                  >
+                    <Text style={styles.resignButtonText}>Re-sign</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.signatureButton}
+                  onPress={() => {
+                    setShowSubmitModal(false);
+                    setTimeout(() => setShowSignatureModal(true), 300);
+                  }}
+                >
+                  <Ionicons name="create-outline" size={24} color={COLORS.primary} />
+                  <Text style={styles.signatureButtonText}>Tap to Sign</Text>
+                </TouchableOpacity>
+              )}
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => setShowSubmitModal(false)}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.confirmButton, isSubmitting && styles.confirmButtonDisabled]}
+                  onPress={handleSubmit}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <Text style={styles.confirmButtonText}>Submit</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Signature Modal */}
+      <Modal
+        visible={showSignatureModal}
+        animationType="slide"
+        onRequestClose={() => setShowSignatureModal(false)}
+      >
+        <View style={styles.signatureModalContainer}>
+          <View style={styles.signatureHeader}>
+            <Text style={styles.signatureTitle}>Supervisor Signature</Text>
+            <Text style={styles.signatureSubtitle}>Please sign in the box below</Text>
           </View>
+          
+          <View style={styles.signatureCanvasContainer}>
+            <SignatureCanvas
+              ref={signatureRef}
+              onOK={handleSignature}
+              onEmpty={() => Alert.alert('Error', 'Please provide a signature')}
+              descriptionText=""
+              clearText="Clear"
+              confirmText="Confirm"
+              webStyle={`
+                .m-signature-pad { box-shadow: none; border: none; }
+                .m-signature-pad--body { border: 2px solid #E5E7EB; border-radius: 12px; }
+                .m-signature-pad--footer { display: none; }
+                body, html { background-color: #F5F5F5; }
+              `}
+              backgroundColor="#FFFFFF"
+              penColor="#1A1A1A"
+            />
+          </View>
+
+          <View style={styles.signatureActions}>
+            <TouchableOpacity
+              style={styles.signatureClearButton}
+              onPress={handleClearSignature}
+            >
+              <Ionicons name="trash-outline" size={20} color="#6B7280" />
+              <Text style={styles.signatureClearText}>Clear</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.signatureConfirmButton}
+              onPress={handleConfirmSignature}
+            >
+              <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+              <Text style={styles.signatureConfirmText}>Confirm Signature</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={styles.signatureCancelButton}
+            onPress={() => {
+              setShowSignatureModal(false);
+              setTimeout(() => setShowSubmitModal(true), 300);
+            }}
+          >
+            <Text style={styles.signatureCancelText}>Cancel</Text>
+          </TouchableOpacity>
         </View>
       </Modal>
     </View>
@@ -408,7 +630,11 @@ const styles = StyleSheet.create({
   entryHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 12,
+  },
+  entryHeaderRight: {
+    alignItems: 'flex-end',
   },
   entryDay: {
     fontSize: 16,
@@ -418,6 +644,30 @@ const styles = StyleSheet.create({
   entryDate: {
     fontSize: 14,
     color: '#6B7280',
+    marginTop: 4,
+  },
+  entryStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  entryStatusText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  submitEntryHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  submitEntryHintText: {
+    fontSize: 12,
+    color: COLORS.primary,
+    fontWeight: '500',
+  },
+  entryCompany: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 4,
   },
   entryDetails: {
     flexDirection: 'row',
@@ -485,11 +735,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
+  modalScroll: {
+    maxHeight: '90%',
+  },
   modalContent: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
+    paddingBottom: 40,
   },
   modalTitle: {
     fontSize: 24,
@@ -540,11 +794,125 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   confirmButtonDisabled: {
-    backgroundColor: '#FCA5A5',
+    backgroundColor: '#93C5FD',
   },
   confirmButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  // Signature styles
+  signatureButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    padding: 20,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+    borderStyle: 'dashed',
+    gap: 8,
+    marginBottom: 16,
+  },
+  signatureButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: COLORS.primary,
+  },
+  signaturePreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F0FDF4',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  signatureConfirmed: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#10B981',
+  },
+  resignButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 6,
+  },
+  resignButtonText: {
+    fontSize: 14,
+    color: COLORS.primary,
+    fontWeight: '500',
+  },
+  signatureModalContainer: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+    paddingTop: 60,
+  },
+  signatureHeader: {
+    paddingHorizontal: 24,
+    marginBottom: 20,
+  },
+  signatureTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 4,
+  },
+  signatureSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  signatureCanvasContainer: {
+    flex: 1,
+    marginHorizontal: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  signatureActions: {
+    flexDirection: 'row',
+    padding: 16,
+    gap: 12,
+  },
+  signatureClearButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    gap: 8,
+  },
+  signatureClearText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  signatureConfirmButton: {
+    flex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    gap: 8,
+  },
+  signatureConfirmText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  signatureCancelButton: {
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  signatureCancelText: {
+    fontSize: 16,
+    color: '#6B7280',
   },
 });

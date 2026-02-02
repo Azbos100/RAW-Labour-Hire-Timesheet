@@ -14,20 +14,27 @@ import * as SecureStore from 'expo-secure-store';
 // Screens
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
+import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import ClockInScreen from './src/screens/ClockInScreen';
 import ClockOutScreen from './src/screens/ClockOutScreen';
 import TimesheetsScreen from './src/screens/TimesheetsScreen';
 import TimesheetDetailScreen from './src/screens/TimesheetDetailScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import TicketsScreen from './src/screens/TicketsScreen';
+import InductionScreen from './src/screens/InductionScreen';
 
 // Context
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+
+// Constants
+import { COLORS } from './src/constants/colors';
 
 // Types
 export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
+  ResetPassword: undefined;
   Main: undefined;
   ClockIn: undefined;
   ClockOut: undefined;
@@ -37,22 +44,13 @@ export type RootStackParamList = {
 export type MainTabParamList = {
   Dashboard: undefined;
   Timesheets: undefined;
+  Induction: undefined;
+  Tickets: undefined;
   Profile: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
-
-// RAW Labour Hire brand colors
-const COLORS = {
-  primary: '#E31837',      // RAW Red
-  secondary: '#1A1A1A',    // Dark
-  background: '#F5F5F5',
-  white: '#FFFFFF',
-  gray: '#6B7280',
-  success: '#10B981',
-  warning: '#F59E0B',
-};
 
 function MainTabs() {
   return (
@@ -65,6 +63,10 @@ function MainTabs() {
             iconName = focused ? 'home' : 'home-outline';
           } else if (route.name === 'Timesheets') {
             iconName = focused ? 'document-text' : 'document-text-outline';
+          } else if (route.name === 'Induction') {
+            iconName = focused ? 'shield-checkmark' : 'shield-checkmark-outline';
+          } else if (route.name === 'Tickets') {
+            iconName = focused ? 'card' : 'card-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           } else {
@@ -93,6 +95,16 @@ function MainTabs() {
         name="Timesheets" 
         component={TimesheetsScreen}
         options={{ title: 'My Timesheets' }}
+      />
+      <Tab.Screen 
+        name="Induction" 
+        component={InductionScreen}
+        options={{ title: 'Induction' }}
+      />
+      <Tab.Screen 
+        name="Tickets" 
+        component={TicketsScreen}
+        options={{ title: 'My Tickets' }}
       />
       <Tab.Screen 
         name="Profile" 
@@ -134,6 +146,11 @@ function AppNavigator() {
             name="Register" 
             component={RegisterScreen}
             options={{ title: 'Create Account' }}
+          />
+          <Stack.Screen 
+            name="ResetPassword" 
+            component={ResetPasswordScreen}
+            options={{ title: 'Reset Password' }}
           />
         </>
       ) : (

@@ -106,7 +106,7 @@ npx react-native run-android
 
 ## Brand Colors
 
-- Primary Red: `#E31837`
+- Primary Blue: `#1E3A8A`
 - Dark: `#1A1A1A`
 - Background: `#F5F5F5`
 - Success: `#10B981`
