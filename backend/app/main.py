@@ -5,9 +5,27 @@ Main FastAPI Application
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import FileResponse, RedirectResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
 import os
+
+
+class HTTPSRedirectMiddleware(BaseHTTPMiddleware):
+    """Ensure redirects use HTTPS in production"""
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        # Fix redirect URLs to use HTTPS if the original request was HTTPS
+        if response.status_code in (301, 302, 307, 308):
+            location = response.headers.get("location", "")
+            if location.startswith("http://") and (
+                request.headers.get("x-forwarded-proto") == "https" or
+                request.url.scheme == "https"
+            ):
+                new_location = location.replace("http://", "https://", 1)
+                response.headers["location"] = new_location
+        return response
 
 from sqlalchemy import text, select, func
 
@@ -343,6 +361,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Fix HTTPS redirects in production (must be added first)
+app.add_middleware(HTTPSRedirectMiddleware)
 
 # CORS - allow mobile app and web dashboard
 # In production, mobile apps make requests with various origins

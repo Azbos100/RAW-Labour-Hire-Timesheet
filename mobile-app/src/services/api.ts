@@ -25,11 +25,14 @@ const getDevBaseUrl = () => {
   return 'http://localhost:8000/api';
 };
 
+// Production URL - Railway deployment
+const PRODUCTION_URL = 'https://raw-labour-hire-timesheet-production.up.railway.app/api';
+
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL
   ? process.env.EXPO_PUBLIC_API_URL
   : __DEV__
   ? getDevBaseUrl()
-  : 'https://api.rawlabourhire.com/api';
+  : PRODUCTION_URL;
 
 const api = axios.create({
   baseURL: API_BASE_URL,

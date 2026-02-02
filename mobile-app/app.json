@@ -3,6 +3,12 @@
     "name": "RAW Timesheet",
     "slug": "raw-timesheet",
     "version": "1.0.0",
+    "owner": "rawlabourhire",
+    "extra": {
+      "eas": {
+        "projectId": ""
+      }
+    },
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
