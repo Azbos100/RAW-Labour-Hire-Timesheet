@@ -8,10 +8,9 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for caching
-COPY backend/requirements.txt .
+# Copy and install requirements
+COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install asyncpg psycopg2-binary
 
 # Copy application code
 COPY backend/app ./app
@@ -22,10 +21,13 @@ RUN mkdir -p app/uploads/pdfs
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
-ENV PORT=8000
+
+# Default port
+ARG PORT=8000
+ENV PORT=${PORT}
 
 # Expose port
-EXPOSE 8000
+EXPOSE ${PORT}
 
-# Run the application - use shell form to expand $PORT
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Run the application
+CMD python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT}
