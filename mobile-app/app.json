@@ -3,10 +3,10 @@
     "name": "RAW Timesheet",
     "slug": "raw-timesheet",
     "version": "1.0.0",
-    "owner": "rawlabourhire",
+    "owner": "azbos",
     "extra": {
       "eas": {
-        "projectId": ""
+        "projectId": "13762e61-015f-4cf2-b4dd-01a3541862ea"
       }
     },
     "orientation": "portrait",
@@ -35,7 +35,9 @@
       "package": "com.rawlabourhire.timesheet",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "plugins": [

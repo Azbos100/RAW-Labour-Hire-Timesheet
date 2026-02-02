@@ -28,8 +28,13 @@ const getDevBaseUrl = () => {
 // Production URL - Railway deployment
 const PRODUCTION_URL = 'https://raw-labour-hire-timesheet-production.up.railway.app/api';
 
+// Set to true to use production backend even in development (for testing via Expo Go over internet)
+const USE_PRODUCTION_BACKEND = true;
+
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL
   ? process.env.EXPO_PUBLIC_API_URL
+  : USE_PRODUCTION_BACKEND
+  ? PRODUCTION_URL
   : __DEV__
   ? getDevBaseUrl()
   : PRODUCTION_URL;
