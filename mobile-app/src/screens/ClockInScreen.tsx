@@ -39,6 +39,8 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
   const { user } = useAuth();
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [address, setAddress] = useState<string>('');
+  const [manualAddress, setManualAddress] = useState<string>('');
+  const [isEditingAddress, setIsEditingAddress] = useState(false);
   const [isLoadingLocation, setIsLoadingLocation] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [jobSites, setJobSites] = useState<JobSite[]>([]);
@@ -111,8 +113,12 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
   };
 
   const handleClockIn = async () => {
-    if (!location) {
-      Alert.alert('Error', 'Unable to get your location. Please try again.');
+    // Allow clock in with manual address even if GPS failed
+    const hasLocation = location !== null;
+    const hasManualAddress = isEditingAddress && manualAddress.trim().length > 0;
+    
+    if (!hasLocation && !hasManualAddress) {
+      Alert.alert('Error', 'Please either enable GPS or enter an address manually.');
       return;
     }
 
@@ -121,11 +127,15 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
       return;
     }
 
+    // Use manual address if edited, otherwise use GPS address
+    const finalAddress = isEditingAddress ? manualAddress : address;
+
     setIsSubmitting(true);
     try {
       const response = await clockAPI.clockIn({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
+        latitude: location?.coords.latitude || 0,
+        longitude: location?.coords.longitude || 0,
+        address: finalAddress,
         job_site_id: selectedJobSite.id,
         worked_as: workedAs || undefined,
         user_id: user?.id,
@@ -166,26 +176,77 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
             </View>
           ) : location ? (
             <>
-              <View style={styles.locationRow}>
-                <Ionicons name="location" size={24} color={COLORS.primary} />
-                <View style={styles.locationInfo}>
-                  <Text style={styles.locationAddress}>{address || 'Address found'}</Text>
-                  <Text style={styles.locationCoords}>
-                    {location.coords.latitude.toFixed(6)}, {location.coords.longitude.toFixed(6)}
-                  </Text>
-                </View>
+              {/* GPS Coordinates - always shown */}
+              <View style={styles.gpsRow}>
+                <Ionicons name="navigate" size={18} color="#10B981" />
+                <Text style={styles.gpsText}>GPS Captured</Text>
+                <Text style={styles.locationCoords}>
+                  ({location.coords.latitude.toFixed(5)}, {location.coords.longitude.toFixed(5)})
+                </Text>
               </View>
+
+              {/* Address Section - Editable */}
+              <View style={styles.addressSection}>
+                <View style={styles.addressHeader}>
+                  <Text style={styles.addressLabel}>Address:</Text>
+                  <TouchableOpacity 
+                    onPress={() => {
+                      setIsEditingAddress(!isEditingAddress);
+                      if (!isEditingAddress) {
+                        setManualAddress(address);
+                      }
+                    }}
+                  >
+                    <Text style={styles.editAddressLink}>
+                      {isEditingAddress ? 'Use GPS Address' : 'Edit Address'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {isEditingAddress ? (
+                  <TextInput
+                    style={styles.addressInput}
+                    placeholder="Type your address here..."
+                    placeholderTextColor="#9CA3AF"
+                    value={manualAddress}
+                    onChangeText={setManualAddress}
+                    multiline
+                    numberOfLines={2}
+                  />
+                ) : (
+                  <Text style={styles.locationAddress}>{address || 'Address detected'}</Text>
+                )}
+              </View>
+
               <TouchableOpacity style={styles.refreshButton} onPress={getLocation}>
                 <Ionicons name="refresh" size={20} color={COLORS.primary} />
-                <Text style={styles.refreshText}>Refresh</Text>
+                <Text style={styles.refreshText}>Refresh GPS</Text>
               </TouchableOpacity>
             </>
           ) : (
             <View style={styles.errorLocation}>
               <Ionicons name="warning" size={24} color="#F59E0B" />
-              <Text style={styles.errorText}>Unable to get location</Text>
+              <Text style={styles.errorText}>Unable to get GPS location</Text>
+              
+              {/* Allow manual address entry even without GPS */}
+              <View style={styles.manualEntrySection}>
+                <Text style={styles.manualEntryLabel}>Enter address manually:</Text>
+                <TextInput
+                  style={styles.addressInput}
+                  placeholder="Type your work address..."
+                  placeholderTextColor="#9CA3AF"
+                  value={manualAddress}
+                  onChangeText={(text) => {
+                    setManualAddress(text);
+                    setIsEditingAddress(true);
+                  }}
+                  multiline
+                  numberOfLines={2}
+                />
+              </View>
+              
               <TouchableOpacity style={styles.retryButton} onPress={getLocation}>
-                <Text style={styles.retryText}>Try Again</Text>
+                <Text style={styles.retryText}>Try GPS Again</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -238,10 +299,10 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
       <TouchableOpacity
         style={[
           styles.clockInButton,
-          (!location || !selectedJobSite || isSubmitting) && styles.clockInButtonDisabled,
+          ((!location && !manualAddress.trim()) || !selectedJobSite || isSubmitting) && styles.clockInButtonDisabled,
         ]}
         onPress={handleClockIn}
-        disabled={!location || !selectedJobSite || isSubmitting}
+        disabled={(!location && !manualAddress.trim()) || !selectedJobSite || isSubmitting}
       >
         {isSubmitting ? (
           <ActivityIndicator color="#FFFFFF" />
@@ -313,8 +374,64 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   locationCoords: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#9CA3AF',
+    marginLeft: 4,
+  },
+  gpsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  gpsText: {
+    fontSize: 14,
+    color: '#10B981',
+    fontWeight: '600',
+    marginLeft: 6,
+    flex: 1,
+  },
+  addressSection: {
+    marginTop: 4,
+  },
+  addressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  addressLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  editAddressLink: {
+    fontSize: 14,
+    color: COLORS.primary,
+    fontWeight: '500',
+  },
+  addressInput: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#1A1A1A',
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  manualEntrySection: {
+    width: '100%',
+    marginTop: 16,
+  },
+  manualEntryLabel: {
+    fontSize: 14,
+    color: '#374151',
+    marginBottom: 8,
+    fontWeight: '500',
   },
   refreshButton: {
     flexDirection: 'row',

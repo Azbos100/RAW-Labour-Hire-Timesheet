@@ -24,8 +24,9 @@ geolocator = Nominatim(user_agent="raw-labour-hire")
 
 class ClockInRequest(BaseModel):
     """Request to clock in at a job"""
-    latitude: float
-    longitude: float
+    latitude: float = 0  # Can be 0 if using manual address
+    longitude: float = 0  # Can be 0 if using manual address
+    address: Optional[str] = None  # Manual address override
     job_site_id: Optional[int] = None
     worked_as: Optional[str] = None  # Job role
     user_id: Optional[int] = None  # Temporary until auth is fixed
@@ -33,8 +34,9 @@ class ClockInRequest(BaseModel):
 
 class ClockOutRequest(BaseModel):
     """Request to clock out from a job"""
-    latitude: float
-    longitude: float
+    latitude: float = 0  # Can be 0 if using manual address
+    longitude: float = 0  # Can be 0 if using manual address
+    address: Optional[str] = None  # Manual address override
     comments: Optional[str] = None
     first_aid_injury: bool = False
     user_id: Optional[int] = None  # Temporary until auth is fixed
@@ -260,8 +262,13 @@ async def clock_in(
         db.add(timesheet)
         await db.flush()
     
-    # Reverse geocode to get address
-    clock_in_address = get_address_from_coords(request.latitude, request.longitude)
+    # Use manual address if provided, otherwise reverse geocode from GPS
+    if request.address and request.address.strip():
+        clock_in_address = request.address.strip()
+    elif request.latitude != 0 and request.longitude != 0:
+        clock_in_address = get_address_from_coords(request.latitude, request.longitude)
+    else:
+        clock_in_address = "Address not provided"
     
     # Create timesheet entry
     entry = TimesheetEntry(
@@ -271,8 +278,8 @@ async def clock_in(
         job_site_id=request.job_site_id,
         time_start=now.time(),
         clock_in_time=now,
-        clock_in_latitude=request.latitude,
-        clock_in_longitude=request.longitude,
+        clock_in_latitude=request.latitude if request.latitude != 0 else None,
+        clock_in_longitude=request.longitude if request.longitude != 0 else None,
         clock_in_address=clock_in_address,
         worked_as=request.worked_as
     )
@@ -331,8 +338,13 @@ async def clock_out(
             detail="Not currently clocked in. Please clock in first."
         )
     
-    # Reverse geocode clock out location
-    clock_out_address = get_address_from_coords(request.latitude, request.longitude)
+    # Use manual address if provided, otherwise reverse geocode from GPS
+    if request.address and request.address.strip():
+        clock_out_address = request.address.strip()
+    elif request.latitude != 0 and request.longitude != 0:
+        clock_out_address = get_address_from_coords(request.latitude, request.longitude)
+    else:
+        clock_out_address = "Address not provided"
     
     # Calculate hours
     ordinary_hours, overtime_hours = calculate_hours(entry.clock_in_time, now)
@@ -341,8 +353,8 @@ async def clock_out(
     # Update entry
     entry.time_finish = now.time()
     entry.clock_out_time = now
-    entry.clock_out_latitude = request.latitude
-    entry.clock_out_longitude = request.longitude
+    entry.clock_out_latitude = request.latitude if request.latitude != 0 else None
+    entry.clock_out_longitude = request.longitude if request.longitude != 0 else None
     entry.clock_out_address = clock_out_address
     entry.ordinary_hours = ordinary_hours
     entry.overtime_hours = overtime_hours
