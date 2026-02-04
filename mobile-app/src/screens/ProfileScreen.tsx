@@ -19,7 +19,6 @@ import {
   Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Picker } from '@react-native-picker/picker';
 import { COLORS } from '../constants/colors';
 import { useAuth } from '../context/AuthContext';
 import { profileAPI } from '../services/api';
@@ -793,30 +792,51 @@ export default function ProfileScreen() {
         'Employment Type',
         <>
           <Text style={styles.inputLabel}>Select Employment Type</Text>
-          <View style={styles.pickerContainer}>
-            <Picker
-              selectedValue={employmentType}
-              onValueChange={(value) => setEmploymentType(value)}
-              style={styles.picker}
-            >
-              <Picker.Item label="Casual" value="casual" />
-              <Picker.Item label="Full Time" value="full_time" />
-              <Picker.Item label="Part Time" value="part_time" />
-            </Picker>
-          </View>
           
-          <View style={styles.employmentInfo}>
-            <Text style={styles.employmentInfoTitle}>Employment Types:</Text>
-            <Text style={styles.employmentInfoText}>
-              <Text style={styles.bold}>Casual:</Text> Work as needed, flexible hours, no guaranteed hours.
-            </Text>
-            <Text style={styles.employmentInfoText}>
-              <Text style={styles.bold}>Full Time:</Text> Regular 38+ hours per week with benefits.
-            </Text>
-            <Text style={styles.employmentInfoText}>
-              <Text style={styles.bold}>Part Time:</Text> Regular hours less than 38 hours per week.
-            </Text>
-          </View>
+          <TouchableOpacity
+            style={[styles.employmentOption, employmentType === 'casual' && styles.employmentOptionSelected]}
+            onPress={() => setEmploymentType('casual')}
+          >
+            <View style={styles.employmentOptionContent}>
+              <View style={[styles.radioCircle, employmentType === 'casual' && styles.radioCircleSelected]}>
+                {employmentType === 'casual' && <View style={styles.radioInner} />}
+              </View>
+              <View style={styles.employmentOptionText}>
+                <Text style={[styles.employmentOptionTitle, employmentType === 'casual' && styles.employmentOptionTitleSelected]}>Casual</Text>
+                <Text style={styles.employmentOptionDesc}>Work as needed, flexible hours</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.employmentOption, employmentType === 'full_time' && styles.employmentOptionSelected]}
+            onPress={() => setEmploymentType('full_time')}
+          >
+            <View style={styles.employmentOptionContent}>
+              <View style={[styles.radioCircle, employmentType === 'full_time' && styles.radioCircleSelected]}>
+                {employmentType === 'full_time' && <View style={styles.radioInner} />}
+              </View>
+              <View style={styles.employmentOptionText}>
+                <Text style={[styles.employmentOptionTitle, employmentType === 'full_time' && styles.employmentOptionTitleSelected]}>Full Time</Text>
+                <Text style={styles.employmentOptionDesc}>Regular 38+ hours per week</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.employmentOption, employmentType === 'part_time' && styles.employmentOptionSelected]}
+            onPress={() => setEmploymentType('part_time')}
+          >
+            <View style={styles.employmentOptionContent}>
+              <View style={[styles.radioCircle, employmentType === 'part_time' && styles.radioCircleSelected]}>
+                {employmentType === 'part_time' && <View style={styles.radioInner} />}
+              </View>
+              <View style={styles.employmentOptionText}>
+                <Text style={[styles.employmentOptionTitle, employmentType === 'part_time' && styles.employmentOptionTitleSelected]}>Part Time</Text>
+                <Text style={styles.employmentOptionDesc}>Regular hours, less than 38/week</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
         </>,
         saveEmployment
       )}
@@ -1265,37 +1285,56 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#065F46',
   },
-  pickerContainer: {
+  employmentOption: {
     backgroundColor: '#F9FAFB',
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: '#E5E7EB',
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  picker: {
-    height: 50,
-  },
-  employmentInfo: {
-    marginTop: 20,
+    borderRadius: 12,
     padding: 16,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 8,
+    marginTop: 12,
   },
-  employmentInfoTitle: {
-    fontSize: 14,
+  employmentOptionSelected: {
+    backgroundColor: '#EFF6FF',
+    borderColor: COLORS.primary,
+  },
+  employmentOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  radioCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  radioCircleSelected: {
+    borderColor: COLORS.primary,
+  },
+  radioInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: COLORS.primary,
+  },
+  employmentOptionText: {
+    flex: 1,
+  },
+  employmentOptionTitle: {
+    fontSize: 16,
     fontWeight: '600',
     color: '#374151',
-    marginBottom: 8,
   },
-  employmentInfoText: {
+  employmentOptionTitleSelected: {
+    color: COLORS.primary,
+  },
+  employmentOptionDesc: {
     fontSize: 13,
     color: '#6B7280',
-    marginBottom: 6,
-    lineHeight: 20,
-  },
-  bold: {
-    fontWeight: '600',
-    color: '#374151',
+    marginTop: 2,
   },
   // Terms styles
   termsModalOverlay: {
