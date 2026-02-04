@@ -17,6 +17,36 @@
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
         .modal.active { display: flex; justify-content: center; align-items: center; }
         .signature-img { max-width: 300px; border: 1px solid #E5E7EB; border-radius: 8px; background: white; }
+        
+        /* Toggle Switch Styles */
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            background-color: #D1D5DB;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            flex-shrink: 0;
+        }
+        .toggle-switch.active {
+            background-color: #2563EB;
+        }
+        .toggle-slider {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background-color: white;
+            border-radius: 50%;
+            transition: transform 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .toggle-switch.active .toggle-slider {
+            transform: translateX(20px);
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -391,10 +421,9 @@
                                 <p class="font-medium">SMS Notifications</p>
                                 <p class="text-sm text-gray-500">Enable/disable all SMS notifications</p>
                             </div>
-                            <label class="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" id="sms-enabled" class="sr-only peer" checked>
-                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                            </label>
+                            <button type="button" id="sms-enabled" onclick="toggleSwitch('sms-enabled')" class="toggle-switch active">
+                                <span class="toggle-slider"></span>
+                            </button>
                         </div>
                         
                         <div class="border-t pt-4">
@@ -403,10 +432,9 @@
                                     <p class="font-medium">Clock-In Reminder</p>
                                     <p class="text-sm text-gray-500">Remind workers who haven't clocked in</p>
                                 </div>
-                                <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" id="clock-in-enabled" class="sr-only peer" checked>
-                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                                </label>
+                                <button type="button" id="clock-in-enabled" onclick="toggleSwitch('clock-in-enabled')" class="toggle-switch active">
+                                    <span class="toggle-slider"></span>
+                                </button>
                             </div>
                             <div class="flex items-center gap-2">
                                 <label class="text-sm text-gray-500">Send at:</label>
@@ -420,10 +448,9 @@
                                     <p class="font-medium">Clock-Out Reminder</p>
                                     <p class="text-sm text-gray-500">Remind workers who haven't clocked out</p>
                                 </div>
-                                <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" id="clock-out-enabled" class="sr-only peer" checked>
-                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                                </label>
+                                <button type="button" id="clock-out-enabled" onclick="toggleSwitch('clock-out-enabled')" class="toggle-switch active">
+                                    <span class="toggle-slider"></span>
+                                </button>
                             </div>
                             <div class="flex items-center gap-2">
                                 <label class="text-sm text-gray-500">Send at:</label>
@@ -1557,15 +1584,33 @@
 
         // ==================== NOTIFICATIONS ====================
 
+        function toggleSwitch(id) {
+            const el = document.getElementById(id);
+            el.classList.toggle('active');
+        }
+
+        function setToggle(id, value) {
+            const el = document.getElementById(id);
+            if (value) {
+                el.classList.add('active');
+            } else {
+                el.classList.remove('active');
+            }
+        }
+
+        function getToggleValue(id) {
+            return document.getElementById(id).classList.contains('active');
+        }
+
         async function loadNotificationSettings() {
             try {
                 const response = await fetch(`${API_BASE}/notifications/settings`);
                 const data = await response.json();
                 
-                document.getElementById('sms-enabled').checked = data.sms_enabled;
-                document.getElementById('clock-in-enabled').checked = data.clock_in_reminder_enabled;
+                setToggle('sms-enabled', data.sms_enabled);
+                setToggle('clock-in-enabled', data.clock_in_reminder_enabled);
                 document.getElementById('clock-in-time').value = data.clock_in_reminder_time;
-                document.getElementById('clock-out-enabled').checked = data.clock_out_reminder_enabled;
+                setToggle('clock-out-enabled', data.clock_out_reminder_enabled);
                 document.getElementById('clock-out-time').value = data.clock_out_reminder_time;
                 
                 // Populate worker select for custom SMS
@@ -1587,10 +1632,10 @@
 
         async function saveNotificationSettings() {
             const data = {
-                sms_enabled: document.getElementById('sms-enabled').checked,
-                clock_in_reminder_enabled: document.getElementById('clock-in-enabled').checked,
+                sms_enabled: getToggleValue('sms-enabled'),
+                clock_in_reminder_enabled: getToggleValue('clock-in-enabled'),
                 clock_in_reminder_time: document.getElementById('clock-in-time').value,
-                clock_out_reminder_enabled: document.getElementById('clock-out-enabled').checked,
+                clock_out_reminder_enabled: getToggleValue('clock-out-enabled'),
                 clock_out_reminder_time: document.getElementById('clock-out-time').value
             };
 
