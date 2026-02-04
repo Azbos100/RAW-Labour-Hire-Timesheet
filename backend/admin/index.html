@@ -494,9 +494,13 @@
                         
                         <div class="border-t pt-4 mt-4">
                             <h3 class="font-medium mb-3">Send Custom SMS</h3>
-                            <select id="sms-worker-select" class="w-full border rounded-lg px-3 py-2 mb-3">
-                                <option value="">Select Worker</option>
-                            </select>
+                            <div class="flex gap-2 mb-3">
+                                <select id="sms-worker-select" class="flex-1 border rounded-lg px-3 py-2">
+                                    <option value="">Select Worker</option>
+                                    <option value="all">📢 ALL WORKERS</option>
+                                </select>
+                            </div>
+                            <div id="selected-workers-count" class="text-sm text-blue-600 mb-2 hidden"></div>
                             <textarea id="sms-message" rows="3" class="w-full border rounded-lg px-3 py-2 mb-3" placeholder="Enter your message..."></textarea>
                             <button onclick="sendCustomSMS()" class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
                                 <i class="fas fa-sms mr-2"></i>Send SMS
@@ -1638,11 +1642,24 @@
 
         function populateSMSWorkerSelect() {
             const select = document.getElementById('sms-worker-select');
-            if (select && allWorkers.length > 0) {
+            const workersWithPhone = allWorkers.filter(w => w.phone);
+            if (select && workersWithPhone.length > 0) {
                 select.innerHTML = '<option value="">Select Worker</option>' +
-                    allWorkers.filter(w => w.phone).map(w => 
+                    `<option value="all">📢 ALL WORKERS (${workersWithPhone.length})</option>` +
+                    workersWithPhone.map(w => 
                         `<option value="${w.id}">${w.first_name} ${w.surname} (${w.phone})</option>`
                     ).join('');
+                
+                // Show count when "all" is selected
+                select.addEventListener('change', function() {
+                    const countDiv = document.getElementById('selected-workers-count');
+                    if (this.value === 'all') {
+                        countDiv.textContent = `Will send to ${workersWithPhone.length} workers with phone numbers`;
+                        countDiv.classList.remove('hidden');
+                    } else {
+                        countDiv.classList.add('hidden');
+                    }
+                });
             }
         }
 
@@ -1707,7 +1724,8 @@
         }
 
         async function sendCustomSMS() {
-            const workerId = document.getElementById('sms-worker-select').value;
+            const workerSelect = document.getElementById('sms-worker-select');
+            const workerId = workerSelect.value;
             const message = document.getElementById('sms-message').value.trim();
             
             if (!workerId) {
@@ -1719,6 +1737,51 @@
                 return;
             }
             
+            // Handle "ALL WORKERS" selection
+            if (workerId === 'all') {
+                const workersWithPhone = allWorkers.filter(w => w.phone);
+                if (!confirm(`Send SMS to ALL ${workersWithPhone.length} workers?\n\nMessage: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`)) {
+                    return;
+                }
+                
+                let sent = 0;
+                let failed = 0;
+                const errors = [];
+                
+                for (const worker of workersWithPhone) {
+                    try {
+                        const response = await fetch(`${API_BASE}/notifications/send-sms`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ worker_id: worker.id, message })
+                        });
+                        
+                        if (response.ok) {
+                            sent++;
+                        } else {
+                            failed++;
+                            const data = await response.json();
+                            errors.push(`${worker.first_name}: ${data.detail || 'Failed'}`);
+                        }
+                    } catch (error) {
+                        failed++;
+                        errors.push(`${worker.first_name}: ${error.message}`);
+                    }
+                }
+                
+                let resultMsg = `SMS sent to ${sent} workers.`;
+                if (failed > 0) {
+                    resultMsg += `\n${failed} failed.`;
+                    if (errors.length <= 5) {
+                        resultMsg += '\n\nErrors:\n' + errors.join('\n');
+                    }
+                }
+                alert(resultMsg);
+                document.getElementById('sms-message').value = '';
+                return;
+            }
+            
+            // Single worker
             try {
                 const response = await fetch(`${API_BASE}/notifications/send-sms`, {
                     method: 'POST',
