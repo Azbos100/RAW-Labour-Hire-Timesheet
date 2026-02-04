@@ -112,6 +112,30 @@ async def reject_timesheet(
     return {"message": "Timesheet rejected", "status": "rejected"}
 
 
+@router.delete("/{timesheet_id}")
+async def delete_timesheet(
+    timesheet_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a timesheet and all its entries (admin)"""
+    result = await db.execute(select(Timesheet).where(Timesheet.id == timesheet_id))
+    timesheet = result.scalar_one_or_none()
+    
+    if not timesheet:
+        raise HTTPException(status_code=404, detail="Timesheet not found")
+    
+    # Delete all entries first
+    await db.execute(
+        TimesheetEntry.__table__.delete().where(TimesheetEntry.timesheet_id == timesheet_id)
+    )
+    
+    # Delete the timesheet
+    await db.delete(timesheet)
+    await db.commit()
+    
+    return {"message": "Timesheet deleted"}
+
+
 class TimesheetResponse(BaseModel):
     id: int
     docket_number: str

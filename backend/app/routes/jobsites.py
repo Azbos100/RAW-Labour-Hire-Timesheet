@@ -151,3 +151,21 @@ async def update_job_site(
     await db.commit()
     
     return {"id": site.id, "name": site.name, "message": "Job site updated successfully"}
+
+
+@router.delete("/{site_id}")
+async def delete_job_site(
+    site_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a job site permanently"""
+    result = await db.execute(select(JobSite).where(JobSite.id == site_id))
+    site = result.scalar_one_or_none()
+    
+    if not site:
+        raise HTTPException(status_code=404, detail="Job site not found")
+    
+    await db.delete(site)
+    await db.commit()
+    
+    return {"message": "Job site deleted"}
