@@ -42,14 +42,20 @@
     <!-- Navigation Tabs -->
     <nav class="bg-white shadow">
         <div class="max-w-7xl mx-auto px-4">
-            <div class="flex gap-8">
-                <button onclick="switchTab('timesheets')" id="tab-timesheets" class="py-4 px-2 font-medium tab-active">
+            <div class="flex gap-8 overflow-x-auto">
+                <button onclick="switchTab('timesheets')" id="tab-timesheets" class="py-4 px-2 font-medium tab-active whitespace-nowrap">
                     <i class="fas fa-clock mr-2"></i>Timesheets
                 </button>
-                <button onclick="switchTab('workers')" id="tab-workers" class="py-4 px-2 font-medium text-gray-500 hover:text-gray-700">
+                <button onclick="switchTab('tickets')" id="tab-tickets" class="py-4 px-2 font-medium text-gray-500 hover:text-gray-700 whitespace-nowrap">
+                    <i class="fas fa-id-card mr-2"></i>Tickets
+                </button>
+                <button onclick="switchTab('inductions')" id="tab-inductions" class="py-4 px-2 font-medium text-gray-500 hover:text-gray-700 whitespace-nowrap">
+                    <i class="fas fa-clipboard-check mr-2"></i>Inductions
+                </button>
+                <button onclick="switchTab('workers')" id="tab-workers" class="py-4 px-2 font-medium text-gray-500 hover:text-gray-700 whitespace-nowrap">
                     <i class="fas fa-users mr-2"></i>Workers
                 </button>
-                <button onclick="switchTab('clients')" id="tab-clients" class="py-4 px-2 font-medium text-gray-500 hover:text-gray-700">
+                <button onclick="switchTab('clients')" id="tab-clients" class="py-4 px-2 font-medium text-gray-500 hover:text-gray-700 whitespace-nowrap">
                     <i class="fas fa-building mr-2"></i>Clients & Job Sites
                 </button>
             </div>
@@ -148,6 +154,149 @@
                         <tbody id="timesheets-table" class="divide-y divide-gray-100">
                             <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">
                                 <div class="loader mx-auto mb-2"></div>Loading timesheets...
+                            </td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tickets Tab -->
+        <div id="content-tickets" class="hidden">
+            <!-- Tickets Stats -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-white rounded-xl shadow p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-500">Pending Verification</p>
+                            <p id="stat-tickets-pending" class="text-2xl font-bold text-yellow-600">-</p>
+                        </div>
+                        <div class="bg-yellow-100 p-3 rounded-full">
+                            <i class="fas fa-hourglass-half text-yellow-600"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-500">Verified</p>
+                            <p id="stat-tickets-verified" class="text-2xl font-bold text-green-600">-</p>
+                        </div>
+                        <div class="bg-green-100 p-3 rounded-full">
+                            <i class="fas fa-check-circle text-green-600"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-500">Expired</p>
+                            <p id="stat-tickets-expired" class="text-2xl font-bold text-red-600">-</p>
+                        </div>
+                        <div class="bg-red-100 p-3 rounded-full">
+                            <i class="fas fa-exclamation-circle text-red-600"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-500">Total Tickets</p>
+                            <p id="stat-tickets-total" class="text-2xl font-bold text-blue-600">-</p>
+                        </div>
+                        <div class="bg-blue-100 p-3 rounded-full">
+                            <i class="fas fa-id-card text-blue-600"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tickets Filter -->
+            <div class="bg-white rounded-xl shadow p-4 mb-6">
+                <div class="flex flex-wrap gap-4 items-center">
+                    <div>
+                        <label class="block text-sm text-gray-500 mb-1">Status</label>
+                        <select id="filter-ticket-status" onchange="loadTickets()" class="border rounded-lg px-3 py-2">
+                            <option value="">All</option>
+                            <option value="pending" selected>Pending</option>
+                            <option value="verified">Verified</option>
+                            <option value="expired">Expired</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-500 mb-1">Worker</label>
+                        <select id="filter-ticket-worker" onchange="loadTickets()" class="border rounded-lg px-3 py-2">
+                            <option value="">All Workers</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tickets Grid -->
+            <div id="tickets-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="bg-white rounded-xl shadow p-8 text-center text-gray-500 col-span-full">
+                    <div class="loader mx-auto mb-2"></div>Loading tickets...
+                </div>
+            </div>
+        </div>
+
+        <!-- Inductions Tab -->
+        <div id="content-inductions" class="hidden">
+            <!-- Inductions Stats -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="bg-white rounded-xl shadow p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-500">Incomplete</p>
+                            <p id="stat-inductions-incomplete" class="text-2xl font-bold text-yellow-600">-</p>
+                        </div>
+                        <div class="bg-yellow-100 p-3 rounded-full">
+                            <i class="fas fa-hourglass-half text-yellow-600"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-500">Complete</p>
+                            <p id="stat-inductions-complete" class="text-2xl font-bold text-green-600">-</p>
+                        </div>
+                        <div class="bg-green-100 p-3 rounded-full">
+                            <i class="fas fa-check-circle text-green-600"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-500">Total Workers</p>
+                            <p id="stat-inductions-total" class="text-2xl font-bold text-blue-600">-</p>
+                        </div>
+                        <div class="bg-blue-100 p-3 rounded-full">
+                            <i class="fas fa-users text-blue-600"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Inductions Table -->
+            <div class="bg-white rounded-xl shadow overflow-hidden">
+                <div class="p-4 border-b">
+                    <h2 class="text-lg font-semibold">Worker Induction Status</h2>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Worker</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Documents Signed</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Status</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inductions-table" class="divide-y divide-gray-100">
+                            <tr><td colspan="4" class="px-4 py-8 text-center text-gray-500">
+                                <div class="loader mx-auto mb-2"></div>Loading inductions...
                             </td></tr>
                         </tbody>
                     </table>
@@ -366,12 +515,35 @@
         </div>
     </div>
 
+    <!-- Ticket Detail Modal -->
+    <div id="ticket-modal" class="modal">
+        <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
+                <div>
+                    <h2 class="text-xl font-bold" id="ticket-modal-title">Ticket Details</h2>
+                    <p id="ticket-modal-worker" class="text-gray-500">Worker Name</p>
+                </div>
+                <button onclick="closeModal('ticket-modal')" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            <div id="ticket-modal-content" class="p-6">
+                <!-- Content loaded dynamically -->
+            </div>
+            <div id="ticket-modal-actions" class="sticky bottom-0 bg-gray-50 border-t px-6 py-4 flex gap-4 justify-end">
+                <!-- Actions loaded dynamically -->
+            </div>
+        </div>
+    </div>
+
     <script>
         const API_BASE = '/api';
         let allTimesheets = [];
         let allWorkers = [];
         let allClients = [];
         let allJobSites = [];
+        let allTickets = [];
+        let allInductions = [];
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -384,7 +556,9 @@
                 loadTimesheets(),
                 loadWorkers(),
                 loadClients(),
-                loadJobSites()
+                loadJobSites(),
+                loadTickets(),
+                loadInductions()
             ]);
             document.getElementById('lastUpdated').textContent = `Updated ${new Date().toLocaleTimeString()}`;
         }
@@ -901,6 +1075,301 @@
             } catch (error) {
                 console.error('Error:', error);
                 alert('Error adding job site');
+            }
+        }
+
+        // ==================== TICKETS ====================
+
+        async function loadTickets() {
+            const status = document.getElementById('filter-ticket-status')?.value || '';
+            const workerId = document.getElementById('filter-ticket-worker')?.value || '';
+            
+            try {
+                let url = `${API_BASE}/tickets/admin/all`;
+                const params = new URLSearchParams();
+                if (status) params.append('status', status);
+                if (workerId) params.append('worker_id', workerId);
+                if (params.toString()) url += `?${params.toString()}`;
+
+                const response = await fetch(url);
+                const data = await response.json();
+                allTickets = data.tickets || [];
+                renderTickets();
+                updateTicketStats();
+                populateTicketWorkerFilter();
+            } catch (error) {
+                console.error('Error loading tickets:', error);
+                document.getElementById('tickets-grid').innerHTML = 
+                    `<div class="bg-white rounded-xl shadow p-8 text-center text-red-500 col-span-full">Error loading tickets</div>`;
+            }
+        }
+
+        function renderTickets() {
+            const grid = document.getElementById('tickets-grid');
+            
+            if (allTickets.length === 0) {
+                grid.innerHTML = `<div class="bg-white rounded-xl shadow p-8 text-center text-gray-500 col-span-full">No tickets found</div>`;
+                return;
+            }
+
+            grid.innerHTML = allTickets.map(t => `
+                <div class="bg-white rounded-xl shadow p-4 hover:shadow-lg transition-shadow cursor-pointer" onclick="viewTicket(${t.id})">
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <h3 class="font-medium">${t.ticket_type_name || 'Unknown Type'}</h3>
+                            <p class="text-sm text-gray-500">${t.user_name || 'Unknown Worker'}</p>
+                        </div>
+                        <span class="px-2 py-1 rounded-full text-xs font-medium ${getTicketStatusClass(t.status)}">
+                            ${(t.status || 'pending').charAt(0).toUpperCase() + (t.status || 'pending').slice(1)}
+                        </span>
+                    </div>
+                    <div class="text-sm text-gray-500 space-y-1">
+                        ${t.ticket_number ? `<p><i class="fas fa-hashtag mr-1"></i>${t.ticket_number}</p>` : ''}
+                        ${t.expiry_date ? `<p><i class="fas fa-calendar mr-1"></i>Expires: ${formatDate(t.expiry_date)}</p>` : ''}
+                    </div>
+                    ${t.front_image ? `
+                        <div class="mt-3 bg-gray-100 rounded-lg p-2">
+                            <img src="${t.front_image}" alt="Ticket" class="w-full h-24 object-contain rounded">
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+
+        function getTicketStatusClass(status) {
+            switch(status) {
+                case 'verified': return 'bg-green-100 text-green-700';
+                case 'expired': return 'bg-red-100 text-red-700';
+                case 'rejected': return 'bg-red-100 text-red-700';
+                default: return 'bg-yellow-100 text-yellow-700';
+            }
+        }
+
+        function updateTicketStats() {
+            const pending = allTickets.filter(t => t.status === 'pending').length;
+            const verified = allTickets.filter(t => t.status === 'verified').length;
+            const expired = allTickets.filter(t => t.status === 'expired').length;
+            
+            document.getElementById('stat-tickets-pending').textContent = pending;
+            document.getElementById('stat-tickets-verified').textContent = verified;
+            document.getElementById('stat-tickets-expired').textContent = expired;
+            document.getElementById('stat-tickets-total').textContent = allTickets.length;
+        }
+
+        function populateTicketWorkerFilter() {
+            const select = document.getElementById('filter-ticket-worker');
+            if (select && allWorkers.length > 0) {
+                select.innerHTML = '<option value="">All Workers</option>' +
+                    allWorkers.map(w => `<option value="${w.id}">${w.first_name} ${w.surname}</option>`).join('');
+            }
+        }
+
+        async function viewTicket(id) {
+            const ticket = allTickets.find(t => t.id === id);
+            if (!ticket) return;
+
+            document.getElementById('ticket-modal-title').textContent = ticket.ticket_type_name || 'Ticket Details';
+            document.getElementById('ticket-modal-worker').textContent = ticket.user_name || 'Unknown Worker';
+
+            document.getElementById('ticket-modal-content').innerHTML = `
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-sm text-gray-500">Ticket Number</p>
+                            <p class="font-medium">${ticket.ticket_number || '-'}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">Status</p>
+                            <span class="px-2 py-1 rounded-full text-xs font-medium ${getTicketStatusClass(ticket.status)}">
+                                ${(ticket.status || 'pending').charAt(0).toUpperCase() + (ticket.status || 'pending').slice(1)}
+                            </span>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">Issue Date</p>
+                            <p class="font-medium">${ticket.issue_date ? formatDate(ticket.issue_date) : '-'}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">Expiry Date</p>
+                            <p class="font-medium">${ticket.expiry_date ? formatDate(ticket.expiry_date) : '-'}</p>
+                        </div>
+                    </div>
+                    
+                    ${ticket.front_image || ticket.back_image ? `
+                        <div class="border-t pt-4">
+                            <p class="text-sm text-gray-500 mb-3">Ticket Images</p>
+                            <div class="grid grid-cols-2 gap-4">
+                                ${ticket.front_image ? `
+                                    <div>
+                                        <p class="text-xs text-gray-400 mb-2">Front</p>
+                                        <img src="${ticket.front_image}" alt="Front" class="w-full rounded-lg border cursor-pointer" onclick="window.open('${ticket.front_image}', '_blank')">
+                                    </div>
+                                ` : ''}
+                                ${ticket.back_image ? `
+                                    <div>
+                                        <p class="text-xs text-gray-400 mb-2">Back</p>
+                                        <img src="${ticket.back_image}" alt="Back" class="w-full rounded-lg border cursor-pointer" onclick="window.open('${ticket.back_image}', '_blank')">
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+
+            // Actions based on status
+            let actionsHtml = '';
+            if (ticket.status === 'pending') {
+                actionsHtml = `
+                    <button onclick="rejectTicket(${ticket.id})" class="px-4 py-2 border border-red-500 text-red-500 rounded-lg hover:bg-red-50">
+                        <i class="fas fa-times mr-2"></i>Reject
+                    </button>
+                    <button onclick="verifyTicket(${ticket.id})" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                        <i class="fas fa-check mr-2"></i>Verify
+                    </button>
+                `;
+            } else if (ticket.status === 'verified') {
+                actionsHtml = `<span class="text-green-600"><i class="fas fa-check-circle mr-2"></i>Verified</span>`;
+            } else if (ticket.status === 'rejected') {
+                actionsHtml = `<span class="text-red-600"><i class="fas fa-times-circle mr-2"></i>Rejected</span>`;
+            }
+            document.getElementById('ticket-modal-actions').innerHTML = actionsHtml;
+
+            openModal('ticket-modal');
+        }
+
+        async function verifyTicket(id) {
+            if (!confirm('Verify this ticket?')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/tickets/admin/${id}/verify`, { method: 'POST' });
+                if (response.ok) {
+                    closeModal('ticket-modal');
+                    await loadTickets();
+                    alert('Ticket verified!');
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Error verifying ticket');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error verifying ticket');
+            }
+        }
+
+        async function rejectTicket(id) {
+            const reason = prompt('Reason for rejection (optional):');
+            if (reason === null) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/tickets/admin/${id}/reject`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason })
+                });
+                if (response.ok) {
+                    closeModal('ticket-modal');
+                    await loadTickets();
+                    alert('Ticket rejected');
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Error rejecting ticket');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error rejecting ticket');
+            }
+        }
+
+        // ==================== INDUCTIONS ====================
+
+        async function loadInductions() {
+            try {
+                const response = await fetch(`${API_BASE}/induction/admin/all-status`);
+                const data = await response.json();
+                allInductions = data.users || [];
+                renderInductions();
+                updateInductionStats();
+            } catch (error) {
+                console.error('Error loading inductions:', error);
+                document.getElementById('inductions-table').innerHTML = 
+                    `<tr><td colspan="4" class="px-4 py-8 text-center text-red-500">Error loading inductions</td></tr>`;
+            }
+        }
+
+        function renderInductions() {
+            const tbody = document.getElementById('inductions-table');
+            
+            if (allInductions.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-gray-500">No induction data found</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = allInductions.map(w => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3">
+                        <div class="font-medium">${w.user_name}</div>
+                        <div class="text-sm text-gray-500">${w.user_email}</div>
+                    </td>
+                    <td class="px-4 py-3">
+                        <div class="flex items-center gap-2">
+                            <div class="w-24 bg-gray-200 rounded-full h-2">
+                                <div class="bg-blue-600 h-2 rounded-full" style="width: ${w.completion_percentage || 0}%"></div>
+                            </div>
+                            <span class="text-sm">${w.total_signed || 0}/${w.total_required || 0}</span>
+                        </div>
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 rounded-full text-xs font-medium ${w.is_complete ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}">
+                            ${w.is_complete ? 'Complete' : 'Incomplete'}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3">
+                        <button onclick="viewInductionDetails(${w.user_id})" class="text-blue-600 hover:text-blue-800">
+                            <i class="fas fa-eye"></i> View
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function updateInductionStats() {
+            const incomplete = allInductions.filter(w => !w.is_complete).length;
+            const complete = allInductions.filter(w => w.is_complete).length;
+            
+            document.getElementById('stat-inductions-incomplete').textContent = incomplete;
+            document.getElementById('stat-inductions-complete').textContent = complete;
+            document.getElementById('stat-inductions-total').textContent = allInductions.length;
+        }
+
+        async function viewInductionDetails(userId) {
+            try {
+                const response = await fetch(`${API_BASE}/induction/admin/user/${userId}/details`);
+                const data = await response.json();
+                
+                const docsHtml = data.documents.map(doc => `
+                    <div class="flex justify-between items-center p-3 border-b">
+                        <div>
+                            <p class="font-medium">${doc.title}</p>
+                            <p class="text-sm text-gray-500">${doc.document_type}${doc.is_required ? ' (Required)' : ''}</p>
+                        </div>
+                        <span class="px-2 py-1 rounded-full text-xs font-medium ${doc.status === 'signed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}">
+                            ${doc.status === 'signed' ? 'Signed' : 'Pending'}
+                        </span>
+                    </div>
+                `).join('');
+                
+                document.getElementById('ticket-modal-title').textContent = 'Induction Progress';
+                document.getElementById('ticket-modal-worker').textContent = data.user.name;
+                document.getElementById('ticket-modal-content').innerHTML = `
+                    <div class="space-y-2">
+                        ${docsHtml || '<p class="text-gray-500 text-center py-4">No documents</p>'}
+                    </div>
+                `;
+                document.getElementById('ticket-modal-actions').innerHTML = '';
+                openModal('ticket-modal');
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error loading induction details');
             }
         }
 
