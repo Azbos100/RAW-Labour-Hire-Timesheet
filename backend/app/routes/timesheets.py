@@ -6,14 +6,110 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Optional, List
 
 from ..database import get_db
-from ..models import User, Timesheet, TimesheetEntry, TimesheetStatus, InjuryStatus
+from ..models import User, Timesheet, TimesheetEntry, TimesheetStatus, InjuryStatus, Client
 from .auth import get_current_user
 
 router = APIRouter()
+
+
+# ==================== ADMIN DASHBOARD ENDPOINTS ====================
+
+@router.get("/admin/all")
+async def get_all_timesheets_admin(
+    status: Optional[str] = None,
+    worker_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all timesheets for admin dashboard (no auth required)"""
+    query = select(Timesheet).order_by(Timesheet.week_starting.desc())
+    
+    if status:
+        query = query.where(Timesheet.status == TimesheetStatus(status))
+    if worker_id:
+        query = query.where(Timesheet.worker_id == worker_id)
+    
+    result = await db.execute(query)
+    timesheets = result.scalars().all()
+    
+    # Get worker and client names
+    response_data = []
+    for ts in timesheets:
+        # Get worker
+        worker_result = await db.execute(select(User).where(User.id == ts.worker_id))
+        worker = worker_result.scalar_one_or_none()
+        
+        # Get client
+        client_result = await db.execute(select(Client).where(Client.id == ts.client_id))
+        client = client_result.scalar_one_or_none()
+        
+        response_data.append({
+            "id": ts.id,
+            "docket_number": ts.docket_number,
+            "worker_id": ts.worker_id,
+            "worker_name": f"{worker.first_name} {worker.surname}" if worker else "Unknown",
+            "client_id": ts.client_id,
+            "client_name": client.name if client else None,
+            "week_starting": ts.week_starting.isoformat(),
+            "week_ending": ts.week_ending.isoformat(),
+            "status": ts.status.value,
+            "total_ordinary_hours": ts.total_ordinary_hours or 0,
+            "total_overtime_hours": ts.total_overtime_hours or 0,
+            "total_hours": ts.total_hours or 0,
+            "supervisor_name": ts.supervisor_name,
+            "supervisor_contact": ts.supervisor_contact,
+            "supervisor_signature": ts.supervisor_signature,
+            "submitted_at": ts.submitted_at.isoformat() if ts.submitted_at else None,
+        })
+    
+    return {"timesheets": response_data}
+
+
+@router.post("/{timesheet_id}/approve")
+async def approve_timesheet(
+    timesheet_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Approve a timesheet (admin)"""
+    result = await db.execute(select(Timesheet).where(Timesheet.id == timesheet_id))
+    timesheet = result.scalar_one_or_none()
+    
+    if not timesheet:
+        raise HTTPException(status_code=404, detail="Timesheet not found")
+    
+    if timesheet.status != TimesheetStatus.SUBMITTED:
+        raise HTTPException(status_code=400, detail="Timesheet must be submitted to approve")
+    
+    timesheet.status = TimesheetStatus.APPROVED
+    await db.commit()
+    
+    return {"message": "Timesheet approved", "status": "approved"}
+
+
+class RejectRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+@router.post("/{timesheet_id}/reject")
+async def reject_timesheet(
+    timesheet_id: int,
+    data: RejectRequest = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Reject a timesheet (admin)"""
+    result = await db.execute(select(Timesheet).where(Timesheet.id == timesheet_id))
+    timesheet = result.scalar_one_or_none()
+    
+    if not timesheet:
+        raise HTTPException(status_code=404, detail="Timesheet not found")
+    
+    timesheet.status = TimesheetStatus.REJECTED
+    await db.commit()
+    
+    return {"message": "Timesheet rejected", "status": "rejected"}
 
 
 class TimesheetResponse(BaseModel):
