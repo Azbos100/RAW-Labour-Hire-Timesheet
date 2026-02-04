@@ -218,11 +218,59 @@ class UpdateProfileRequest(BaseModel):
     first_name: Optional[str] = None
     surname: Optional[str] = None
     phone: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    # Address
+    address: Optional[str] = None
+    suburb: Optional[str] = None
+    state: Optional[str] = None
+    postcode: Optional[str] = None
+    # Emergency contact
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    emergency_contact_relationship: Optional[str] = None
+    # Bank details
+    bank_account_name: Optional[str] = None
+    bank_bsb: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    tax_file_number: Optional[str] = None
+    # Employment
+    employment_type: Optional[str] = None
 
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
+
+
+def user_to_dict(user: User) -> dict:
+    """Convert user model to dictionary with all extended fields"""
+    return {
+        "id": user.id,
+        "email": user.email,
+        "first_name": user.first_name,
+        "surname": user.surname,
+        "phone": user.phone,
+        "role": user.role.value,
+        "date_of_birth": user.date_of_birth.isoformat() if user.date_of_birth else None,
+        "start_date": user.start_date.isoformat() if user.start_date else None,
+        # Address
+        "address": user.address,
+        "suburb": user.suburb,
+        "state": user.state,
+        "postcode": user.postcode,
+        # Emergency contact
+        "emergency_contact_name": user.emergency_contact_name,
+        "emergency_contact_phone": user.emergency_contact_phone,
+        "emergency_contact_relationship": user.emergency_contact_relationship,
+        # Bank details
+        "bank_account_name": user.bank_account_name,
+        "bank_bsb": user.bank_bsb,
+        "bank_account_number": user.bank_account_number,
+        "tax_file_number": user.tax_file_number,
+        # Employment
+        "employment_type": user.employment_type,
+        "is_active": user.is_active,
+    }
 
 
 @router.patch("/update-profile")
@@ -242,26 +290,64 @@ async def update_profile(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
+    # Personal info
     if data.first_name is not None:
         user.first_name = data.first_name.strip()
     if data.surname is not None:
         user.surname = data.surname.strip()
     if data.phone is not None:
         user.phone = data.phone.strip() if data.phone else None
+    if data.date_of_birth is not None:
+        from datetime import datetime
+        try:
+            # Try multiple date formats
+            for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"]:
+                try:
+                    user.date_of_birth = datetime.strptime(data.date_of_birth, fmt).date()
+                    break
+                except ValueError:
+                    continue
+        except:
+            pass
+    
+    # Address
+    if data.address is not None:
+        user.address = data.address.strip() if data.address else None
+    if data.suburb is not None:
+        user.suburb = data.suburb.strip() if data.suburb else None
+    if data.state is not None:
+        user.state = data.state.strip().upper() if data.state else None
+    if data.postcode is not None:
+        user.postcode = data.postcode.strip() if data.postcode else None
+    
+    # Emergency contact
+    if data.emergency_contact_name is not None:
+        user.emergency_contact_name = data.emergency_contact_name.strip() if data.emergency_contact_name else None
+    if data.emergency_contact_phone is not None:
+        user.emergency_contact_phone = data.emergency_contact_phone.strip() if data.emergency_contact_phone else None
+    if data.emergency_contact_relationship is not None:
+        user.emergency_contact_relationship = data.emergency_contact_relationship.strip() if data.emergency_contact_relationship else None
+    
+    # Bank details
+    if data.bank_account_name is not None:
+        user.bank_account_name = data.bank_account_name.strip() if data.bank_account_name else None
+    if data.bank_bsb is not None:
+        user.bank_bsb = data.bank_bsb.strip() if data.bank_bsb else None
+    if data.bank_account_number is not None:
+        user.bank_account_number = data.bank_account_number.strip() if data.bank_account_number else None
+    if data.tax_file_number is not None:
+        user.tax_file_number = data.tax_file_number.strip() if data.tax_file_number else None
+    
+    # Employment
+    if data.employment_type is not None:
+        user.employment_type = data.employment_type
     
     await db.commit()
     await db.refresh(user)
     
     return {
         "message": "Profile updated successfully",
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "first_name": user.first_name,
-            "surname": user.surname,
-            "phone": user.phone,
-            "role": user.role.value
-        }
+        "user": user_to_dict(user)
     }
 
 

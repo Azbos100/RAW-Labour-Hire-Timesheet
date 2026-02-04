@@ -18,6 +18,49 @@ from .auth import get_current_user
 router = APIRouter()
 
 
+# ==================== MOBILE APP ENDPOINTS ====================
+
+@router.get("/{user_id}")
+async def get_user_profile(
+    user_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get user profile by ID (for mobile app)"""
+    result = await db.execute(select(User).where(User.id == user_id))
+    u = result.scalar_one_or_none()
+    
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return {
+        "id": u.id,
+        "email": u.email,
+        "first_name": u.first_name,
+        "surname": u.surname,
+        "phone": u.phone,
+        "role": u.role.value if u.role else "worker",
+        "date_of_birth": u.date_of_birth.isoformat() if u.date_of_birth else None,
+        "start_date": u.start_date.isoformat() if u.start_date else None,
+        # Address
+        "address": u.address,
+        "suburb": u.suburb,
+        "state": u.state,
+        "postcode": u.postcode,
+        # Emergency contact
+        "emergency_contact_name": u.emergency_contact_name,
+        "emergency_contact_phone": u.emergency_contact_phone,
+        "emergency_contact_relationship": u.emergency_contact_relationship,
+        # Bank details
+        "bank_account_name": u.bank_account_name,
+        "bank_bsb": u.bank_bsb,
+        "bank_account_number": u.bank_account_number,
+        "tax_file_number": u.tax_file_number,
+        # Employment
+        "employment_type": u.employment_type or "casual",
+        "is_active": u.is_active,
+    }
+
+
 class WorkerCreate(BaseModel):
     email: str
     first_name: str

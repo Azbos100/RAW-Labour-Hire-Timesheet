@@ -89,6 +89,7 @@ export const clockAPI = {
   clockIn: (data: {
     latitude: number;
     longitude: number;
+    address?: string;
     job_site_id?: number;
     worked_as?: string;
     user_id?: number;
@@ -97,6 +98,7 @@ export const clockAPI = {
   clockOut: (data: {
     latitude: number;
     longitude: number;
+    address?: string;
     comments?: string;
     first_aid_injury?: boolean;
     user_id?: number;
@@ -167,10 +169,30 @@ export const ticketsAPI = {
 // ==================== PROFILE API ====================
 
 export const profileAPI = {
+  getProfile: (userId: number) =>
+    api.get(`/users/${userId}`),
+  
   updateProfile: (data: {
     first_name?: string;
     surname?: string;
     phone?: string;
+    date_of_birth?: string;
+    // Address
+    address?: string;
+    suburb?: string;
+    state?: string;
+    postcode?: string;
+    // Emergency contact
+    emergency_contact_name?: string;
+    emergency_contact_phone?: string;
+    emergency_contact_relationship?: string;
+    // Bank details
+    bank_account_name?: string;
+    bank_bsb?: string;
+    bank_account_number?: string;
+    tax_file_number?: string;
+    // Employment
+    employment_type?: string;
   }, userId?: number) => 
     api.patch('/auth/update-profile', data, { params: { user_id: userId } }),
   
