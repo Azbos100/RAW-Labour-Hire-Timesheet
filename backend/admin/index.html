@@ -58,6 +58,9 @@
                 <button onclick="switchTab('clients')" id="tab-clients" class="py-4 px-2 font-medium text-gray-500 hover:text-gray-700 whitespace-nowrap">
                     <i class="fas fa-building mr-2"></i>Clients & Job Sites
                 </button>
+                <button onclick="switchTab('notifications')" id="tab-notifications" class="py-4 px-2 font-medium text-gray-500 hover:text-gray-700 whitespace-nowrap">
+                    <i class="fas fa-bell mr-2"></i>Notifications
+                </button>
             </div>
         </div>
     </nav>
@@ -370,6 +373,136 @@
                 </div>
             </div>
         </div>
+
+        <!-- Notifications Tab -->
+        <div id="content-notifications" class="hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- SMS Settings -->
+                <div class="bg-white rounded-xl shadow overflow-hidden">
+                    <div class="p-4 border-b">
+                        <h2 class="text-lg font-semibold flex items-center gap-2">
+                            <i class="fas fa-sms text-blue-600"></i>
+                            SMS Reminder Settings
+                        </h2>
+                    </div>
+                    <div class="p-6 space-y-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="font-medium">SMS Notifications</p>
+                                <p class="text-sm text-gray-500">Enable/disable all SMS notifications</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="sms-enabled" class="sr-only peer" checked>
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                            </label>
+                        </div>
+                        
+                        <div class="border-t pt-4">
+                            <div class="flex items-center justify-between mb-4">
+                                <div>
+                                    <p class="font-medium">Clock-In Reminder</p>
+                                    <p class="text-sm text-gray-500">Remind workers who haven't clocked in</p>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="clock-in-enabled" class="sr-only peer" checked>
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <label class="text-sm text-gray-500">Send at:</label>
+                                <input type="time" id="clock-in-time" value="07:00" class="border rounded-lg px-3 py-2">
+                            </div>
+                        </div>
+                        
+                        <div class="border-t pt-4">
+                            <div class="flex items-center justify-between mb-4">
+                                <div>
+                                    <p class="font-medium">Clock-Out Reminder</p>
+                                    <p class="text-sm text-gray-500">Remind workers who haven't clocked out</p>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="clock-out-enabled" class="sr-only peer" checked>
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <label class="text-sm text-gray-500">Send at:</label>
+                                <input type="time" id="clock-out-time" value="17:00" class="border rounded-lg px-3 py-2">
+                            </div>
+                        </div>
+                        
+                        <div class="pt-4 border-t">
+                            <button onclick="saveNotificationSettings()" class="w-full bg-blue-900 text-white py-3 rounded-lg hover:bg-blue-800">
+                                <i class="fas fa-save mr-2"></i>Save Settings
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Manual Send / Test -->
+                <div class="bg-white rounded-xl shadow overflow-hidden">
+                    <div class="p-4 border-b">
+                        <h2 class="text-lg font-semibold flex items-center gap-2">
+                            <i class="fas fa-paper-plane text-green-600"></i>
+                            Send Reminders Now
+                        </h2>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                            <p class="text-sm text-yellow-800">
+                                <i class="fas fa-info-circle mr-2"></i>
+                                Use these buttons to manually trigger reminders. Normally, these are triggered automatically via scheduled jobs.
+                            </p>
+                        </div>
+                        
+                        <button onclick="sendClockInReminders()" class="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 flex items-center justify-center gap-2">
+                            <i class="fas fa-sign-in-alt"></i>
+                            Send Clock-In Reminders Now
+                        </button>
+                        
+                        <button onclick="sendClockOutReminders()" class="w-full bg-orange-600 text-white py-3 rounded-lg hover:bg-orange-700 flex items-center justify-center gap-2">
+                            <i class="fas fa-sign-out-alt"></i>
+                            Send Clock-Out Reminders Now
+                        </button>
+                        
+                        <div class="border-t pt-4 mt-4">
+                            <h3 class="font-medium mb-3">Send Custom SMS</h3>
+                            <select id="sms-worker-select" class="w-full border rounded-lg px-3 py-2 mb-3">
+                                <option value="">Select Worker</option>
+                            </select>
+                            <textarea id="sms-message" rows="3" class="w-full border rounded-lg px-3 py-2 mb-3" placeholder="Enter your message..."></textarea>
+                            <button onclick="sendCustomSMS()" class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
+                                <i class="fas fa-sms mr-2"></i>Send SMS
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Twilio Setup Info -->
+                <div class="bg-white rounded-xl shadow overflow-hidden lg:col-span-2">
+                    <div class="p-4 border-b">
+                        <h2 class="text-lg font-semibold flex items-center gap-2">
+                            <i class="fas fa-cog text-gray-600"></i>
+                            Twilio Configuration
+                        </h2>
+                    </div>
+                    <div class="p-6">
+                        <p class="text-gray-600 mb-4">
+                            SMS notifications are powered by Twilio. To enable SMS, set these environment variables on Railway:
+                        </p>
+                        <div class="bg-gray-100 rounded-lg p-4 font-mono text-sm space-y-2">
+                            <p><span class="text-blue-600">TWILIO_ACCOUNT_SID</span>=your_account_sid</p>
+                            <p><span class="text-blue-600">TWILIO_AUTH_TOKEN</span>=your_auth_token</p>
+                            <p><span class="text-blue-600">TWILIO_PHONE_NUMBER</span>=+61xxxxxxxxx</p>
+                        </div>
+                        <p class="text-sm text-gray-500 mt-4">
+                            <i class="fas fa-external-link-alt mr-1"></i>
+                            <a href="https://www.twilio.com/console" target="_blank" class="text-blue-600 hover:underline">Get Twilio credentials</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
     </main>
 
     <!-- Timesheet Detail Modal -->
@@ -558,7 +691,8 @@
                 loadClients(),
                 loadJobSites(),
                 loadTickets(),
-                loadInductions()
+                loadInductions(),
+                loadNotificationSettings()
             ]);
             document.getElementById('lastUpdated').textContent = `Updated ${new Date().toLocaleTimeString()}`;
         }
@@ -1418,6 +1552,130 @@
             } catch (error) {
                 console.error('Error:', error);
                 alert('Error loading induction details');
+            }
+        }
+
+        // ==================== NOTIFICATIONS ====================
+
+        async function loadNotificationSettings() {
+            try {
+                const response = await fetch(`${API_BASE}/notifications/settings`);
+                const data = await response.json();
+                
+                document.getElementById('sms-enabled').checked = data.sms_enabled;
+                document.getElementById('clock-in-enabled').checked = data.clock_in_reminder_enabled;
+                document.getElementById('clock-in-time').value = data.clock_in_reminder_time;
+                document.getElementById('clock-out-enabled').checked = data.clock_out_reminder_enabled;
+                document.getElementById('clock-out-time').value = data.clock_out_reminder_time;
+                
+                // Populate worker select for custom SMS
+                populateSMSWorkerSelect();
+            } catch (error) {
+                console.error('Error loading notification settings:', error);
+            }
+        }
+
+        function populateSMSWorkerSelect() {
+            const select = document.getElementById('sms-worker-select');
+            if (select && allWorkers.length > 0) {
+                select.innerHTML = '<option value="">Select Worker</option>' +
+                    allWorkers.filter(w => w.phone).map(w => 
+                        `<option value="${w.id}">${w.first_name} ${w.surname} (${w.phone})</option>`
+                    ).join('');
+            }
+        }
+
+        async function saveNotificationSettings() {
+            const data = {
+                sms_enabled: document.getElementById('sms-enabled').checked,
+                clock_in_reminder_enabled: document.getElementById('clock-in-enabled').checked,
+                clock_in_reminder_time: document.getElementById('clock-in-time').value,
+                clock_out_reminder_enabled: document.getElementById('clock-out-enabled').checked,
+                clock_out_reminder_time: document.getElementById('clock-out-time').value
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/notifications/settings`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    alert('Notification settings saved!');
+                } else {
+                    const result = await response.json();
+                    alert(result.detail || 'Error saving settings');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error saving settings');
+            }
+        }
+
+        async function sendClockInReminders() {
+            if (!confirm('Send clock-in reminders to all workers who haven\'t clocked in today?')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/notifications/check-clock-in-reminders`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                alert(`${data.message}\n\nSent: ${data.sent} SMS${data.errors ? `\nErrors: ${data.errors.length}` : ''}`);
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error sending reminders');
+            }
+        }
+
+        async function sendClockOutReminders() {
+            if (!confirm('Send clock-out reminders to all workers who are still clocked in?')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/notifications/check-clock-out-reminders`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                alert(`${data.message}\n\nSent: ${data.sent} SMS${data.errors ? `\nErrors: ${data.errors.length}` : ''}`);
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error sending reminders');
+            }
+        }
+
+        async function sendCustomSMS() {
+            const workerId = document.getElementById('sms-worker-select').value;
+            const message = document.getElementById('sms-message').value.trim();
+            
+            if (!workerId) {
+                alert('Please select a worker');
+                return;
+            }
+            if (!message) {
+                alert('Please enter a message');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/notifications/send-sms`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ worker_id: parseInt(workerId), message })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    alert(`SMS sent to ${data.to}`);
+                    document.getElementById('sms-message').value = '';
+                } else {
+                    alert(data.detail || 'Error sending SMS');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error sending SMS');
             }
         }
 

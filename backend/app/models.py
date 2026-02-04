@@ -452,3 +452,27 @@ class MYOBExport(Base):
     # Payroll details
     pay_amount = Column(Float)
     hours_exported = Column(Float)
+
+
+# ==================== NOTIFICATION SETTINGS ====================
+
+class NotificationSettings(Base):
+    """Global notification settings"""
+    __tablename__ = "notification_settings"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Clock-in reminder
+    clock_in_reminder_enabled = Column(Boolean, default=True)
+    clock_in_reminder_time = Column(Time, default=time(7, 0))  # 7:00 AM
+    
+    # Clock-out reminder
+    clock_out_reminder_enabled = Column(Boolean, default=True)
+    clock_out_reminder_time = Column(Time, default=time(17, 0))  # 5:00 PM
+    
+    # SMS settings
+    sms_enabled = Column(Boolean, default=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

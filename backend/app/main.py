@@ -29,7 +29,7 @@ class HTTPSRedirectMiddleware(BaseHTTPMiddleware):
 
 from sqlalchemy import text, select, func
 
-from .routes import auth, timesheets, users, clients, clock, myob, tickets, induction, jobsites
+from .routes import auth, timesheets, users, clients, clock, myob, tickets, induction, jobsites, notifications
 from .database import engine, Base, AsyncSessionLocal
 from .models import Client, JobSite, TicketType, InductionDocument
 
@@ -386,6 +386,7 @@ app.include_router(myob.router, prefix="/api/myob", tags=["MYOB Integration"])
 app.include_router(tickets.router, prefix="/api/tickets", tags=["Tickets/Certifications"])
 app.include_router(induction.router, prefix="/api/induction", tags=["Induction/SWMS"])
 app.include_router(jobsites.router, prefix="/api/jobsites", tags=["Job Sites"])
+app.include_router(notifications.router, prefix="/api/notifications", tags=["Notifications"])
 
 
 @app.get("/")
