@@ -1,6 +1,6 @@
 /**
  * Reset Password Screen
- * Request password reset email
+ * Request password reset via SMS
  */
 
 import React, { useState } from 'react';
@@ -33,7 +33,7 @@ export default function ResetPasswordScreen({ navigation }: ResetPasswordScreenP
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSendLink = async () => {
+  const handleSendCode = async () => {
     if (!email.trim()) {
       Alert.alert('Error', 'Please enter your email');
       return;
@@ -43,8 +43,8 @@ export default function ResetPasswordScreen({ navigation }: ResetPasswordScreenP
     try {
       await api.post('/auth/password-reset/request', { email: email.trim() });
       Alert.alert(
-        'Reset Email Sent',
-        'If an account exists, a reset link will be sent to your email.'
+        'Reset Code Sent',
+        'If an account exists with a phone number, a 6-digit reset code will be sent via SMS. The code expires in 15 minutes.'
       );
     } finally {
       setIsLoading(false);
@@ -91,7 +91,7 @@ export default function ResetPasswordScreen({ navigation }: ResetPasswordScreenP
       <View style={styles.content}>
         <Text style={styles.title}>Reset your password</Text>
         <Text style={styles.subtitle}>
-          Enter your email and we will send you a reset link.
+          Enter your email and we'll send a 6-digit reset code to your phone via SMS.
         </Text>
 
         <View style={styles.form}>
@@ -109,29 +109,31 @@ export default function ResetPasswordScreen({ navigation }: ResetPasswordScreenP
 
           <TouchableOpacity
             style={[styles.resetButton, isLoading && styles.resetButtonDisabled]}
-            onPress={handleSendLink}
+            onPress={handleSendCode}
             disabled={isLoading}
           >
             {isLoading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.resetButtonText}>Send Reset Link</Text>
+              <Text style={styles.resetButtonText}>Send Reset Code via SMS</Text>
             )}
           </TouchableOpacity>
 
           <View style={styles.divider}>
             <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or reset with code</Text>
+            <Text style={styles.dividerText}>enter code from SMS</Text>
             <View style={styles.dividerLine} />
           </View>
 
-          <Text style={styles.label}>Reset Code</Text>
+          <Text style={styles.label}>6-Digit Reset Code</Text>
           <TextInput
             style={styles.input}
-            placeholder="Paste the code from email"
+            placeholder="Enter 6-digit code from SMS"
             placeholderTextColor="#9CA3AF"
             value={resetCode}
             onChangeText={setResetCode}
+            keyboardType="number-pad"
+            maxLength={6}
             autoCapitalize="none"
             autoCorrect={false}
           />

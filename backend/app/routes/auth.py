@@ -18,6 +18,7 @@ import secrets
 from ..database import get_db
 from ..models import User, UserRole
 from ..email import send_password_reset_email
+from ..services.sms import send_sms
 
 router = APIRouter()
 
@@ -401,33 +402,36 @@ async def request_password_reset(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
-    """Send a password reset email if the user exists"""
+    """Send a password reset code via SMS if the user exists"""
     result = await db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
 
     if not user:
-        return {"message": "If an account exists, a reset email has been sent."}
+        return {"message": "If an account exists, a reset code has been sent via SMS."}
 
-    token = secrets.token_urlsafe(32)
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-    expires_at = datetime.utcnow() + timedelta(hours=1)
+    # Check if user has a phone number
+    if not user.phone:
+        return {"message": "If an account exists, a reset code has been sent via SMS."}
+
+    # Generate a 6-digit code (easier to enter than a long token)
+    reset_code = ''.join([str(secrets.randbelow(10)) for _ in range(6)])
+    token_hash = hashlib.sha256(reset_code.encode()).hexdigest()
+    expires_at = datetime.utcnow() + timedelta(minutes=15)  # 15 min expiry for SMS codes
 
     user.reset_token_hash = token_hash
     user.reset_token_expires_at = expires_at
     user.reset_token_used_at = None
     await db.commit()
 
-    reset_url_base = os.getenv("RESET_URL_BASE", "http://localhost:3000/reset-password")
-    reset_link = f"{reset_url_base}?token={token}"
+    # Send SMS with reset code
+    sms_message = f"RAW Labour Hire: Your password reset code is {reset_code}. This code expires in 15 minutes."
+    
+    async def send_reset_sms():
+        await send_sms(user.phone, sms_message)
+    
+    background_tasks.add_task(send_reset_sms)
 
-    background_tasks.add_task(
-        send_password_reset_email,
-        to_email=user.email,
-        reset_link=reset_link,
-        token=token,
-    )
-
-    return {"message": "If an account exists, a reset email has been sent."}
+    return {"message": "If an account exists, a reset code has been sent via SMS."}
 
 
 @router.post("/password-reset/confirm")
