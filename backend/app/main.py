@@ -40,6 +40,18 @@ async def lifespan(app: FastAPI):
     # Create database tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Run database migrations for new columns
+    async with engine.begin() as conn:
+        # Add overtime_mode column to timesheet_entries if it doesn't exist
+        try:
+            await conn.execute(text("""
+                ALTER TABLE timesheet_entries 
+                ADD COLUMN IF NOT EXISTS overtime_mode BOOLEAN DEFAULT FALSE
+            """))
+        except Exception as e:
+            # Column might already exist or database doesn't support IF NOT EXISTS
+            print(f"Migration note: {e}")
 
     # Seed a default client/job site if none exist
     async with AsyncSessionLocal() as session:
