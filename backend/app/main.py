@@ -50,8 +50,39 @@ async def lifespan(app: FastAPI):
                 ADD COLUMN IF NOT EXISTS overtime_mode BOOLEAN DEFAULT FALSE
             """))
         except Exception as e:
-            # Column might already exist or database doesn't support IF NOT EXISTS
-            print(f"Migration note: {e}")
+            print(f"Migration note (overtime_mode): {e}")
+        
+        # Add shift schedule columns to users table
+        try:
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS shift_start_time TIME;
+            """))
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS shift_end_time TIME;
+            """))
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS works_monday BOOLEAN DEFAULT TRUE;
+            """))
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS works_tuesday BOOLEAN DEFAULT TRUE;
+            """))
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS works_wednesday BOOLEAN DEFAULT TRUE;
+            """))
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS works_thursday BOOLEAN DEFAULT TRUE;
+            """))
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS works_friday BOOLEAN DEFAULT TRUE;
+            """))
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS works_saturday BOOLEAN DEFAULT FALSE;
+            """))
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS works_sunday BOOLEAN DEFAULT FALSE;
+            """))
+        except Exception as e:
+            print(f"Migration note (shift schedule): {e}")
 
     # Seed a default client/job site if none exist
     async with AsyncSessionLocal() as session:
