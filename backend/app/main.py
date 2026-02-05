@@ -350,8 +350,14 @@ async def lifespan(app: FastAPI):
                 session.add(doc)
             await session.commit()
     
+    # Start the automatic reminder scheduler
+    from .services.scheduler import start_scheduler, stop_scheduler
+    start_scheduler()
+    
     yield
+    
     # Cleanup on shutdown
+    stop_scheduler()
     await engine.dispose()
 
 

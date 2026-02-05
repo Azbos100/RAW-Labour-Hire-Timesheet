@@ -41,6 +41,33 @@ async def test_sms(phone: str):
     }
 
 
+@router.get("/scheduler-status")
+async def get_scheduler_status():
+    """Get the status of scheduled reminder jobs"""
+    try:
+        from ..services.scheduler import scheduler
+        
+        jobs = []
+        for job in scheduler.get_jobs():
+            next_run = job.next_run_time
+            jobs.append({
+                "id": job.id,
+                "name": job.name,
+                "next_run": next_run.isoformat() if next_run else None,
+                "next_run_formatted": next_run.strftime("%a %d %b %Y at %I:%M %p AEST") if next_run else "Not scheduled"
+            })
+        
+        return {
+            "running": scheduler.running,
+            "jobs": jobs
+        }
+    except Exception as e:
+        return {
+            "running": False,
+            "error": str(e)
+        }
+
+
 class NotificationSettingsUpdate(BaseModel):
     clock_in_reminder_enabled: bool = True
     clock_in_reminder_time: str = "07:00"  # HH:MM format
@@ -113,6 +140,14 @@ async def update_notification_settings(
         settings.sms_enabled = data.sms_enabled
     
     await db.commit()
+    
+    # Update the scheduler with new times
+    try:
+        from ..services.scheduler import update_clock_in_time, update_clock_out_time
+        update_clock_in_time(clock_in_time.hour, clock_in_time.minute)
+        update_clock_out_time(clock_out_time.hour, clock_out_time.minute)
+    except Exception as e:
+        print(f"[Notifications] Error updating scheduler: {e}")
     
     return {"message": "Settings updated successfully"}
 

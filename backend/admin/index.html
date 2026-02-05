@@ -475,10 +475,19 @@
                         </h2>
                     </div>
                     <div class="p-6 space-y-4">
+                        <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                            <p class="text-sm text-green-800 font-medium mb-2">
+                                <i class="fas fa-clock mr-2"></i>Automatic Reminders Active
+                            </p>
+                            <div id="scheduler-status" class="text-sm text-green-700">
+                                Loading schedule...
+                            </div>
+                        </div>
+                        
                         <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                             <p class="text-sm text-yellow-800">
                                 <i class="fas fa-info-circle mr-2"></i>
-                                Use these buttons to manually trigger reminders. Normally, these are triggered automatically via scheduled jobs.
+                                Use these buttons to manually trigger reminders immediately.
                             </p>
                         </div>
                         
@@ -494,16 +503,27 @@
                         
                         <div class="border-t pt-4 mt-4">
                             <h3 class="font-medium mb-3">Send Custom SMS</h3>
-                            <div class="flex gap-2 mb-3">
-                                <select id="sms-worker-select" class="flex-1 border rounded-lg px-3 py-2">
-                                    <option value="">Select Worker</option>
-                                    <option value="all">📢 ALL WORKERS</option>
-                                </select>
+                            
+                            <!-- Worker Selection with Checkboxes -->
+                            <div class="flex gap-2 mb-2">
+                                <button onclick="selectAllWorkers()" class="flex-1 bg-blue-100 text-blue-700 py-2 px-3 rounded-lg hover:bg-blue-200 text-sm font-medium">
+                                    <i class="fas fa-check-double mr-1"></i>Select All
+                                </button>
+                                <button onclick="deselectAllWorkers()" class="flex-1 bg-gray-100 text-gray-700 py-2 px-3 rounded-lg hover:bg-gray-200 text-sm font-medium">
+                                    <i class="fas fa-times mr-1"></i>Deselect All
+                                </button>
                             </div>
-                            <div id="selected-workers-count" class="text-sm text-blue-600 mb-2 hidden"></div>
+                            
+                            <div id="worker-checkboxes" class="max-h-48 overflow-y-auto border rounded-lg p-2 mb-3 bg-gray-50">
+                                <!-- Workers will be populated here -->
+                                <p class="text-gray-500 text-sm">Loading workers...</p>
+                            </div>
+                            
+                            <div id="selected-workers-count" class="text-sm text-blue-600 mb-2">0 workers selected</div>
+                            
                             <textarea id="sms-message" rows="3" class="w-full border rounded-lg px-3 py-2 mb-3" placeholder="Enter your message..."></textarea>
-                            <button onclick="sendCustomSMS()" class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
-                                <i class="fas fa-sms mr-2"></i>Send SMS
+                            <button onclick="sendSMSToSelected()" class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
+                                <i class="fas fa-sms mr-2"></i>Send SMS to Selected Workers
                             </button>
                         </div>
                     </div>
@@ -1633,33 +1653,138 @@
                 setToggle('clock-out-enabled', data.clock_out_reminder_enabled);
                 document.getElementById('clock-out-time').value = data.clock_out_reminder_time;
                 
-                // Populate worker select for custom SMS
+                // Populate worker checkboxes for custom SMS
                 populateSMSWorkerSelect();
+                
+                // Load scheduler status
+                loadSchedulerStatus();
             } catch (error) {
                 console.error('Error loading notification settings:', error);
             }
         }
+        
+        async function loadSchedulerStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/notifications/scheduler-status`);
+                const data = await response.json();
+                
+                const statusDiv = document.getElementById('scheduler-status');
+                if (data.running && data.jobs && data.jobs.length > 0) {
+                    statusDiv.innerHTML = data.jobs.map(job => 
+                        `<div class="flex justify-between items-center py-1">
+                            <span>${job.name}:</span>
+                            <span class="font-medium">${job.next_run_formatted}</span>
+                        </div>`
+                    ).join('');
+                } else if (data.error) {
+                    statusDiv.innerHTML = `<span class="text-yellow-600">Scheduler not running: ${data.error}</span>`;
+                } else {
+                    statusDiv.innerHTML = '<span class="text-yellow-600">No scheduled jobs</span>';
+                }
+            } catch (error) {
+                console.error('Error loading scheduler status:', error);
+                document.getElementById('scheduler-status').innerHTML = '<span class="text-red-600">Could not load schedule</span>';
+            }
+        }
 
         function populateSMSWorkerSelect() {
-            const select = document.getElementById('sms-worker-select');
+            const container = document.getElementById('worker-checkboxes');
             const workersWithPhone = allWorkers.filter(w => w.phone);
-            if (select && workersWithPhone.length > 0) {
-                select.innerHTML = '<option value="">Select Worker</option>' +
-                    `<option value="all">📢 ALL WORKERS (${workersWithPhone.length})</option>` +
-                    workersWithPhone.map(w => 
-                        `<option value="${w.id}">${w.first_name} ${w.surname} (${w.phone})</option>`
-                    ).join('');
+            
+            if (container && workersWithPhone.length > 0) {
+                container.innerHTML = workersWithPhone.map(w => `
+                    <label class="flex items-center gap-2 p-2 hover:bg-white rounded cursor-pointer">
+                        <input type="checkbox" class="worker-checkbox w-4 h-4 text-blue-600 rounded" data-worker-id="${w.id}" data-worker-name="${w.first_name} ${w.surname}">
+                        <span class="flex-1">${w.first_name} ${w.surname}</span>
+                        <span class="text-gray-500 text-sm">${w.phone}</span>
+                    </label>
+                `).join('');
                 
-                // Show count when "all" is selected
-                select.addEventListener('change', function() {
-                    const countDiv = document.getElementById('selected-workers-count');
-                    if (this.value === 'all') {
-                        countDiv.textContent = `Will send to ${workersWithPhone.length} workers with phone numbers`;
-                        countDiv.classList.remove('hidden');
-                    } else {
-                        countDiv.classList.add('hidden');
-                    }
+                // Add change listener to update count
+                container.querySelectorAll('.worker-checkbox').forEach(cb => {
+                    cb.addEventListener('change', updateSelectedCount);
                 });
+            } else if (container) {
+                container.innerHTML = '<p class="text-gray-500 text-sm p-2">No workers with phone numbers found</p>';
+            }
+            
+            updateSelectedCount();
+        }
+        
+        function updateSelectedCount() {
+            const checkboxes = document.querySelectorAll('.worker-checkbox:checked');
+            const countDiv = document.getElementById('selected-workers-count');
+            countDiv.textContent = `${checkboxes.length} worker${checkboxes.length !== 1 ? 's' : ''} selected`;
+        }
+        
+        function selectAllWorkers() {
+            document.querySelectorAll('.worker-checkbox').forEach(cb => cb.checked = true);
+            updateSelectedCount();
+        }
+        
+        function deselectAllWorkers() {
+            document.querySelectorAll('.worker-checkbox').forEach(cb => cb.checked = false);
+            updateSelectedCount();
+        }
+        
+        async function sendSMSToSelected() {
+            const checkboxes = document.querySelectorAll('.worker-checkbox:checked');
+            const message = document.getElementById('sms-message').value.trim();
+            
+            if (checkboxes.length === 0) {
+                alert('Please select at least one worker');
+                return;
+            }
+            if (!message) {
+                alert('Please enter a message');
+                return;
+            }
+            
+            const workerNames = Array.from(checkboxes).map(cb => cb.dataset.workerName).slice(0, 3).join(', ');
+            const moreText = checkboxes.length > 3 ? ` and ${checkboxes.length - 3} more` : '';
+            
+            if (!confirm(`Send SMS to ${checkboxes.length} worker(s)?\n\n${workerNames}${moreText}\n\nMessage: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`)) {
+                return;
+            }
+            
+            let sent = 0;
+            let failed = 0;
+            const errors = [];
+            
+            for (const cb of checkboxes) {
+                const workerId = cb.dataset.workerId;
+                try {
+                    const response = await fetch(`${API_BASE}/notifications/send-sms`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ worker_id: parseInt(workerId), message })
+                    });
+                    
+                    if (response.ok) {
+                        sent++;
+                    } else {
+                        failed++;
+                        const data = await response.json();
+                        errors.push(`${cb.dataset.workerName}: ${data.detail || 'Failed'}`);
+                    }
+                } catch (error) {
+                    failed++;
+                    errors.push(`${cb.dataset.workerName}: ${error.message}`);
+                }
+            }
+            
+            let resultMsg = `SMS sent to ${sent} worker(s).`;
+            if (failed > 0) {
+                resultMsg += `\n${failed} failed.`;
+                if (errors.length <= 5) {
+                    resultMsg += '\n\nErrors:\n' + errors.join('\n');
+                }
+            }
+            alert(resultMsg);
+            
+            if (sent > 0) {
+                document.getElementById('sms-message').value = '';
+                deselectAllWorkers();
             }
         }
 
@@ -1723,85 +1848,6 @@
             }
         }
 
-        async function sendCustomSMS() {
-            const workerSelect = document.getElementById('sms-worker-select');
-            const workerId = workerSelect.value;
-            const message = document.getElementById('sms-message').value.trim();
-            
-            if (!workerId) {
-                alert('Please select a worker');
-                return;
-            }
-            if (!message) {
-                alert('Please enter a message');
-                return;
-            }
-            
-            // Handle "ALL WORKERS" selection
-            if (workerId === 'all') {
-                const workersWithPhone = allWorkers.filter(w => w.phone);
-                if (!confirm(`Send SMS to ALL ${workersWithPhone.length} workers?\n\nMessage: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`)) {
-                    return;
-                }
-                
-                let sent = 0;
-                let failed = 0;
-                const errors = [];
-                
-                for (const worker of workersWithPhone) {
-                    try {
-                        const response = await fetch(`${API_BASE}/notifications/send-sms`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ worker_id: worker.id, message })
-                        });
-                        
-                        if (response.ok) {
-                            sent++;
-                        } else {
-                            failed++;
-                            const data = await response.json();
-                            errors.push(`${worker.first_name}: ${data.detail || 'Failed'}`);
-                        }
-                    } catch (error) {
-                        failed++;
-                        errors.push(`${worker.first_name}: ${error.message}`);
-                    }
-                }
-                
-                let resultMsg = `SMS sent to ${sent} workers.`;
-                if (failed > 0) {
-                    resultMsg += `\n${failed} failed.`;
-                    if (errors.length <= 5) {
-                        resultMsg += '\n\nErrors:\n' + errors.join('\n');
-                    }
-                }
-                alert(resultMsg);
-                document.getElementById('sms-message').value = '';
-                return;
-            }
-            
-            // Single worker
-            try {
-                const response = await fetch(`${API_BASE}/notifications/send-sms`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ worker_id: parseInt(workerId), message })
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok) {
-                    alert(`SMS sent to ${data.to}`);
-                    document.getElementById('sms-message').value = '';
-                } else {
-                    alert(data.detail || 'Error sending SMS');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error sending SMS');
-            }
-        }
 
         // ==================== UTILITIES ====================
 

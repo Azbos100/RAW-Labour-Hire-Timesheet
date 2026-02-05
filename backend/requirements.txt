@@ -23,6 +23,10 @@ oauthlib==3.2.2
 # SMS Notifications
 twilio==9.0.0
 
+# Scheduler for automatic reminders
+apscheduler==3.10.4
+pytz==2024.1
+
 # Testing
 pytest==7.4.4
 pytest-asyncio==0.23.3
