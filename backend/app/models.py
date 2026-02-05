@@ -106,6 +106,12 @@ class User(Base):
     # MYOB Integration
     myob_employee_id = Column(String(100))  # MYOB Employee UID
     
+    # Job Assignment
+    assigned_job_site_id = Column(Integer, ForeignKey("job_sites.id"))
+    assignment_accepted = Column(Boolean)  # True=accepted, False=declined, None=pending
+    assignment_date = Column(Date)  # Date the job was assigned for
+    assigned_at = Column(DateTime)  # When the assignment was made
+    
     # Relationships
     timesheets = relationship(
         "Timesheet",
@@ -114,6 +120,7 @@ class User(Base):
     )
     supervised_timesheets = relationship("Timesheet", back_populates="supervisor", 
                                          foreign_keys="Timesheet.supervisor_id")
+    assigned_job_site = relationship("JobSite", foreign_keys=[assigned_job_site_id])
 
 
 # ==================== CLIENTS ====================

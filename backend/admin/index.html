@@ -351,10 +351,10 @@
                         <thead class="bg-gray-50">
                             <tr>
                                 <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Name</th>
-                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Email</th>
                                 <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Phone</th>
-                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Type</th>
-                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Emergency Contact</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Assigned Job</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Accepted</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Clock Status</th>
                                 <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Status</th>
                                 <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
                             </tr>
@@ -655,6 +655,49 @@
                     </button>
                     <button type="submit" class="flex-1 px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800">
                         Save Schedule
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Assign Job Modal -->
+    <div id="assign-job-modal" class="modal">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4">
+            <div class="border-b px-6 py-4 flex justify-between items-center">
+                <div>
+                    <h2 class="text-xl font-bold">Assign Job</h2>
+                    <p id="assign-worker-name" class="text-gray-500">Worker Name</p>
+                </div>
+                <button onclick="closeModal('assign-job-modal')" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            <form id="assign-job-form" onsubmit="submitAssignJob(event)" class="p-6 space-y-4">
+                <input type="hidden" id="assign-worker-id" name="worker_id">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Select Job Site *</label>
+                    <select name="job_site_id" id="assign-job-select" required class="w-full border rounded-lg px-3 py-2">
+                        <option value="">Select a job site...</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Assignment Date</label>
+                    <input type="date" name="assignment_date" id="assign-job-date" class="w-full border rounded-lg px-3 py-2">
+                </div>
+                <div id="current-assignment" class="hidden p-3 bg-gray-50 rounded-lg">
+                    <div class="text-sm font-medium text-gray-700">Current Assignment:</div>
+                    <div id="current-assignment-text" class="text-sm text-gray-600"></div>
+                </div>
+                <div class="pt-4 border-t flex gap-4">
+                    <button type="button" onclick="clearAssignment()" class="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50">
+                        Clear Assignment
+                    </button>
+                    <button type="button" onclick="closeModal('assign-job-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-50">
+                        Cancel
+                    </button>
+                    <button type="submit" class="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700">
+                        Assign Job
                     </button>
                 </div>
             </form>
@@ -1205,28 +1248,53 @@
                 return;
             }
 
-            tbody.innerHTML = allWorkers.map(w => `
+            tbody.innerHTML = allWorkers.map(w => {
+                // Assignment status display
+                let assignedJobHtml = '<span class="text-gray-400">-</span>';
+                if (w.assigned_job) {
+                    assignedJobHtml = `
+                        <div class="text-sm font-medium">${w.assigned_job.job_site_name}</div>
+                        <div class="text-xs text-gray-500">${w.assigned_job.assignment_date || ''}</div>
+                    `;
+                }
+                
+                // Acceptance status
+                let acceptedHtml = '<span class="text-gray-400">-</span>';
+                if (w.assigned_job) {
+                    if (w.assigned_job.accepted === true) {
+                        acceptedHtml = '<span class="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700"><i class="fas fa-check mr-1"></i>Yes</span>';
+                    } else if (w.assigned_job.accepted === false) {
+                        acceptedHtml = '<span class="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700"><i class="fas fa-times mr-1"></i>No</span>';
+                    } else {
+                        acceptedHtml = '<span class="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700"><i class="fas fa-clock mr-1"></i>Pending</span>';
+                    }
+                }
+                
+                // Clock-in status
+                let clockStatusHtml = '<span class="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600"><i class="fas fa-sign-out-alt mr-1"></i>Not Clocked In</span>';
+                if (w.is_clocked_in) {
+                    clockStatusHtml = '<span class="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700"><i class="fas fa-sign-in-alt mr-1"></i>Clocked In</span>';
+                }
+                
+                return `
                 <tr class="hover:bg-gray-50">
                     <td class="px-4 py-3">
                         <div class="font-medium">${w.first_name} ${w.surname}</div>
+                        <div class="text-xs text-gray-500">${w.email}</div>
                     </td>
-                    <td class="px-4 py-3">${w.email}</td>
                     <td class="px-4 py-3">${w.phone || '-'}</td>
-                    <td class="px-4 py-3">
-                        <span class="capitalize">${(w.employment_type || 'casual').replace('_', ' ')}</span>
-                    </td>
-                    <td class="px-4 py-3">
-                        ${w.emergency_contact_name ? `
-                            <div class="text-sm">${w.emergency_contact_name}</div>
-                            <div class="text-xs text-gray-500">${w.emergency_contact_phone || ''}</div>
-                        ` : '<span class="text-yellow-600 text-sm">Not set</span>'}
-                    </td>
+                    <td class="px-4 py-3">${assignedJobHtml}</td>
+                    <td class="px-4 py-3">${acceptedHtml}</td>
+                    <td class="px-4 py-3">${clockStatusHtml}</td>
                     <td class="px-4 py-3">
                         <span class="px-2 py-1 rounded-full text-xs font-medium ${w.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
                             ${w.is_active ? 'Active' : 'Inactive'}
                         </span>
                     </td>
                     <td class="px-4 py-3">
+                        <button onclick="assignJob(${w.id}, '${w.first_name} ${w.surname}')" class="text-orange-600 hover:text-orange-800 mr-2" title="Assign Job">
+                            <i class="fas fa-briefcase"></i>
+                        </button>
                         <button onclick="viewWorker(${w.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="View">
                             <i class="fas fa-eye"></i>
                         </button>
@@ -1244,7 +1312,7 @@
                         `}
                     </td>
                 </tr>
-            `).join('');
+            `}).join('');
         }
 
         function populateWorkerFilter() {
@@ -1308,6 +1376,114 @@
             } catch (error) {
                 console.error('Error:', error);
                 alert('Error saving schedule');
+            }
+        }
+
+        // ==================== JOB ASSIGNMENT ====================
+
+        let currentAssignWorkerId = null;
+
+        function assignJob(workerId, workerName) {
+            currentAssignWorkerId = workerId;
+            document.getElementById('assign-worker-id').value = workerId;
+            document.getElementById('assign-worker-name').textContent = workerName;
+            
+            // Set default date to today
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('assign-job-date').value = today;
+            
+            // Populate job site dropdown
+            const select = document.getElementById('assign-job-select');
+            select.innerHTML = '<option value="">Select a job site...</option>' +
+                allJobSites.map(js => `<option value="${js.id}">${js.name} - ${js.client_name || 'No Client'}</option>`).join('');
+            
+            // Check if worker has current assignment
+            const worker = allWorkers.find(w => w.id === workerId);
+            const currentDiv = document.getElementById('current-assignment');
+            const currentText = document.getElementById('current-assignment-text');
+            
+            if (worker && worker.assigned_job) {
+                currentDiv.classList.remove('hidden');
+                let statusText = worker.assigned_job.accepted === true ? '(Accepted)' : 
+                                 worker.assigned_job.accepted === false ? '(Declined)' : '(Pending)';
+                currentText.innerHTML = `${worker.assigned_job.job_site_name} - ${worker.assigned_job.assignment_date || 'No date'} ${statusText}`;
+                
+                // Pre-select current job
+                select.value = worker.assigned_job.job_site_id;
+                if (worker.assigned_job.assignment_date) {
+                    document.getElementById('assign-job-date').value = worker.assigned_job.assignment_date;
+                }
+            } else {
+                currentDiv.classList.add('hidden');
+                currentText.innerHTML = '';
+            }
+            
+            openModal('assign-job-modal');
+        }
+
+        async function submitAssignJob(event) {
+            event.preventDefault();
+            
+            const workerId = document.getElementById('assign-worker-id').value;
+            const jobSiteId = document.getElementById('assign-job-select').value;
+            const assignmentDate = document.getElementById('assign-job-date').value;
+            
+            if (!jobSiteId) {
+                alert('Please select a job site');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/users/admin/workers/${workerId}/assign`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        job_site_id: parseInt(jobSiteId),
+                        assignment_date: assignmentDate || null
+                    })
+                });
+                
+                if (response.ok) {
+                    closeModal('assign-job-modal');
+                    await loadWorkers();
+                    alert('Job assigned successfully!');
+                } else {
+                    const result = await response.json();
+                    alert(result.detail || 'Error assigning job');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error assigning job');
+            }
+        }
+
+        async function clearAssignment() {
+            const workerId = document.getElementById('assign-worker-id').value;
+            
+            if (!confirm('Are you sure you want to clear this worker\'s assignment?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/users/admin/workers/${workerId}/assign`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        job_site_id: null
+                    })
+                });
+                
+                if (response.ok) {
+                    closeModal('assign-job-modal');
+                    await loadWorkers();
+                    alert('Assignment cleared!');
+                } else {
+                    const result = await response.json();
+                    alert(result.detail || 'Error clearing assignment');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error clearing assignment');
             }
         }
 

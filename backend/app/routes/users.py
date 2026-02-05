@@ -7,12 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional
-from datetime import date
+from datetime import date, datetime
 import hashlib
 import secrets
 
 from ..database import get_db
-from ..models import User, UserRole
+from ..models import User, UserRole, JobSite, TimesheetEntry
 from .auth import get_current_user
 
 router = APIRouter()
@@ -160,7 +160,9 @@ async def list_all_workers(
     active_only: bool = True,
     db: AsyncSession = Depends(get_db)
 ):
-    """List all workers for admin dashboard"""
+    """List all workers for admin dashboard with assignment and clock-in status"""
+    from sqlalchemy.orm import selectinload
+    
     query = select(User)
     if active_only:
         query = query.where(User.is_active == True)
@@ -168,49 +170,103 @@ async def list_all_workers(
     result = await db.execute(query.order_by(User.surname, User.first_name))
     users = result.scalars().all()
     
-    return {
-        "workers": [
-            {
-                "id": u.id,
-                "email": u.email,
-                "first_name": u.first_name,
-                "surname": u.surname,
-                "phone": u.phone,
-                "address": u.address,
-                "suburb": u.suburb,
-                "state": u.state,
-                "postcode": u.postcode,
-                "date_of_birth": u.date_of_birth.isoformat() if u.date_of_birth else None,
-                "start_date": u.start_date.isoformat() if u.start_date else None,
-                "emergency_contact_name": u.emergency_contact_name,
-                "emergency_contact_phone": u.emergency_contact_phone,
-                "emergency_contact_relationship": u.emergency_contact_relationship,
-                "bank_account_name": u.bank_account_name,
-                "bank_bsb": u.bank_bsb,
-                "bank_account_number": u.bank_account_number,
-                "tax_file_number": u.tax_file_number,
-                "base_pay_rate": u.base_pay_rate or 0,
-                "overtime_pay_rate": u.overtime_pay_rate or 0,
-                "weekend_pay_rate": u.weekend_pay_rate or 0,
-                "night_pay_rate": u.night_pay_rate or 0,
-                "employment_type": u.employment_type or "casual",
-                "role": u.role.value if u.role else "worker",
-                "is_active": u.is_active,
-                "created_at": u.created_at.isoformat() if u.created_at else None,
-                # Shift schedule fields
-                "shift_start_time": u.shift_start_time.strftime("%H:%M") if u.shift_start_time else None,
-                "shift_end_time": u.shift_end_time.strftime("%H:%M") if u.shift_end_time else None,
-                "works_monday": u.works_monday,
-                "works_tuesday": u.works_tuesday,
-                "works_wednesday": u.works_wednesday,
-                "works_thursday": u.works_thursday,
-                "works_friday": u.works_friday,
-                "works_saturday": u.works_saturday,
-                "works_sunday": u.works_sunday
+    # Get all active clock-ins (entries with clock_in but no clock_out)
+    today = date.today()
+    active_entries_result = await db.execute(
+        select(TimesheetEntry)
+        .where(
+            TimesheetEntry.clock_in_time.isnot(None),
+            TimesheetEntry.clock_out_time.is_(None)
+        )
+    )
+    active_entries = active_entries_result.scalars().all()
+    
+    # Create a map of user_id to their active entry (via timesheet)
+    from ..models import Timesheet
+    clocked_in_users = {}
+    for entry in active_entries:
+        # Get the timesheet to find user_id
+        ts_result = await db.execute(
+            select(Timesheet).where(Timesheet.id == entry.timesheet_id)
+        )
+        ts = ts_result.scalar_one_or_none()
+        if ts:
+            clocked_in_users[ts.worker_id] = {
+                "clock_in_time": entry.clock_in_time.isoformat() if entry.clock_in_time else None,
+                "job_site_id": entry.job_site_id
             }
-            for u in users
-        ]
-    }
+    
+    # Get job site names for assigned workers
+    job_site_ids = [u.assigned_job_site_id for u in users if hasattr(u, 'assigned_job_site_id') and u.assigned_job_site_id]
+    job_sites_map = {}
+    if job_site_ids:
+        js_result = await db.execute(select(JobSite).where(JobSite.id.in_(job_site_ids)))
+        for js in js_result.scalars().all():
+            job_sites_map[js.id] = {"name": js.name, "address": js.address}
+    
+    workers_data = []
+    for u in users:
+        # Check for assignment info
+        assigned_job = None
+        if hasattr(u, 'assigned_job_site_id') and u.assigned_job_site_id:
+            js_info = job_sites_map.get(u.assigned_job_site_id, {})
+            assigned_job = {
+                "job_site_id": u.assigned_job_site_id,
+                "job_site_name": js_info.get("name", "Unknown"),
+                "job_site_address": js_info.get("address", ""),
+                "accepted": getattr(u, 'assignment_accepted', None),
+                "assignment_date": u.assignment_date.isoformat() if hasattr(u, 'assignment_date') and u.assignment_date else None,
+                "assigned_at": u.assigned_at.isoformat() if hasattr(u, 'assigned_at') and u.assigned_at else None
+            }
+        
+        # Check clock-in status
+        clock_in_status = clocked_in_users.get(u.id)
+        
+        workers_data.append({
+            "id": u.id,
+            "email": u.email,
+            "first_name": u.first_name,
+            "surname": u.surname,
+            "phone": u.phone,
+            "address": u.address,
+            "suburb": u.suburb,
+            "state": u.state,
+            "postcode": u.postcode,
+            "date_of_birth": u.date_of_birth.isoformat() if u.date_of_birth else None,
+            "start_date": u.start_date.isoformat() if u.start_date else None,
+            "emergency_contact_name": u.emergency_contact_name,
+            "emergency_contact_phone": u.emergency_contact_phone,
+            "emergency_contact_relationship": u.emergency_contact_relationship,
+            "bank_account_name": u.bank_account_name,
+            "bank_bsb": u.bank_bsb,
+            "bank_account_number": u.bank_account_number,
+            "tax_file_number": u.tax_file_number,
+            "base_pay_rate": u.base_pay_rate or 0,
+            "overtime_pay_rate": u.overtime_pay_rate or 0,
+            "weekend_pay_rate": u.weekend_pay_rate or 0,
+            "night_pay_rate": u.night_pay_rate or 0,
+            "employment_type": u.employment_type or "casual",
+            "role": u.role.value if u.role else "worker",
+            "is_active": u.is_active,
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+            # Shift schedule fields
+            "shift_start_time": u.shift_start_time.strftime("%H:%M") if u.shift_start_time else None,
+            "shift_end_time": u.shift_end_time.strftime("%H:%M") if u.shift_end_time else None,
+            "works_monday": u.works_monday,
+            "works_tuesday": u.works_tuesday,
+            "works_wednesday": u.works_wednesday,
+            "works_thursday": u.works_thursday,
+            "works_friday": u.works_friday,
+            "works_saturday": u.works_saturday,
+            "works_sunday": u.works_sunday,
+            # New: Job assignment
+            "assigned_job": assigned_job,
+            # New: Clock-in status
+            "is_clocked_in": clock_in_status is not None,
+            "clock_in_info": clock_in_status
+        })
+    
+    return {"workers": workers_data}
 
 
 @router.get("/admin/workers/{worker_id}")
@@ -457,6 +513,150 @@ async def update_worker_schedule(
         "works_friday": worker.works_friday,
         "works_saturday": worker.works_saturday,
         "works_sunday": worker.works_sunday
+    }
+
+
+# ==================== JOB ASSIGNMENT ENDPOINTS ====================
+
+class JobAssignment(BaseModel):
+    job_site_id: Optional[int] = None  # None to clear assignment
+    assignment_date: Optional[date] = None  # Date the job is for
+
+
+@router.post("/admin/workers/{worker_id}/assign")
+async def assign_worker_to_job(
+    worker_id: int,
+    assignment: JobAssignment,
+    db: AsyncSession = Depends(get_db)
+):
+    """Assign a worker to a job site"""
+    result = await db.execute(select(User).where(User.id == worker_id))
+    worker = result.scalar_one_or_none()
+    
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    
+    if assignment.job_site_id:
+        # Verify job site exists
+        js_result = await db.execute(select(JobSite).where(JobSite.id == assignment.job_site_id))
+        job_site = js_result.scalar_one_or_none()
+        if not job_site:
+            raise HTTPException(status_code=404, detail="Job site not found")
+        
+        worker.assigned_job_site_id = assignment.job_site_id
+        worker.assignment_date = assignment.assignment_date or date.today()
+        worker.assignment_accepted = None  # Reset acceptance status
+        worker.assigned_at = datetime.utcnow()
+        
+        message = f"Worker assigned to {job_site.name}"
+    else:
+        # Clear assignment
+        worker.assigned_job_site_id = None
+        worker.assignment_date = None
+        worker.assignment_accepted = None
+        worker.assigned_at = None
+        message = "Assignment cleared"
+    
+    await db.commit()
+    
+    return {"message": message}
+
+
+@router.post("/admin/workers/assign-bulk")
+async def assign_workers_bulk(
+    job_site_id: int,
+    worker_ids: list[int],
+    assignment_date: Optional[date] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Assign multiple workers to a job site"""
+    # Verify job site exists
+    js_result = await db.execute(select(JobSite).where(JobSite.id == job_site_id))
+    job_site = js_result.scalar_one_or_none()
+    if not job_site:
+        raise HTTPException(status_code=404, detail="Job site not found")
+    
+    # Get all workers
+    result = await db.execute(select(User).where(User.id.in_(worker_ids)))
+    workers = result.scalars().all()
+    
+    assigned_count = 0
+    for worker in workers:
+        worker.assigned_job_site_id = job_site_id
+        worker.assignment_date = assignment_date or date.today()
+        worker.assignment_accepted = None
+        worker.assigned_at = datetime.utcnow()
+        assigned_count += 1
+    
+    await db.commit()
+    
+    return {
+        "message": f"{assigned_count} workers assigned to {job_site.name}",
+        "assigned_count": assigned_count
+    }
+
+
+# Mobile app endpoint to accept/decline assignment
+class AssignmentResponse(BaseModel):
+    accepted: bool
+
+
+@router.post("/{user_id}/assignment/respond")
+async def respond_to_assignment(
+    user_id: int,
+    response: AssignmentResponse,
+    db: AsyncSession = Depends(get_db)
+):
+    """Worker accepts or declines their job assignment"""
+    result = await db.execute(select(User).where(User.id == user_id))
+    worker = result.scalar_one_or_none()
+    
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    
+    if not worker.assigned_job_site_id:
+        raise HTTPException(status_code=400, detail="No job assignment to respond to")
+    
+    worker.assignment_accepted = response.accepted
+    await db.commit()
+    
+    return {
+        "message": "Job accepted" if response.accepted else "Job declined",
+        "accepted": response.accepted
+    }
+
+
+@router.get("/{user_id}/assignment")
+async def get_worker_assignment(
+    user_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get worker's current job assignment (for mobile app)"""
+    result = await db.execute(select(User).where(User.id == user_id))
+    worker = result.scalar_one_or_none()
+    
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    
+    if not worker.assigned_job_site_id:
+        return {"assignment": None}
+    
+    # Get job site details
+    js_result = await db.execute(select(JobSite).where(JobSite.id == worker.assigned_job_site_id))
+    job_site = js_result.scalar_one_or_none()
+    
+    if not job_site:
+        return {"assignment": None}
+    
+    return {
+        "assignment": {
+            "job_site_id": job_site.id,
+            "job_site_name": job_site.name,
+            "job_site_address": job_site.address,
+            "assignment_date": worker.assignment_date.isoformat() if worker.assignment_date else None,
+            "assigned_at": worker.assigned_at.isoformat() if worker.assigned_at else None,
+            "accepted": worker.assignment_accepted
+        }
     }
 
 

@@ -19,7 +19,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { RootStackParamList } from '../../App';
 import { COLORS } from '../constants/colors';
 import { useAuth } from '../context/AuthContext';
-import { clockAPI } from '../services/api';
+import { clockAPI, assignmentAPI } from '../services/api';
 
 type DashboardScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList>;
@@ -36,12 +36,23 @@ interface ClockStatus {
   week_overtime_hours: number;
 }
 
+interface JobAssignment {
+  job_site_id: number;
+  job_site_name: string;
+  job_site_address: string;
+  assignment_date: string | null;
+  assigned_at: string | null;
+  accepted: boolean | null;
+}
+
 export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const { user } = useAuth();
   const [clockStatus, setClockStatus] = useState<ClockStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [togglingOvertime, setTogglingOvertime] = useState(false);
+  const [assignment, setAssignment] = useState<JobAssignment | null>(null);
+  const [respondingAssignment, setRespondingAssignment] = useState(false);
 
   const toggleOvertimeMode = async () => {
     if (!clockStatus?.is_clocked_in || togglingOvertime) return;
@@ -59,6 +70,32 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
       console.warn('Error toggling overtime mode:', error);
     } finally {
       setTogglingOvertime(false);
+    }
+  };
+
+  const fetchAssignment = async () => {
+    if (!user?.id) return;
+    try {
+      const response = await assignmentAPI.getAssignment(user.id);
+      setAssignment(response.data.assignment || null);
+    } catch (error) {
+      console.warn('Error fetching assignment:', error);
+      setAssignment(null);
+    }
+  };
+
+  const respondToAssignment = async (accepted: boolean) => {
+    if (!user?.id || respondingAssignment) return;
+    
+    setRespondingAssignment(true);
+    try {
+      await assignmentAPI.respondToAssignment(user.id, accepted);
+      // Update local state
+      setAssignment(prev => prev ? { ...prev, accepted } : null);
+    } catch (error) {
+      console.warn('Error responding to assignment:', error);
+    } finally {
+      setRespondingAssignment(false);
     }
   };
 
@@ -87,12 +124,14 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   useFocusEffect(
     useCallback(() => {
       fetchClockStatus();
+      fetchAssignment();
     }, [])
   );
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchClockStatus();
+    fetchAssignment();
   };
 
   const formatTime = (isoString?: string) => {
@@ -227,6 +266,84 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
           </Text>
         </View>
       </View>
+
+      {/* Job Assignment Card */}
+      {assignment && (
+        <View style={styles.assignmentCard}>
+          <View style={styles.assignmentHeader}>
+            <Ionicons name="briefcase" size={24} color={COLORS.primary} />
+            <Text style={styles.assignmentTitle}>Job Assignment</Text>
+            {assignment.accepted === true && (
+              <View style={styles.acceptedBadge}>
+                <Text style={styles.acceptedBadgeText}>Accepted</Text>
+              </View>
+            )}
+            {assignment.accepted === false && (
+              <View style={styles.declinedBadge}>
+                <Text style={styles.declinedBadgeText}>Declined</Text>
+              </View>
+            )}
+          </View>
+          
+          <View style={styles.assignmentDetails}>
+            <Text style={styles.jobSiteName}>{assignment.job_site_name}</Text>
+            {assignment.job_site_address && (
+              <View style={styles.addressRow}>
+                <Ionicons name="location-outline" size={16} color="#6B7280" />
+                <Text style={styles.addressText} numberOfLines={2}>
+                  {assignment.job_site_address}
+                </Text>
+              </View>
+            )}
+            {assignment.assignment_date && (
+              <View style={styles.dateRow}>
+                <Ionicons name="calendar-outline" size={16} color="#6B7280" />
+                <Text style={styles.dateText}>
+                  {new Date(assignment.assignment_date).toLocaleDateString('en-AU', {
+                    weekday: 'short',
+                    day: 'numeric',
+                    month: 'short',
+                  })}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Accept/Decline buttons - only show if not yet responded */}
+          {assignment.accepted === null && (
+            <View style={styles.assignmentActions}>
+              <TouchableOpacity
+                style={styles.declineButton}
+                onPress={() => respondToAssignment(false)}
+                disabled={respondingAssignment}
+              >
+                {respondingAssignment ? (
+                  <ActivityIndicator size="small" color="#DC2626" />
+                ) : (
+                  <>
+                    <Ionicons name="close-circle-outline" size={20} color="#DC2626" />
+                    <Text style={styles.declineButtonText}>Decline</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.acceptButton}
+                onPress={() => respondToAssignment(true)}
+                disabled={respondingAssignment}
+              >
+                {respondingAssignment ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" />
+                    <Text style={styles.acceptButtonText}>Accept</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      )}
 
       {/* Clock Action Button */}
       <TouchableOpacity
@@ -487,5 +604,122 @@ const styles = StyleSheet.create({
   },
   overtimeToggleSubtextActive: {
     color: 'rgba(255, 255, 255, 0.85)',
+  },
+  // Job Assignment Card Styles
+  assignmentCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginTop: 16,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  assignmentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  assignmentTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: COLORS.primary,
+    marginLeft: 8,
+    flex: 1,
+  },
+  acceptedBadge: {
+    backgroundColor: '#DEF7EC',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  acceptedBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#047857',
+  },
+  declinedBadge: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  declinedBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+  assignmentDetails: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    padding: 12,
+  },
+  jobSiteName: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 8,
+  },
+  addressRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 6,
+  },
+  addressText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginLeft: 6,
+    flex: 1,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dateText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginLeft: 6,
+  },
+  assignmentActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  declineButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 10,
+    paddingVertical: 12,
+    gap: 6,
+  },
+  declineButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+  acceptButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#047857',
+    borderRadius: 10,
+    paddingVertical: 12,
+    gap: 6,
+  },
+  acceptButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

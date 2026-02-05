@@ -223,3 +223,15 @@ export const inductionAPI = {
   }, userId?: number) => 
     api.post('/induction/sign', data, { params: { user_id: userId } }),
 };
+
+// ==================== JOB ASSIGNMENT API ====================
+
+export const assignmentAPI = {
+  // Get worker's current job assignment
+  getAssignment: (userId: number) => 
+    api.get(`/users/${userId}/assignment`),
+  
+  // Accept or decline job assignment
+  respondToAssignment: (userId: number, accepted: boolean) => 
+    api.post(`/users/${userId}/assignment/respond`, { accepted }),
+};
