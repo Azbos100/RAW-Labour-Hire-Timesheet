@@ -49,10 +49,17 @@ class ClockStatusResponse(BaseModel):
     clock_in_address: Optional[str] = None
     current_entry_id: Optional[int] = None
     hours_worked_today: float = 0
+    overtime_mode: bool = False  # When True, suppresses clock-out reminders
     # Weekly stats
     week_days_worked: int = 0
     week_total_hours: float = 0
     week_overtime_hours: float = 0
+
+
+class OvertimeModeRequest(BaseModel):
+    """Request to toggle overtime mode"""
+    overtime_mode: bool
+    user_id: Optional[int] = None
 
 
 def get_address_from_coords(lat: float, lon: float) -> str:
@@ -153,6 +160,7 @@ async def get_clock_status(
             clock_in_address=active_entry.clock_in_address,
             current_entry_id=active_entry.id,
             hours_worked_today=round(hours_today, 2),
+            overtime_mode=active_entry.overtime_mode or False,
             week_days_worked=week_days_worked,
             week_total_hours=round(week_total_hours + hours_so_far, 2),
             week_overtime_hours=round(week_overtime_hours, 2)
@@ -165,6 +173,57 @@ async def get_clock_status(
         week_total_hours=round(week_total_hours, 2),
         week_overtime_hours=round(week_overtime_hours, 2)
     )
+
+
+@router.post("/overtime-mode")
+async def toggle_overtime_mode(
+    request: OvertimeModeRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Toggle overtime mode for the current active timesheet entry.
+    When overtime mode is enabled, clock-out reminders are suppressed.
+    """
+    # Use provided user_id or fall back to first user
+    if request.user_id:
+        result = await db.execute(select(User).where(User.id == request.user_id))
+    else:
+        result = await db.execute(select(User).limit(1))
+    current_user = result.scalar_one_or_none()
+    if not current_user:
+        raise HTTPException(status_code=400, detail="No user found")
+    
+    today = date.today()
+    
+    # Find active entry (clocked in but not out)
+    result = await db.execute(
+        select(TimesheetEntry)
+        .join(Timesheet)
+        .where(
+            Timesheet.worker_id == current_user.id,
+            TimesheetEntry.entry_date == today,
+            TimesheetEntry.clock_in_time.isnot(None),
+            TimesheetEntry.clock_out_time.is_(None)
+        )
+    )
+    active_entry = result.scalar_one_or_none()
+    
+    if not active_entry:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active clock-in found. You must be clocked in to enable overtime mode."
+        )
+    
+    # Update overtime mode
+    active_entry.overtime_mode = request.overtime_mode
+    await db.commit()
+    
+    return {
+        "success": True,
+        "overtime_mode": active_entry.overtime_mode,
+        "message": f"Overtime mode {'enabled' if request.overtime_mode else 'disabled'}. " +
+                   ("Clock-out reminders will be suppressed." if request.overtime_mode else "Clock-out reminders will resume.")
+    }
 
 
 @router.post("/in")

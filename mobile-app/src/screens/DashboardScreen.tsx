@@ -30,6 +30,7 @@ interface ClockStatus {
   clock_in_time?: string;
   clock_in_address?: string;
   hours_worked_today: number;
+  overtime_mode: boolean;
   week_days_worked: number;
   week_total_hours: number;
   week_overtime_hours: number;
@@ -40,6 +41,26 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const [clockStatus, setClockStatus] = useState<ClockStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [togglingOvertime, setTogglingOvertime] = useState(false);
+
+  const toggleOvertimeMode = async () => {
+    if (!clockStatus?.is_clocked_in || togglingOvertime) return;
+    
+    setTogglingOvertime(true);
+    try {
+      const newOvertimeMode = !clockStatus.overtime_mode;
+      await clockAPI.setOvertimeMode({
+        overtime_mode: newOvertimeMode,
+        user_id: user?.id,
+      });
+      // Update local state
+      setClockStatus(prev => prev ? { ...prev, overtime_mode: newOvertimeMode } : null);
+    } catch (error) {
+      console.warn('Error toggling overtime mode:', error);
+    } finally {
+      setTogglingOvertime(false);
+    }
+  };
 
   const fetchClockStatus = async () => {
     try {
@@ -51,6 +72,7 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
       setClockStatus({
         is_clocked_in: false,
         hours_worked_today: 0,
+        overtime_mode: false,
         week_days_worked: 0,
         week_total_hours: 0,
         week_overtime_hours: 0,
@@ -158,6 +180,43 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
                 </Text>
               </View>
             )}
+            
+            {/* Overtime Mode Toggle */}
+            <TouchableOpacity
+              style={[
+                styles.overtimeToggle,
+                clockStatus.overtime_mode && styles.overtimeToggleActive
+              ]}
+              onPress={toggleOvertimeMode}
+              disabled={togglingOvertime}
+            >
+              <View style={styles.overtimeToggleContent}>
+                <Ionicons
+                  name={clockStatus.overtime_mode ? 'checkmark-circle' : 'time-outline'}
+                  size={24}
+                  color={clockStatus.overtime_mode ? '#FFFFFF' : '#F59E0B'}
+                />
+                <View style={styles.overtimeTextContainer}>
+                  <Text style={[
+                    styles.overtimeToggleText,
+                    clockStatus.overtime_mode && styles.overtimeToggleTextActive
+                  ]}>
+                    {clockStatus.overtime_mode ? 'Overtime Mode ON' : 'Staying Back?'}
+                  </Text>
+                  <Text style={[
+                    styles.overtimeToggleSubtext,
+                    clockStatus.overtime_mode && styles.overtimeToggleSubtextActive
+                  ]}>
+                    {clockStatus.overtime_mode
+                      ? 'Clock-out reminders paused'
+                      : 'Tap to pause clock-out reminders'}
+                  </Text>
+                </View>
+              </View>
+              {togglingOvertime && (
+                <ActivityIndicator size="small" color={clockStatus.overtime_mode ? '#FFFFFF' : '#F59E0B'} />
+              )}
+            </TouchableOpacity>
           </View>
         )}
 
@@ -387,5 +446,46 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6B7280',
     lineHeight: 18,
+  },
+  // Overtime Mode Toggle Styles
+  overtimeToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+  },
+  overtimeToggleActive: {
+    backgroundColor: '#F59E0B',
+    borderColor: '#D97706',
+  },
+  overtimeToggleContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  overtimeTextContainer: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  overtimeToggleText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#92400E',
+  },
+  overtimeToggleTextActive: {
+    color: '#FFFFFF',
+  },
+  overtimeToggleSubtext: {
+    fontSize: 12,
+    color: '#B45309',
+    marginTop: 2,
+  },
+  overtimeToggleSubtextActive: {
+    color: 'rgba(255, 255, 255, 0.85)',
   },
 });

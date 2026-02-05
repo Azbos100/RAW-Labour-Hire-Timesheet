@@ -275,6 +275,9 @@ class TimesheetEntry(Base):
     first_aid_injury = Column(Boolean, default=False)
     comments = Column(Text)
     
+    # Overtime mode - when True, suppresses clock-out reminders
+    overtime_mode = Column(Boolean, default=False)
+    
     # Individual entry submission (for daily approval)
     entry_status = Column(String(20), default="draft")  # draft, submitted, approved, rejected
     host_company_name = Column(String(200))

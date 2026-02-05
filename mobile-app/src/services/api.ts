@@ -105,6 +105,12 @@ export const clockAPI = {
   }) => api.post('/clock/out', data),
   
   getHistory: (days: number = 7) => api.get(`/clock/history?days=${days}`),
+  
+  // Toggle overtime mode - suppresses clock-out reminders when staying back
+  setOvertimeMode: (data: {
+    overtime_mode: boolean;
+    user_id?: number;
+  }) => api.post('/clock/overtime-mode', data),
 };
 
 // ==================== TIMESHEETS API ====================

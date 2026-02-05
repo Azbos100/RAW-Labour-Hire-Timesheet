@@ -343,6 +343,11 @@ async def check_clock_out_reminders(
         if not worker.phone:
             continue
         
+        # Skip workers in overtime mode - they're staying back intentionally
+        if entry.overtime_mode:
+            skipped_count += 1
+            continue
+        
         # Check if worker's shift has ended
         if not worker_shift_ended(worker, current_time):
             skipped_count += 1
