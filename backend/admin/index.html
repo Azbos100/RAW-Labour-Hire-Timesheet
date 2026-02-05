@@ -743,6 +743,45 @@
         </div>
     </div>
 
+    <!-- Edit Client Modal -->
+    <div id="edit-client-modal" class="modal">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4">
+            <div class="border-b px-6 py-4 flex justify-between items-center">
+                <h2 class="text-xl font-bold">Edit Client</h2>
+                <button onclick="closeModal('edit-client-modal')" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            <form id="edit-client-form" onsubmit="submitEditClient(event)" class="p-6 space-y-4">
+                <input type="hidden" name="client_id" id="edit-client-id">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Company Name *</label>
+                    <input type="text" name="name" id="edit-client-name" required class="w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Contact Name</label>
+                    <input type="text" name="contact_name" id="edit-client-contact-name" class="w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Contact Email</label>
+                    <input type="email" name="contact_email" id="edit-client-contact-email" class="w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Contact Phone</label>
+                    <input type="tel" name="contact_phone" id="edit-client-contact-phone" class="w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Address</label>
+                    <textarea name="address" id="edit-client-address" rows="2" class="w-full border rounded-lg px-3 py-2"></textarea>
+                </div>
+                <div class="pt-4 border-t flex gap-4 justify-end">
+                    <button type="button" onclick="closeModal('edit-client-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Add Job Site Modal -->
     <div id="add-jobsite-modal" class="modal">
         <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4">
@@ -778,6 +817,47 @@
                 <div class="pt-4 border-t flex gap-4 justify-end">
                     <button type="button" onclick="closeModal('add-jobsite-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
                     <button type="submit" class="px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800">Add Job Site</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Job Site Modal -->
+    <div id="edit-jobsite-modal" class="modal">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4">
+            <div class="border-b px-6 py-4 flex justify-between items-center">
+                <h2 class="text-xl font-bold">Edit Job Site</h2>
+                <button onclick="closeModal('edit-jobsite-modal')" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            <form id="edit-jobsite-form" onsubmit="submitEditJobSite(event)" class="p-6 space-y-4">
+                <input type="hidden" name="jobsite_id" id="edit-jobsite-id">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Site Name *</label>
+                    <input type="text" name="name" id="edit-jobsite-name" required class="w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Client *</label>
+                    <select name="client_id" id="edit-jobsite-client" required class="w-full border rounded-lg px-3 py-2">
+                        <option value="">Select Client</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Address *</label>
+                    <textarea name="address" id="edit-jobsite-address" required rows="2" class="w-full border rounded-lg px-3 py-2"></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Site Contact Name</label>
+                    <input type="text" name="contact_name" id="edit-jobsite-contact-name" class="w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Site Contact Phone</label>
+                    <input type="tel" name="contact_phone" id="edit-jobsite-contact-phone" class="w-full border rounded-lg px-3 py-2">
+                </div>
+                <div class="pt-4 border-t flex gap-4 justify-end">
+                    <button type="button" onclick="closeModal('edit-jobsite-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800">Save Changes</button>
                 </div>
             </form>
         </div>
@@ -1312,14 +1392,23 @@
             container.innerHTML = allClients.map(c => `
                 <div class="p-4 hover:bg-gray-50">
                     <div class="flex justify-between items-start">
-                        <div>
+                        <div class="flex-1">
                             <div class="font-medium">${c.name}</div>
                             ${c.contact_name ? `<div class="text-sm text-gray-500">${c.contact_name}</div>` : ''}
                             ${c.contact_email ? `<div class="text-sm text-gray-500">${c.contact_email}</div>` : ''}
+                            ${c.contact_phone ? `<div class="text-sm text-gray-500">${c.contact_phone}</div>` : ''}
                         </div>
-                        <span class="px-2 py-1 rounded-full text-xs font-medium ${c.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">
-                            ${c.is_active ? 'Active' : 'Inactive'}
-                        </span>
+                        <div class="flex items-center gap-2">
+                            <button onclick="editClient(${c.id})" class="text-blue-600 hover:text-blue-800 p-1" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button onclick="deleteClient(${c.id}, '${c.name.replace(/'/g, "\\'")}')" class="text-red-600 hover:text-red-800 p-1" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            <span class="px-2 py-1 rounded-full text-xs font-medium ${c.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">
+                                ${c.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                        </div>
                     </div>
                 </div>
             `).join('');
@@ -1363,6 +1452,72 @@
             }
         }
 
+        function editClient(clientId) {
+            const client = allClients.find(c => c.id === clientId);
+            if (!client) return;
+            
+            document.getElementById('edit-client-id').value = client.id;
+            document.getElementById('edit-client-name').value = client.name || '';
+            document.getElementById('edit-client-contact-name').value = client.contact_name || '';
+            document.getElementById('edit-client-contact-email').value = client.contact_email || '';
+            document.getElementById('edit-client-contact-phone').value = client.contact_phone || '';
+            document.getElementById('edit-client-address').value = client.address || '';
+            
+            openModal('edit-client-modal');
+        }
+
+        async function submitEditClient(event) {
+            event.preventDefault();
+            const clientId = document.getElementById('edit-client-id').value;
+            const form = event.target;
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData.entries());
+            delete data.client_id;
+
+            try {
+                const response = await fetch(`${API_BASE}/clients/admin/${clientId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    closeModal('edit-client-modal');
+                    await loadClients();
+                    alert('Client updated!');
+                } else {
+                    const result = await response.json();
+                    alert(result.detail || 'Error updating client');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error updating client');
+            }
+        }
+
+        async function deleteClient(clientId, clientName) {
+            if (!confirm(`Are you sure you want to delete "${clientName}"? This will deactivate the client.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/clients/admin/${clientId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    await loadClients();
+                    alert('Client deleted!');
+                } else {
+                    const result = await response.json();
+                    alert(result.detail || 'Error deleting client');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error deleting client');
+            }
+        }
+
         // ==================== JOB SITES ====================
 
         async function loadJobSites() {
@@ -1393,12 +1548,15 @@
                             <div class="text-sm text-gray-500">${js.address}</div>
                         </div>
                         <div class="flex items-center gap-2">
-                            <span class="px-2 py-1 rounded-full text-xs font-medium ${js.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">
-                                ${js.is_active ? 'Active' : 'Inactive'}
-                            </span>
+                            <button onclick="editJobSite(${js.id})" class="text-blue-600 hover:text-blue-800 p-1" title="Edit">
+                                <i class="fas fa-edit text-sm"></i>
+                            </button>
                             <button onclick="deleteJobSite(${js.id}, '${js.name.replace(/'/g, "\\'")}')" class="text-red-600 hover:text-red-800 p-1" title="Delete">
                                 <i class="fas fa-trash text-sm"></i>
                             </button>
+                            <span class="px-2 py-1 rounded-full text-xs font-medium ${js.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">
+                                ${js.is_active ? 'Active' : 'Inactive'}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -1455,6 +1613,54 @@
             } catch (error) {
                 console.error('Error:', error);
                 alert('Error deleting job site');
+            }
+        }
+
+        function editJobSite(jobsiteId) {
+            const js = allJobSites.find(s => s.id === jobsiteId);
+            if (!js) return;
+            
+            // Populate client dropdown
+            const select = document.getElementById('edit-jobsite-client');
+            select.innerHTML = '<option value="">Select Client</option>' +
+                allClients.map(c => `<option value="${c.id}" ${c.id === js.client_id ? 'selected' : ''}>${c.name}</option>`).join('');
+            
+            document.getElementById('edit-jobsite-id').value = js.id;
+            document.getElementById('edit-jobsite-name').value = js.name || '';
+            document.getElementById('edit-jobsite-address').value = js.address || '';
+            document.getElementById('edit-jobsite-contact-name').value = js.contact_name || '';
+            document.getElementById('edit-jobsite-contact-phone').value = js.contact_phone || '';
+            
+            openModal('edit-jobsite-modal');
+        }
+
+        async function submitEditJobSite(event) {
+            event.preventDefault();
+            const jobsiteId = document.getElementById('edit-jobsite-id').value;
+            const form = event.target;
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData.entries());
+            delete data.jobsite_id;
+            data.client_id = parseInt(data.client_id) || null;
+
+            try {
+                const response = await fetch(`${API_BASE}/jobsites/${jobsiteId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    closeModal('edit-jobsite-modal');
+                    await loadJobSites();
+                    alert('Job site updated!');
+                } else {
+                    const result = await response.json();
+                    alert(result.detail || 'Error updating job site');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error updating job site');
             }
         }
 

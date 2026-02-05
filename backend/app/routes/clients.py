@@ -129,6 +129,25 @@ async def update_client_admin(
     return {"id": client.id, "name": client.name, "message": "Client updated successfully"}
 
 
+@router.delete("/admin/{client_id}")
+async def delete_client_admin(
+    client_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a client (admin dashboard - no auth)"""
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client = result.scalar_one_or_none()
+    
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    # Soft delete - just deactivate
+    client.is_active = False
+    await db.commit()
+    
+    return {"message": "Client deleted successfully"}
+
+
 @router.get("/{client_id}/job-sites")
 async def list_job_sites(
     client_id: int,
