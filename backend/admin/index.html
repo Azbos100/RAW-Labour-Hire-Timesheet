@@ -421,11 +421,11 @@
                                 <p class="font-medium">SMS Notifications</p>
                                 <p class="text-sm text-gray-500">Enable/disable all SMS notifications</p>
                             </div>
-                            <div class="flex items-center gap-2">
-                                <button type="button" id="sms-enabled" onclick="toggleSwitch('sms-enabled')" class="toggle-switch" style="display:inline-block;width:44px;height:24px;background:#D1D5DB;border-radius:12px;border:none;position:relative;cursor:pointer;">
-                                    <span class="toggle-slider" style="position:absolute;top:2px;left:2px;width:20px;height:20px;background:white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.3);transition:left 0.2s;"></span>
+                            <div class="flex items-center gap-3">
+                                <button type="button" id="sms-enabled" onclick="toggleSwitch('sms-enabled')" class="toggle-switch" style="display:inline-block;width:50px;height:26px;background:#D1D5DB;border-radius:13px;border:none;position:relative;cursor:pointer;overflow:hidden;flex-shrink:0;">
+                                    <span class="toggle-slider" style="position:absolute;top:3px;left:3px;width:20px;height:20px;background:white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.3);transition:left 0.2s;"></span>
                                 </button>
-                                <span id="sms-enabled-label" class="text-sm font-medium text-red-600">OFF</span>
+                                <span id="sms-enabled-label" class="text-sm font-bold text-red-600">OFF</span>
                             </div>
                         </div>
                         
@@ -435,11 +435,11 @@
                                     <p class="font-medium">Clock-In Reminder</p>
                                     <p class="text-sm text-gray-500">Remind workers who haven't clocked in</p>
                                 </div>
-                                <div class="flex items-center gap-2">
-                                    <button type="button" id="clock-in-enabled" onclick="toggleSwitch('clock-in-enabled')" class="toggle-switch" style="display:inline-block;width:44px;height:24px;background:#D1D5DB;border-radius:12px;border:none;position:relative;cursor:pointer;">
-                                        <span class="toggle-slider" style="position:absolute;top:2px;left:2px;width:20px;height:20px;background:white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.3);transition:left 0.2s;"></span>
+                                <div class="flex items-center gap-3">
+                                    <button type="button" id="clock-in-enabled" onclick="toggleSwitch('clock-in-enabled')" class="toggle-switch" style="display:inline-block;width:50px;height:26px;background:#D1D5DB;border-radius:13px;border:none;position:relative;cursor:pointer;overflow:hidden;flex-shrink:0;">
+                                        <span class="toggle-slider" style="position:absolute;top:3px;left:3px;width:20px;height:20px;background:white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.3);transition:left 0.2s;"></span>
                                     </button>
-                                    <span id="clock-in-enabled-label" class="text-sm font-medium text-red-600">OFF</span>
+                                    <span id="clock-in-enabled-label" class="text-sm font-bold text-red-600">OFF</span>
                                 </div>
                             </div>
                             <div class="flex items-center gap-2">
@@ -454,11 +454,11 @@
                                     <p class="font-medium">Clock-Out Reminder</p>
                                     <p class="text-sm text-gray-500">Remind workers who haven't clocked out</p>
                                 </div>
-                                <div class="flex items-center gap-2">
-                                    <button type="button" id="clock-out-enabled" onclick="toggleSwitch('clock-out-enabled')" class="toggle-switch" style="display:inline-block;width:44px;height:24px;background:#D1D5DB;border-radius:12px;border:none;position:relative;cursor:pointer;">
-                                        <span class="toggle-slider" style="position:absolute;top:2px;left:2px;width:20px;height:20px;background:white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.3);transition:left 0.2s;"></span>
+                                <div class="flex items-center gap-3">
+                                    <button type="button" id="clock-out-enabled" onclick="toggleSwitch('clock-out-enabled')" class="toggle-switch" style="display:inline-block;width:50px;height:26px;background:#D1D5DB;border-radius:13px;border:none;position:relative;cursor:pointer;overflow:hidden;flex-shrink:0;">
+                                        <span class="toggle-slider" style="position:absolute;top:3px;left:3px;width:20px;height:20px;background:white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.3);transition:left 0.2s;"></span>
                                     </button>
-                                    <span id="clock-out-enabled-label" class="text-sm font-medium text-red-600">OFF</span>
+                                    <span id="clock-out-enabled-label" class="text-sm font-bold text-red-600">OFF</span>
                                 </div>
                             </div>
                             <div class="flex items-center gap-2">
@@ -1628,18 +1628,18 @@
             if (isActive) {
                 el.classList.remove('active');
                 el.style.background = '#D1D5DB';
-                slider.style.left = '2px';
+                slider.style.left = '3px';
                 if (label) {
                     label.textContent = 'OFF';
-                    label.className = 'text-sm font-medium text-red-600';
+                    label.className = 'text-sm font-bold text-red-600';
                 }
             } else {
                 el.classList.add('active');
                 el.style.background = '#2563EB';
-                slider.style.left = '22px';
+                slider.style.left = '27px';
                 if (label) {
                     label.textContent = 'ON';
-                    label.className = 'text-sm font-medium text-green-600';
+                    label.className = 'text-sm font-bold text-green-600';
                 }
             }
         }
@@ -1651,18 +1651,18 @@
             if (value) {
                 el.classList.add('active');
                 el.style.background = '#2563EB';
-                slider.style.left = '22px';
+                slider.style.left = '27px';
                 if (label) {
                     label.textContent = 'ON';
-                    label.className = 'text-sm font-medium text-green-600';
+                    label.className = 'text-sm font-bold text-green-600';
                 }
             } else {
                 el.classList.remove('active');
                 el.style.background = '#D1D5DB';
-                slider.style.left = '2px';
+                slider.style.left = '3px';
                 if (label) {
                     label.textContent = 'OFF';
-                    label.className = 'text-sm font-medium text-red-600';
+                    label.className = 'text-sm font-bold text-red-600';
                 }
             }
         }
