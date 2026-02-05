@@ -196,7 +196,17 @@ async def list_all_workers(
                 "employment_type": u.employment_type or "casual",
                 "role": u.role.value if u.role else "worker",
                 "is_active": u.is_active,
-                "created_at": u.created_at.isoformat() if u.created_at else None
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+                # Shift schedule fields
+                "shift_start_time": u.shift_start_time.strftime("%H:%M") if u.shift_start_time else None,
+                "shift_end_time": u.shift_end_time.strftime("%H:%M") if u.shift_end_time else None,
+                "works_monday": u.works_monday,
+                "works_tuesday": u.works_tuesday,
+                "works_wednesday": u.works_wednesday,
+                "works_thursday": u.works_thursday,
+                "works_friday": u.works_friday,
+                "works_saturday": u.works_saturday,
+                "works_sunday": u.works_sunday
             }
             for u in users
         ]
@@ -382,6 +392,71 @@ async def reset_worker_password(
     return {
         "temp_password": temp_password,
         "message": "Password reset. Share the new temporary password with the worker."
+    }
+
+
+class ShiftScheduleUpdate(BaseModel):
+    shift_start_time: Optional[str] = None  # HH:MM format
+    shift_end_time: Optional[str] = None    # HH:MM format
+    works_monday: Optional[bool] = None
+    works_tuesday: Optional[bool] = None
+    works_wednesday: Optional[bool] = None
+    works_thursday: Optional[bool] = None
+    works_friday: Optional[bool] = None
+    works_saturday: Optional[bool] = None
+    works_sunday: Optional[bool] = None
+
+
+@router.patch("/admin/workers/{worker_id}/schedule")
+async def update_worker_schedule(
+    worker_id: int,
+    schedule: ShiftScheduleUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update worker shift schedule for SMS reminders"""
+    from datetime import datetime as dt
+    
+    result = await db.execute(select(User).where(User.id == worker_id))
+    worker = result.scalar_one_or_none()
+    
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    
+    # Update shift times
+    if schedule.shift_start_time:
+        worker.shift_start_time = dt.strptime(schedule.shift_start_time, "%H:%M").time()
+    if schedule.shift_end_time:
+        worker.shift_end_time = dt.strptime(schedule.shift_end_time, "%H:%M").time()
+    
+    # Update work days
+    if schedule.works_monday is not None:
+        worker.works_monday = schedule.works_monday
+    if schedule.works_tuesday is not None:
+        worker.works_tuesday = schedule.works_tuesday
+    if schedule.works_wednesday is not None:
+        worker.works_wednesday = schedule.works_wednesday
+    if schedule.works_thursday is not None:
+        worker.works_thursday = schedule.works_thursday
+    if schedule.works_friday is not None:
+        worker.works_friday = schedule.works_friday
+    if schedule.works_saturday is not None:
+        worker.works_saturday = schedule.works_saturday
+    if schedule.works_sunday is not None:
+        worker.works_sunday = schedule.works_sunday
+    
+    await db.commit()
+    
+    return {
+        "message": "Schedule updated",
+        "shift_start_time": worker.shift_start_time.strftime("%H:%M") if worker.shift_start_time else None,
+        "shift_end_time": worker.shift_end_time.strftime("%H:%M") if worker.shift_end_time else None,
+        "works_monday": worker.works_monday,
+        "works_tuesday": worker.works_tuesday,
+        "works_wednesday": worker.works_wednesday,
+        "works_thursday": worker.works_thursday,
+        "works_friday": worker.works_friday,
+        "works_saturday": worker.works_saturday,
+        "works_sunday": worker.works_sunday
     }
 
 

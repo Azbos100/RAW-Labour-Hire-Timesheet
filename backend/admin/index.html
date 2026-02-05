@@ -586,6 +586,81 @@
         </div>
     </div>
 
+    <!-- Worker Schedule Modal -->
+    <div id="schedule-modal" class="modal">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4">
+            <div class="border-b px-6 py-4 flex justify-between items-center">
+                <h2 class="text-xl font-bold">Shift Schedule</h2>
+                <button onclick="closeModal('schedule-modal')" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            <form id="schedule-form" onsubmit="saveSchedule(event)" class="p-6 space-y-4">
+                <input type="hidden" id="schedule-worker-id">
+                <p class="text-gray-600 mb-4">Worker: <strong id="schedule-worker-name"></strong></p>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Shift Start</label>
+                        <input type="time" id="schedule-start-time" class="w-full border rounded-lg px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Shift End</label>
+                        <input type="time" id="schedule-end-time" class="w-full border rounded-lg px-3 py-2">
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Work Days</label>
+                    <div class="grid grid-cols-7 gap-1">
+                        <label class="flex flex-col items-center p-2 border rounded cursor-pointer hover:bg-gray-50">
+                            <input type="checkbox" id="schedule-mon" class="mb-1">
+                            <span class="text-xs">Mon</span>
+                        </label>
+                        <label class="flex flex-col items-center p-2 border rounded cursor-pointer hover:bg-gray-50">
+                            <input type="checkbox" id="schedule-tue" class="mb-1">
+                            <span class="text-xs">Tue</span>
+                        </label>
+                        <label class="flex flex-col items-center p-2 border rounded cursor-pointer hover:bg-gray-50">
+                            <input type="checkbox" id="schedule-wed" class="mb-1">
+                            <span class="text-xs">Wed</span>
+                        </label>
+                        <label class="flex flex-col items-center p-2 border rounded cursor-pointer hover:bg-gray-50">
+                            <input type="checkbox" id="schedule-thu" class="mb-1">
+                            <span class="text-xs">Thu</span>
+                        </label>
+                        <label class="flex flex-col items-center p-2 border rounded cursor-pointer hover:bg-gray-50">
+                            <input type="checkbox" id="schedule-fri" class="mb-1">
+                            <span class="text-xs">Fri</span>
+                        </label>
+                        <label class="flex flex-col items-center p-2 border rounded cursor-pointer hover:bg-gray-50">
+                            <input type="checkbox" id="schedule-sat" class="mb-1">
+                            <span class="text-xs">Sat</span>
+                        </label>
+                        <label class="flex flex-col items-center p-2 border rounded cursor-pointer hover:bg-gray-50">
+                            <input type="checkbox" id="schedule-sun" class="mb-1">
+                            <span class="text-xs">Sun</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <p class="text-sm text-gray-500">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    SMS reminders will only be sent on work days, after shift start (clock-in) or after shift end (clock-out).
+                </p>
+                
+                <div class="flex gap-3 pt-4">
+                    <button type="button" onclick="closeModal('schedule-modal')" class="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50">
+                        Cancel
+                    </button>
+                    <button type="submit" class="flex-1 px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800">
+                        Save Schedule
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Add Worker Modal -->
     <div id="add-worker-modal" class="modal">
         <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
@@ -1075,6 +1150,9 @@
                         <button onclick="viewWorker(${w.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="View">
                             <i class="fas fa-eye"></i>
                         </button>
+                        <button onclick="editSchedule(${w.id}, '${w.first_name} ${w.surname}')" class="text-purple-600 hover:text-purple-800 mr-2" title="Shift Schedule">
+                            <i class="fas fa-clock"></i>
+                        </button>
                         ${w.is_active ? `
                             <button onclick="deactivateWorker(${w.id})" class="text-red-600 hover:text-red-800" title="Deactivate">
                                 <i class="fas fa-user-slash"></i>
@@ -1093,6 +1171,64 @@
             const select = document.getElementById('filter-worker');
             select.innerHTML = '<option value="">All Workers</option>' +
                 allWorkers.map(w => `<option value="${w.id}">${w.first_name} ${w.surname}</option>`).join('');
+        }
+
+        async function editSchedule(workerId, workerName) {
+            document.getElementById('schedule-worker-id').value = workerId;
+            document.getElementById('schedule-worker-name').textContent = workerName;
+            
+            // Find worker in allWorkers array
+            const worker = allWorkers.find(w => w.id === workerId);
+            if (worker) {
+                document.getElementById('schedule-start-time').value = worker.shift_start_time || '';
+                document.getElementById('schedule-end-time').value = worker.shift_end_time || '';
+                document.getElementById('schedule-mon').checked = worker.works_monday !== false;
+                document.getElementById('schedule-tue').checked = worker.works_tuesday !== false;
+                document.getElementById('schedule-wed').checked = worker.works_wednesday !== false;
+                document.getElementById('schedule-thu').checked = worker.works_thursday !== false;
+                document.getElementById('schedule-fri').checked = worker.works_friday !== false;
+                document.getElementById('schedule-sat').checked = worker.works_saturday === true;
+                document.getElementById('schedule-sun').checked = worker.works_sunday === true;
+            }
+            
+            openModal('schedule-modal');
+        }
+
+        async function saveSchedule(event) {
+            event.preventDefault();
+            
+            const workerId = document.getElementById('schedule-worker-id').value;
+            const data = {
+                shift_start_time: document.getElementById('schedule-start-time').value || null,
+                shift_end_time: document.getElementById('schedule-end-time').value || null,
+                works_monday: document.getElementById('schedule-mon').checked,
+                works_tuesday: document.getElementById('schedule-tue').checked,
+                works_wednesday: document.getElementById('schedule-wed').checked,
+                works_thursday: document.getElementById('schedule-thu').checked,
+                works_friday: document.getElementById('schedule-fri').checked,
+                works_saturday: document.getElementById('schedule-sat').checked,
+                works_sunday: document.getElementById('schedule-sun').checked
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/users/admin/workers/${workerId}/schedule`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                if (response.ok) {
+                    closeModal('schedule-modal');
+                    await loadWorkers();
+                    alert('Schedule saved successfully!');
+                } else {
+                    const result = await response.json();
+                    alert(result.detail || 'Error saving schedule');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error saving schedule');
+            }
         }
 
         function openAddWorkerModal() {

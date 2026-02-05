@@ -86,6 +86,17 @@ class User(Base):
     reset_token_expires_at = Column(DateTime)
     reset_token_used_at = Column(DateTime)
     
+    # Shift Schedule (for SMS reminders)
+    shift_start_time = Column(Time)  # Expected shift start time (e.g., 07:00)
+    shift_end_time = Column(Time)    # Expected shift end time (e.g., 15:30)
+    works_monday = Column(Boolean, default=True)
+    works_tuesday = Column(Boolean, default=True)
+    works_wednesday = Column(Boolean, default=True)
+    works_thursday = Column(Boolean, default=True)
+    works_friday = Column(Boolean, default=True)
+    works_saturday = Column(Boolean, default=False)
+    works_sunday = Column(Boolean, default=False)
+    
     # Pay Rates (for MYOB payroll)
     base_pay_rate = Column(Float, default=0)      # Normal hourly rate
     overtime_pay_rate = Column(Float, default=0)  # Overtime rate (1.5x typically)

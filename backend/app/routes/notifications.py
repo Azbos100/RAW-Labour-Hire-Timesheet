@@ -178,14 +178,48 @@ async def send_sms_to_worker(
 # ==================== SCHEDULED REMINDER ENDPOINTS ====================
 # These should be called by a cron job or scheduler
 
+def worker_should_work_today(worker, today: date) -> bool:
+    """Check if worker is scheduled to work today based on their schedule"""
+    day_of_week = today.weekday()  # 0=Monday, 6=Sunday
+    day_map = {
+        0: worker.works_monday,
+        1: worker.works_tuesday,
+        2: worker.works_wednesday,
+        3: worker.works_thursday,
+        4: worker.works_friday,
+        5: worker.works_saturday,
+        6: worker.works_sunday
+    }
+    # Default to True if not set (backwards compatibility)
+    works_today = day_map.get(day_of_week)
+    return works_today if works_today is not None else True
+
+
+def worker_shift_started(worker, current_time: time) -> bool:
+    """Check if worker's shift should have started by now"""
+    if not worker.shift_start_time:
+        return True  # No shift time set, assume they should be working
+    return current_time >= worker.shift_start_time
+
+
+def worker_shift_ended(worker, current_time: time) -> bool:
+    """Check if worker's shift should have ended by now"""
+    if not worker.shift_end_time:
+        return True  # No shift time set, assume shift ended
+    return current_time >= worker.shift_end_time
+
+
 @router.post("/check-clock-in-reminders")
 async def check_clock_in_reminders(
     db: AsyncSession = Depends(get_db)
 ):
     """
     Check for workers who haven't clocked in and send reminders.
-    Call this endpoint via cron job at the reminder time (e.g., 7:00 AM)
+    Only sends to workers whose shift has started based on their individual schedule.
     """
+    import pytz
+    from datetime import datetime as dt
+    
     # Get notification settings
     settings_result = await db.execute(select(NotificationSettings).limit(1))
     settings = settings_result.scalar_one_or_none()
@@ -196,7 +230,11 @@ async def check_clock_in_reminders(
     if settings and not settings.sms_enabled:
         return {"message": "SMS notifications disabled", "sent": 0}
     
-    today = date.today()
+    # Get current time in Sydney timezone
+    sydney_tz = pytz.timezone('Australia/Sydney')
+    now = dt.now(sydney_tz)
+    today = now.date()
+    current_time = now.time()
     
     # Get all active workers
     workers_result = await db.execute(
@@ -205,10 +243,21 @@ async def check_clock_in_reminders(
     workers = workers_result.scalars().all()
     
     sent_count = 0
+    skipped_count = 0
     errors = []
     
     for worker in workers:
         if not worker.phone:
+            continue
+        
+        # Check if worker should work today
+        if not worker_should_work_today(worker, today):
+            skipped_count += 1
+            continue
+        
+        # Check if worker's shift has started
+        if not worker_shift_started(worker, current_time):
+            skipped_count += 1
             continue
         
         # Check if worker has clocked in today
@@ -239,6 +288,7 @@ async def check_clock_in_reminders(
     return {
         "message": f"Clock-in reminders sent",
         "sent": sent_count,
+        "skipped": skipped_count,
         "errors": errors if errors else None
     }
 
@@ -249,8 +299,11 @@ async def check_clock_out_reminders(
 ):
     """
     Check for workers who clocked in but haven't clocked out and send reminders.
-    Call this endpoint via cron job at the reminder time (e.g., 5:00 PM)
+    Only sends to workers whose shift has ended based on their individual schedule.
     """
+    import pytz
+    from datetime import datetime as dt
+    
     # Get notification settings
     settings_result = await db.execute(select(NotificationSettings).limit(1))
     settings = settings_result.scalar_one_or_none()
@@ -261,7 +314,11 @@ async def check_clock_out_reminders(
     if settings and not settings.sms_enabled:
         return {"message": "SMS notifications disabled", "sent": 0}
     
-    today = date.today()
+    # Get current time in Sydney timezone
+    sydney_tz = pytz.timezone('Australia/Sydney')
+    now = dt.now(sydney_tz)
+    today = now.date()
+    current_time = now.time()
     
     # Get all timesheet entries for today that have clock-in but no clock-out
     entries_result = await db.execute(
@@ -279,10 +336,16 @@ async def check_clock_out_reminders(
     entries = entries_result.all()
     
     sent_count = 0
+    skipped_count = 0
     errors = []
     
     for entry, worker in entries:
         if not worker.phone:
+            continue
+        
+        # Check if worker's shift has ended
+        if not worker_shift_ended(worker, current_time):
+            skipped_count += 1
             continue
         
         # Send reminder
@@ -300,6 +363,7 @@ async def check_clock_out_reminders(
     return {
         "message": f"Clock-out reminders sent",
         "sent": sent_count,
+        "skipped": skipped_count,
         "errors": errors if errors else None
     }
 
