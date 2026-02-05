@@ -23,6 +23,24 @@ from ..services.sms import (
 router = APIRouter()
 
 
+@router.get("/test-sms/{phone}")
+async def test_sms(phone: str):
+    """Test SMS sending - debug endpoint"""
+    from ..services.sms import send_sms, format_phone_number, TWILIO_ACCOUNT_SID, TWILIO_PHONE_NUMBER
+    
+    formatted = format_phone_number(phone)
+    
+    result = await send_sms(phone, "Test message from RAW Labour Hire")
+    
+    return {
+        "original_phone": phone,
+        "formatted_phone": formatted,
+        "twilio_configured": bool(TWILIO_ACCOUNT_SID),
+        "twilio_from_number": TWILIO_PHONE_NUMBER,
+        "result": result
+    }
+
+
 class NotificationSettingsUpdate(BaseModel):
     clock_in_reminder_enabled: bool = True
     clock_in_reminder_time: str = "07:00"  # HH:MM format
