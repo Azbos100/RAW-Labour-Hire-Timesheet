@@ -14,6 +14,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
@@ -87,8 +88,13 @@ export default function ResetPasswordScreen({ navigation }: ResetPasswordScreenP
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <View style={styles.content}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.title}>Reset your password</Text>
         <Text style={styles.subtitle}>
           Enter your email and we'll send a 6-digit reset code to your phone via SMS.
@@ -194,7 +200,7 @@ export default function ResetPasswordScreen({ navigation }: ResetPasswordScreenP
             <Text style={styles.backLinkText}>Back to login</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -204,9 +210,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#1A1A1A',
   },
-  content: {
-    flex: 1,
+  scrollContent: {
+    flexGrow: 1,
     padding: 24,
+    paddingBottom: 40,
     justifyContent: 'center',
   },
   title: {
