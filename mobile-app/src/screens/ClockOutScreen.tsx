@@ -123,17 +123,19 @@ export default function ClockOutScreen({ navigation }: ClockOutScreenProps) {
         user_id: user?.id,
       });
 
-      const { ordinary_hours, overtime_hours, total_hours } = response.data;
+      const { entry_id, ordinary_hours, overtime_hours, total_hours, docket_number } = response.data;
+      
+      const hoursWorked = `${total_hours}h (Ordinary: ${ordinary_hours}h, Overtime: ${overtime_hours}h)`;
 
-      Alert.alert(
-        'Clocked Out!',
-        `Hours Worked:\n• Ordinary: ${ordinary_hours}h\n• Overtime: ${overtime_hours}h\n• Total: ${total_hours}h`,
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
+      // Navigate to supervisor signature screen instead of showing alert
+      navigation.replace('SupervisorSignature', {
+        entryId: entry_id,
+        hoursWorked: hoursWorked,
+        docketNumber: docket_number || 'N/A',
+      });
     } catch (error: any) {
       const message = error.response?.data?.detail || 'Failed to clock out. Please try again.';
       Alert.alert('Error', message);
-    } finally {
       setIsSubmitting(false);
     }
   };

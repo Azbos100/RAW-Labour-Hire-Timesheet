@@ -8,8 +8,16 @@ from sqlalchemy import select
 from pydantic import BaseModel
 from datetime import datetime, date, timedelta
 from typing import Optional, List
+import pytz
 
 from ..database import get_db
+
+# Australian Eastern Time
+SYDNEY_TZ = pytz.timezone('Australia/Sydney')
+
+def get_sydney_now():
+    """Get current time in Australian Eastern Time"""
+    return datetime.now(SYDNEY_TZ)
 from ..models import User, Timesheet, TimesheetEntry, TimesheetStatus, InjuryStatus, Client
 from .auth import get_current_user
 
@@ -170,7 +178,8 @@ async def get_current_timesheet(
     db: AsyncSession = Depends(get_db)
 ):
     """Get the current week's timesheet for the logged in worker"""
-    today = date.today()
+    # Use Australian Eastern Time
+    today = get_sydney_now().date()
     # Get Monday of current week
     monday = today - timedelta(days=today.weekday())
     
@@ -350,10 +359,38 @@ async def submit_entry(
     
     await db.commit()
     
+    # Get timesheet and worker info for notification
+    timesheet_result = await db.execute(
+        select(Timesheet).where(Timesheet.id == entry.timesheet_id)
+    )
+    timesheet = timesheet_result.scalar_one_or_none()
+    
+    worker_result = await db.execute(
+        select(User).where(User.id == timesheet.worker_id)
+    )
+    worker = worker_result.scalar_one_or_none()
+    worker_name = f"{worker.first_name} {worker.surname}" if worker else "Unknown"
+    
+    # Send email notification
+    try:
+        await send_entry_notification(
+            worker_name=worker_name,
+            docket_number=timesheet.docket_number if timesheet else "N/A",
+            company_name=request.company_name,
+            supervisor_name=request.supervisor_name,
+            supervisor_contact=request.supervisor_contact,
+            entry_date=entry.entry_date.isoformat(),
+            total_hours=entry.total_hours or 0,
+        )
+    except Exception as e:
+        # Log error but don't fail the submission
+        print(f"Failed to send entry notification: {e}")
+    
     return {
         "message": "Entry submitted for approval",
         "entry_id": entry.id,
         "entry_date": entry.entry_date.isoformat(),
+        "docket_number": timesheet.docket_number if timesheet else None,
         "status": entry.entry_status
     }
 
@@ -422,6 +459,97 @@ async def send_timesheet_notification(
                 <td style="padding: 8px; border-bottom: 1px solid #ddd;">{supervisor_contact}</td>
             </tr>
         </table>
+        
+        <p style="margin-top: 20px; color: #666; font-size: 12px;">
+            This is an automated message from the RAW Labour Hire Timesheet App.
+        </p>
+    </body>
+    </html>
+    """
+    
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = smtp_user
+    msg["To"] = notification_email
+    
+    msg.attach(MIMEText(html_body, "html"))
+    
+    with smtplib.SMTP(smtp_host, smtp_port) as server:
+        server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.sendmail(smtp_user, notification_email, msg.as_string())
+
+
+async def send_entry_notification(
+    worker_name: str,
+    docket_number: str,
+    company_name: str,
+    supervisor_name: str,
+    supervisor_contact: str,
+    entry_date: str,
+    total_hours: float,
+):
+    """Send email notification when daily entry is submitted"""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    import os
+    
+    smtp_host = os.getenv("SMTP_HOST", "smtp.office365.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "accounts@rawlabourhire.com")
+    smtp_password = os.getenv("SMTP_PASSWORD", "")
+    notification_email = os.getenv("NOTIFICATION_EMAIL", "accounts@rawlabourhire.com")
+    
+    if not smtp_password:
+        print("SMTP password not configured, skipping email")
+        return
+    
+    subject = f"Timesheet Entry Submitted - {worker_name} - #{docket_number} - {entry_date}"
+    
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <h2 style="color: #1E3A8A;">Daily Timesheet Entry Submitted</h2>
+        <p>A worker has clocked out and submitted their daily timesheet entry for approval.</p>
+        
+        <table style="border-collapse: collapse; width: 100%; max-width: 500px;">
+            <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Docket Number:</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">#{docket_number}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Worker:</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{worker_name}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Date:</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{entry_date}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Hours Worked:</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{total_hours:.1f} hours</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Host Company:</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{company_name}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Supervisor:</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{supervisor_name}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Supervisor Phone:</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{supervisor_contact}</td>
+            </tr>
+        </table>
+        
+        <p style="margin-top: 20px;">
+            <a href="https://raw-labour-hire-timesheet-production.up.railway.app/admin/" 
+               style="background-color: #1E3A8A; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+                Review in Admin Dashboard
+            </a>
+        </p>
         
         <p style="margin-top: 20px; color: #666; font-size: 12px;">
             This is an automated message from the RAW Labour Hire Timesheet App.

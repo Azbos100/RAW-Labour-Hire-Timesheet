@@ -18,6 +18,7 @@ import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import ClockInScreen from './src/screens/ClockInScreen';
 import ClockOutScreen from './src/screens/ClockOutScreen';
+import SupervisorSignatureScreen from './src/screens/SupervisorSignatureScreen';
 import TimesheetsScreen from './src/screens/TimesheetsScreen';
 import TimesheetDetailScreen from './src/screens/TimesheetDetailScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
@@ -38,6 +39,11 @@ export type RootStackParamList = {
   Main: undefined;
   ClockIn: undefined;
   ClockOut: undefined;
+  SupervisorSignature: { 
+    entryId: number; 
+    hoursWorked: string; 
+    docketNumber: string;
+  };
   TimesheetDetail: { timesheetId: number };
 };
 
@@ -170,6 +176,14 @@ function AppNavigator() {
             name="ClockOut" 
             component={ClockOutScreen}
             options={{ title: 'Clock Out' }}
+          />
+          <Stack.Screen 
+            name="SupervisorSignature" 
+            component={SupervisorSignatureScreen}
+            options={{ 
+              title: 'Supervisor Sign-Off',
+              headerBackVisible: false, // Prevent going back without signing
+            }}
           />
           <Stack.Screen 
             name="TimesheetDetail" 

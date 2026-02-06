@@ -11,8 +11,16 @@ from datetime import datetime, date, timedelta
 from typing import Optional
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
+import pytz
 
 from ..database import get_db
+
+# Australian Eastern Time
+SYDNEY_TZ = pytz.timezone('Australia/Sydney')
+
+def get_sydney_now():
+    """Get current time in Australian Eastern Time"""
+    return datetime.now(SYDNEY_TZ)
 from ..models import User, TimesheetEntry, Timesheet, JobSite, TimesheetStatus
 from .auth import get_current_user
 
@@ -117,7 +125,8 @@ async def get_clock_status(
     if not current_user:
         return ClockStatusResponse(is_clocked_in=False, hours_worked_today=0)
     
-    today = date.today()
+    # Use Australian Eastern Time
+    today = get_sydney_now().date()
     week_start, week_end = get_week_dates(today)
     
     # Get all entries for this week
@@ -150,8 +159,10 @@ async def get_clock_status(
     hours_today = sum(e.total_hours or 0 for e in today_completed)
     
     if active_entry:
-        # Add current session hours
-        hours_so_far = (datetime.utcnow() - active_entry.clock_in_time).total_seconds() / 3600
+        # Add current session hours (use Sydney time)
+        now_sydney = get_sydney_now()
+        clock_in_aware = active_entry.clock_in_time.replace(tzinfo=SYDNEY_TZ) if active_entry.clock_in_time.tzinfo is None else active_entry.clock_in_time
+        hours_so_far = (now_sydney - clock_in_aware).total_seconds() / 3600
         hours_today += hours_so_far
         
         return ClockStatusResponse(
@@ -245,8 +256,10 @@ async def clock_in(
     if not current_user:
         raise HTTPException(status_code=400, detail="No user found")
     
-    now = datetime.utcnow()
-    today = now.date()
+    # Use Australian Eastern Time for all clock operations
+    now_sydney = get_sydney_now()
+    now = now_sydney.replace(tzinfo=None)  # Store as naive datetime for DB compatibility
+    today = now_sydney.date()
     week_start, week_end = get_week_dates(today)
     
     # Check if already clocked in
@@ -304,11 +317,14 @@ async def clock_in(
     timesheet = result.scalar_one_or_none()
     
     if not timesheet:
-        # Generate docket number
-        result = await db.execute(select(Timesheet).order_by(Timesheet.id.desc()).limit(1))
-        last_timesheet = result.scalar_one_or_none()
-        last_docket = int(last_timesheet.docket_number) if last_timesheet else 12537
-        new_docket = str(last_docket + 1)
+        # Generate unique consecutive docket number
+        # Use MAX to get highest existing docket number to ensure no duplicates
+        from sqlalchemy import func, cast, Integer
+        result = await db.execute(
+            select(func.max(cast(Timesheet.docket_number, Integer)))
+        )
+        max_docket = result.scalar()
+        new_docket = str((max_docket or 12537) + 1)
         
         timesheet = Timesheet(
             docket_number=new_docket,
@@ -375,8 +391,10 @@ async def clock_out(
     if not current_user:
         raise HTTPException(status_code=400, detail="No user found")
     
-    now = datetime.utcnow()
-    today = now.date()
+    # Use Australian Eastern Time for all clock operations
+    now_sydney = get_sydney_now()
+    now = now_sydney.replace(tzinfo=None)  # Store as naive datetime for DB compatibility
+    today = now_sydney.date()
     
     # Find active clock-in entry
     result = await db.execute(
@@ -442,6 +460,7 @@ async def clock_out(
     return {
         "message": "Successfully clocked out",
         "entry_id": entry.id,
+        "docket_number": timesheet.docket_number,
         "clock_in_time": entry.clock_in_time.isoformat(),
         "clock_out_time": now.isoformat(),
         "clock_out_address": clock_out_address,
@@ -461,7 +480,9 @@ async def get_clock_history(
     """
     Get clock in/out history for the user.
     """
-    start_date = date.today() - timedelta(days=days)
+    # Use Australian Eastern Time
+    today = get_sydney_now().date()
+    start_date = today - timedelta(days=days)
     
     result = await db.execute(
         select(TimesheetEntry)
