@@ -475,3 +475,57 @@ async def confirm_password_reset(
     await db.commit()
 
     return {"message": "Password reset successful"}
+
+
+# === Admin Dashboard Login ===
+
+class AdminLogin(BaseModel):
+    username: str
+    password: str
+
+
+@router.post("/admin/login")
+async def admin_login(data: AdminLogin):
+    """Login endpoint for admin dashboard"""
+    # Get admin credentials from environment variables
+    # Default credentials for development - CHANGE IN PRODUCTION
+    admin_username = os.getenv("ADMIN_USERNAME", "admin")
+    admin_password = os.getenv("ADMIN_PASSWORD", "RAWadmin2024!")
+    
+    if data.username == admin_username and data.password == admin_password:
+        # Generate a simple token
+        token = jwt.encode(
+            {
+                "sub": "admin",
+                "type": "admin",
+                "exp": datetime.utcnow() + timedelta(hours=24)
+            },
+            SECRET_KEY,
+            algorithm=ALGORITHM
+        )
+        return {
+            "success": True,
+            "token": token,
+            "username": admin_username
+        }
+    
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid username or password"
+    )
+
+
+@router.get("/admin/verify")
+async def verify_admin_token(token: str):
+    """Verify admin token is valid"""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") == "admin":
+            return {"valid": True, "username": payload.get("sub")}
+    except JWTError:
+        pass
+    
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired token"
+    )
