@@ -489,13 +489,22 @@ async def admin_dashboard():
     return FileResponse(admin_path, media_type="text/html")
 
 
+@app.get("/admin/")
+async def admin_dashboard_slash():
+    """Serve the admin dashboard with trailing slash"""
+    admin_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "admin", "index.html")
+    return FileResponse(admin_path, media_type="text/html")
+
+
 @app.get("/admin/{filename}")
 async def admin_static(filename: str):
     """Serve static files for admin dashboard"""
     file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "admin", filename)
     if os.path.exists(file_path):
         # Determine media type
-        if filename.endswith('.png'):
+        if filename.endswith('.html'):
+            media_type = "text/html"
+        elif filename.endswith('.png'):
             media_type = "image/png"
         elif filename.endswith('.jpg') or filename.endswith('.jpeg'):
             media_type = "image/jpeg"
