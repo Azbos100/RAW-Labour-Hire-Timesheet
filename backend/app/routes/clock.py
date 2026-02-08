@@ -161,13 +161,22 @@ async def get_clock_status(
     if active_entry:
         # Add current session hours (use Sydney time)
         now_sydney = get_sydney_now()
-        clock_in_aware = active_entry.clock_in_time.replace(tzinfo=SYDNEY_TZ) if active_entry.clock_in_time.tzinfo is None else active_entry.clock_in_time
+        # Use localize() for proper DST handling instead of replace()
+        if active_entry.clock_in_time.tzinfo is None:
+            clock_in_aware = SYDNEY_TZ.localize(active_entry.clock_in_time)
+        else:
+            clock_in_aware = active_entry.clock_in_time
         hours_so_far = (now_sydney - clock_in_aware).total_seconds() / 3600
+        # Ensure hours is not negative
+        hours_so_far = max(0, hours_so_far)
         hours_today += hours_so_far
+        
+        # Return timezone-aware ISO string for frontend
+        clock_in_time_aware = SYDNEY_TZ.localize(active_entry.clock_in_time) if active_entry.clock_in_time.tzinfo is None else active_entry.clock_in_time
         
         return ClockStatusResponse(
             is_clocked_in=True,
-            clock_in_time=active_entry.clock_in_time,
+            clock_in_time=clock_in_time_aware,
             clock_in_address=active_entry.clock_in_address,
             current_entry_id=active_entry.id,
             hours_worked_today=round(hours_today, 2),
@@ -204,7 +213,8 @@ async def toggle_overtime_mode(
     if not current_user:
         raise HTTPException(status_code=400, detail="No user found")
     
-    today = date.today()
+    # Use Australian Eastern Time
+    today = get_sydney_now().date()
     
     # Find active entry (clocked in but not out)
     result = await db.execute(
@@ -362,10 +372,11 @@ async def clock_in(
     await db.commit()
     await db.refresh(entry)
     
+    # Return timezone-aware ISO string for correct frontend display
     return {
         "message": "Successfully clocked in",
         "entry_id": entry.id,
-        "clock_in_time": now.isoformat(),
+        "clock_in_time": now_sydney.isoformat(),  # Include timezone info
         "clock_in_address": clock_in_address,
         "docket_number": timesheet.docket_number,
         "job_site": job_site.name if job_site else None
@@ -457,12 +468,15 @@ async def clock_out(
     
     await db.commit()
     
+    # Return timezone-aware ISO strings for correct frontend display
+    clock_in_time_aware = SYDNEY_TZ.localize(entry.clock_in_time) if entry.clock_in_time.tzinfo is None else entry.clock_in_time
+    
     return {
         "message": "Successfully clocked out",
         "entry_id": entry.id,
         "docket_number": timesheet.docket_number,
-        "clock_in_time": entry.clock_in_time.isoformat(),
-        "clock_out_time": now.isoformat(),
+        "clock_in_time": clock_in_time_aware.isoformat(),
+        "clock_out_time": now_sydney.isoformat(),  # Include timezone info
         "clock_out_address": clock_out_address,
         "ordinary_hours": ordinary_hours,
         "overtime_hours": overtime_hours,
