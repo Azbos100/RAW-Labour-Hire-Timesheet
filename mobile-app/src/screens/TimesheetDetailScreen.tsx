@@ -340,18 +340,8 @@ export default function TimesheetDetailScreen({ navigation, route }: TimesheetDe
         </View>
       </ScrollView>
 
-      {/* Submit Button (only for draft timesheets) */}
-      {timesheet.status === 'draft' && (
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={styles.submitButton}
-            onPress={() => setShowSubmitModal(true)}
-          >
-            <Ionicons name="send" size={20} color="#FFFFFF" />
-            <Text style={styles.submitButtonText}>Submit for Approval</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      {/* Note: Submit button removed - entries are now submitted automatically 
+          via the Supervisor Signature screen after each clock out */}
 
       {/* Submit Modal */}
       <Modal
