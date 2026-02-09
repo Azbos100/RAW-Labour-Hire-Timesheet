@@ -12,12 +12,12 @@ import pytz
 
 from ..database import get_db
 
-# Australian Eastern Time
-SYDNEY_TZ = pytz.timezone('Australia/Sydney')
+# Australian Eastern Time (Melbourne)
+MELBOURNE_TZ = pytz.timezone('Australia/Melbourne')
 
-def get_sydney_now():
-    """Get current time in Australian Eastern Time"""
-    return datetime.now(SYDNEY_TZ)
+def get_melbourne_now():
+    """Get current time in Melbourne, Australia (AEST/AEDT)"""
+    return datetime.now(MELBOURNE_TZ)
 from ..models import User, Timesheet, TimesheetEntry, TimesheetStatus, InjuryStatus, Client
 from .auth import get_current_user
 
@@ -179,7 +179,7 @@ async def get_current_timesheet(
 ):
     """Get the current week's timesheet for the logged in worker"""
     # Use Australian Eastern Time
-    today = get_sydney_now().date()
+    today = get_melbourne_now().date()
     # Get Monday of current week
     monday = today - timedelta(days=today.weekday())
     

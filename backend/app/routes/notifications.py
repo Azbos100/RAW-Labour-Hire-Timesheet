@@ -230,9 +230,9 @@ async def check_clock_in_reminders(
     if settings and not settings.sms_enabled:
         return {"message": "SMS notifications disabled", "sent": 0}
     
-    # Get current time in Sydney timezone
-    sydney_tz = pytz.timezone('Australia/Sydney')
-    now = dt.now(sydney_tz)
+    # Get current time in Melbourne timezone
+    melbourne_tz = pytz.timezone('Australia/Melbourne')
+    now = dt.now(melbourne_tz)
     today = now.date()
     current_time = now.time()
     
@@ -314,9 +314,9 @@ async def check_clock_out_reminders(
     if settings and not settings.sms_enabled:
         return {"message": "SMS notifications disabled", "sent": 0}
     
-    # Get current time in Sydney timezone
-    sydney_tz = pytz.timezone('Australia/Sydney')
-    now = dt.now(sydney_tz)
+    # Get current time in Melbourne timezone
+    melbourne_tz = pytz.timezone('Australia/Melbourne')
+    now = dt.now(melbourne_tz)
     today = now.date()
     current_time = now.time()
     

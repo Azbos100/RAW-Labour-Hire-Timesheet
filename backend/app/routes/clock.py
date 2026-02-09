@@ -15,12 +15,12 @@ import pytz
 
 from ..database import get_db
 
-# Australian Eastern Time
-SYDNEY_TZ = pytz.timezone('Australia/Sydney')
+# Australian Eastern Time (Melbourne)
+MELBOURNE_TZ = pytz.timezone('Australia/Melbourne')
 
-def get_sydney_now():
-    """Get current time in Australian Eastern Time"""
-    return datetime.now(SYDNEY_TZ)
+def get_melbourne_now():
+    """Get current time in Melbourne, Australia (AEST/AEDT)"""
+    return datetime.now(MELBOURNE_TZ)
 from ..models import User, TimesheetEntry, Timesheet, JobSite, TimesheetStatus
 from .auth import get_current_user
 
@@ -126,7 +126,7 @@ async def get_clock_status(
         return ClockStatusResponse(is_clocked_in=False, hours_worked_today=0)
     
     # Use Australian Eastern Time
-    today = get_sydney_now().date()
+    today = get_melbourne_now().date()
     week_start, week_end = get_week_dates(today)
     
     # Get all entries for this week
@@ -159,20 +159,20 @@ async def get_clock_status(
     hours_today = sum(e.total_hours or 0 for e in today_completed)
     
     if active_entry:
-        # Add current session hours (use Sydney time)
-        now_sydney = get_sydney_now()
+        # Add current session hours (use Melbourne time)
+        now_melb = get_melbourne_now()
         # Use localize() for proper DST handling instead of replace()
         if active_entry.clock_in_time.tzinfo is None:
-            clock_in_aware = SYDNEY_TZ.localize(active_entry.clock_in_time)
+            clock_in_aware = MELBOURNE_TZ.localize(active_entry.clock_in_time)
         else:
             clock_in_aware = active_entry.clock_in_time
-        hours_so_far = (now_sydney - clock_in_aware).total_seconds() / 3600
+        hours_so_far = (now_melb - clock_in_aware).total_seconds() / 3600
         # Ensure hours is not negative
         hours_so_far = max(0, hours_so_far)
         hours_today += hours_so_far
         
         # Return timezone-aware ISO string for frontend
-        clock_in_time_aware = SYDNEY_TZ.localize(active_entry.clock_in_time) if active_entry.clock_in_time.tzinfo is None else active_entry.clock_in_time
+        clock_in_time_aware = MELBOURNE_TZ.localize(active_entry.clock_in_time) if active_entry.clock_in_time.tzinfo is None else active_entry.clock_in_time
         
         return ClockStatusResponse(
             is_clocked_in=True,
@@ -214,7 +214,7 @@ async def toggle_overtime_mode(
         raise HTTPException(status_code=400, detail="No user found")
     
     # Use Australian Eastern Time
-    today = get_sydney_now().date()
+    today = get_melbourne_now().date()
     
     # Find active entry (clocked in but not out)
     result = await db.execute(
@@ -267,9 +267,9 @@ async def clock_in(
         raise HTTPException(status_code=400, detail="No user found")
     
     # Use Australian Eastern Time for all clock operations
-    now_sydney = get_sydney_now()
-    now = now_sydney.replace(tzinfo=None)  # Store as naive datetime for DB compatibility
-    today = now_sydney.date()
+    now_melb = get_melbourne_now()
+    now = now_melb.replace(tzinfo=None)  # Store as naive datetime for DB compatibility
+    today = now_melb.date()
     week_start, week_end = get_week_dates(today)
     
     # Check if already clocked in
@@ -376,7 +376,7 @@ async def clock_in(
     return {
         "message": "Successfully clocked in",
         "entry_id": entry.id,
-        "clock_in_time": now_sydney.isoformat(),  # Include timezone info
+        "clock_in_time": now_melb.isoformat(),  # Include timezone info
         "clock_in_address": clock_in_address,
         "docket_number": timesheet.docket_number,
         "job_site": job_site.name if job_site else None
@@ -403,9 +403,9 @@ async def clock_out(
         raise HTTPException(status_code=400, detail="No user found")
     
     # Use Australian Eastern Time for all clock operations
-    now_sydney = get_sydney_now()
-    now = now_sydney.replace(tzinfo=None)  # Store as naive datetime for DB compatibility
-    today = now_sydney.date()
+    now_melb = get_melbourne_now()
+    now = now_melb.replace(tzinfo=None)  # Store as naive datetime for DB compatibility
+    today = now_melb.date()
     
     # Find active clock-in entry
     result = await db.execute(
@@ -469,14 +469,14 @@ async def clock_out(
     await db.commit()
     
     # Return timezone-aware ISO strings for correct frontend display
-    clock_in_time_aware = SYDNEY_TZ.localize(entry.clock_in_time) if entry.clock_in_time.tzinfo is None else entry.clock_in_time
+    clock_in_time_aware = MELBOURNE_TZ.localize(entry.clock_in_time) if entry.clock_in_time.tzinfo is None else entry.clock_in_time
     
     return {
         "message": "Successfully clocked out",
         "entry_id": entry.id,
         "docket_number": timesheet.docket_number,
         "clock_in_time": clock_in_time_aware.isoformat(),
-        "clock_out_time": now_sydney.isoformat(),  # Include timezone info
+        "clock_out_time": now_melb.isoformat(),  # Include timezone info
         "clock_out_address": clock_out_address,
         "ordinary_hours": ordinary_hours,
         "overtime_hours": overtime_hours,
@@ -495,7 +495,7 @@ async def get_clock_history(
     Get clock in/out history for the user.
     """
     # Use Australian Eastern Time
-    today = get_sydney_now().date()
+    today = get_melbourne_now().date()
     start_date = today - timedelta(days=days)
     
     result = await db.execute(
