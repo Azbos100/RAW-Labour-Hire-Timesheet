@@ -725,16 +725,18 @@
                     <div id="current-assignment-text" class="text-sm text-gray-600"></div>
                 </div>
             </form>
-            <div class="sticky bottom-0 bg-white border-t px-6 py-4 flex gap-4">
-                <button type="button" onclick="clearAssignment()" class="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50">
-                    Clear Assignment
-                </button>
-                <button type="button" onclick="closeModal('assign-job-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-50">
-                    Cancel
-                </button>
-                <button type="button" onclick="document.getElementById('assign-job-form').requestSubmit()" class="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700">
+            <div class="bg-white border-t px-6 py-4 space-y-3">
+                <button type="button" onclick="document.getElementById('assign-job-form').requestSubmit()" class="w-full px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium">
                     Assign Job
                 </button>
+                <div class="flex gap-3">
+                    <button type="button" onclick="clearAssignment()" class="flex-1 px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50">
+                        Clear Assignment
+                    </button>
+                    <button type="button" onclick="closeModal('assign-job-modal')" class="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50">
+                        Cancel
+                    </button>
+                </div>
             </div>
         </div>
     </div>
