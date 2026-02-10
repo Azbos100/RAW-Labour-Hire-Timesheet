@@ -113,6 +113,9 @@ class User(Base):
     assignment_start_time = Column(String(10))  # Start time for the shift (e.g., "10:00")
     assigned_at = Column(DateTime)  # When the assignment was made
     
+    # Push Notifications
+    push_token = Column(String(255))  # Expo push token for notifications
+    
     # Relationships
     timesheets = relationship(
         "Timesheet",

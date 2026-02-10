@@ -103,6 +103,14 @@ async def lifespan(app: FastAPI):
             """))
         except Exception as e:
             print(f"Migration note (job assignment): {e}")
+        
+        # Push notification token column
+        try:
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS push_token VARCHAR(255);
+            """))
+        except Exception as e:
+            print(f"Migration note (push_token): {e}")
 
     # Seed a default client/job site if none exist
     async with AsyncSessionLocal() as session:

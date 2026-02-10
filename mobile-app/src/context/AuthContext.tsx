@@ -6,6 +6,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import api, { setAuthToken } from '../services/api';
+import { registerForPushNotificationsAsync, savePushToken } from '../services/notifications';
 
 interface User {
   id: number;
@@ -92,6 +93,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Update state
       setToken(access_token);
       setUser(userData);
+
+      // Register for push notifications
+      registerForPushNotificationsAsync().then(async (pushToken) => {
+        if (pushToken && userData.id) {
+          await savePushToken(userData.id, pushToken);
+        }
+      }).catch(err => console.warn('Push notification setup failed:', err));
     } catch (error: any) {
       const message = error.response?.data?.detail || 'Login failed';
       throw new Error(message);

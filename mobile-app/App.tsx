@@ -3,19 +3,25 @@
  * Main entry point with navigation
  */
 
-import React, { useState, useEffect } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useState, useEffect, useRef } from 'react';
+import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
+import * as Notifications from 'expo-notifications';
+import { 
+  addNotificationReceivedListener, 
+  addNotificationResponseReceivedListener,
+  removeNotificationSubscription 
+} from './src/services/notifications';
 
 // Screens
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
-import DashboardScreen from './src/screens/DashboardScreen';
+import MyJobsScreen from './src/screens/MyJobsScreen';
 import ClockInScreen from './src/screens/ClockInScreen';
 import ClockOutScreen from './src/screens/ClockOutScreen';
 import SupervisorSignatureScreen from './src/screens/SupervisorSignatureScreen';
@@ -48,9 +54,9 @@ export type RootStackParamList = {
 };
 
 export type MainTabParamList = {
-  Dashboard: undefined;
+  MyJobs: undefined;
   Timesheets: undefined;
-  Induction: undefined;
+  Inductions: undefined;
   Tickets: undefined;
   Profile: undefined;
 };
@@ -65,11 +71,11 @@ function MainTabs() {
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap;
 
-          if (route.name === 'Dashboard') {
-            iconName = focused ? 'home' : 'home-outline';
+          if (route.name === 'MyJobs') {
+            iconName = focused ? 'briefcase' : 'briefcase-outline';
           } else if (route.name === 'Timesheets') {
             iconName = focused ? 'document-text' : 'document-text-outline';
-          } else if (route.name === 'Induction') {
+          } else if (route.name === 'Inductions') {
             iconName = focused ? 'shield-checkmark' : 'shield-checkmark-outline';
           } else if (route.name === 'Tickets') {
             iconName = focused ? 'card' : 'card-outline';
@@ -93,9 +99,9 @@ function MainTabs() {
       })}
     >
       <Tab.Screen 
-        name="Dashboard" 
-        component={DashboardScreen}
-        options={{ title: 'RAW Timesheet' }}
+        name="MyJobs" 
+        component={MyJobsScreen}
+        options={{ title: 'My Jobs' }}
       />
       <Tab.Screen 
         name="Timesheets" 
@@ -103,9 +109,9 @@ function MainTabs() {
         options={{ title: 'My Timesheets' }}
       />
       <Tab.Screen 
-        name="Induction" 
+        name="Inductions" 
         component={InductionScreen}
-        options={{ title: 'Induction' }}
+        options={{ title: 'Inductions' }}
       />
       <Tab.Screen 
         name="Tickets" 
@@ -115,7 +121,7 @@ function MainTabs() {
       <Tab.Screen 
         name="Profile" 
         component={ProfileScreen}
-        options={{ title: 'Profile' }}
+        options={{ title: 'My Profile' }}
       />
     </Tab.Navigator>
   );
@@ -197,9 +203,41 @@ function AppNavigator() {
 }
 
 export default function App() {
+  const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
+  const notificationListener = useRef<Notifications.Subscription>();
+  const responseListener = useRef<Notifications.Subscription>();
+
+  useEffect(() => {
+    // Listen for incoming notifications while app is in foreground
+    notificationListener.current = addNotificationReceivedListener((notification) => {
+      console.log('Notification received:', notification);
+    });
+
+    // Listen for notification taps (when user interacts with notification)
+    responseListener.current = addNotificationResponseReceivedListener((response) => {
+      console.log('Notification tapped:', response);
+      const data = response.notification.request.content.data;
+      
+      // Handle navigation based on notification type
+      if (data?.type === 'job_assignment') {
+        // Navigate to MyJobs tab when job assignment notification is tapped
+        navigationRef.current?.navigate('Main' as any);
+      }
+    });
+
+    return () => {
+      if (notificationListener.current) {
+        removeNotificationSubscription(notificationListener.current);
+      }
+      if (responseListener.current) {
+        removeNotificationSubscription(responseListener.current);
+      }
+    };
+  }, []);
+
   return (
     <AuthProvider>
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef}>
         <StatusBar style="light" />
         <AppNavigator />
       </NavigationContainer>

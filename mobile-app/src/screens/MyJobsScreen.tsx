@@ -1,0 +1,498 @@
+/**
+ * My Jobs Screen
+ * Display assigned & accepted jobs for the week with clock in/out functionality
+ */
+
+import React, { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
+import { RootStackParamList } from '../../App';
+import { COLORS } from '../constants/colors';
+import { useAuth } from '../context/AuthContext';
+import { clockAPI, assignmentAPI } from '../services/api';
+
+type MyJobsScreenProps = {
+  navigation: NativeStackNavigationProp<RootStackParamList>;
+};
+
+interface ClockStatus {
+  is_clocked_in: boolean;
+  clock_in_time?: string;
+  clock_in_address?: string;
+  hours_worked_today: number;
+  overtime_mode: boolean;
+}
+
+interface JobAssignment {
+  job_site_id: number;
+  job_site_name: string;
+  job_site_address: string;
+  assignment_date: string | null;
+  start_time: string | null;
+  assigned_at: string | null;
+  accepted: boolean | null;
+}
+
+export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
+  const { user } = useAuth();
+  const [clockStatus, setClockStatus] = useState<ClockStatus | null>(null);
+  const [assignment, setAssignment] = useState<JobAssignment | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [respondingAssignment, setRespondingAssignment] = useState(false);
+
+  const fetchData = async () => {
+    try {
+      const [clockRes, assignRes] = await Promise.all([
+        clockAPI.getStatus(user?.id),
+        assignmentAPI.getAssignment(user?.id),
+      ]);
+      setClockStatus(clockRes.data);
+      setAssignment(assignRes.data.assignment || null);
+    } catch (error) {
+      console.warn('Error fetching data:', error);
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [])
+  );
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchData();
+  };
+
+  const respondToAssignment = async (accepted: boolean) => {
+    if (!user?.id || respondingAssignment) return;
+    
+    setRespondingAssignment(true);
+    try {
+      await assignmentAPI.respondToAssignment(user.id, accepted);
+      setAssignment(prev => prev ? { ...prev, accepted } : null);
+    } catch (error) {
+      console.warn('Error responding to assignment:', error);
+    } finally {
+      setRespondingAssignment(false);
+    }
+  };
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-AU', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    });
+  };
+
+  const formatTime = (isoString?: string) => {
+    if (!isoString) return '--:--';
+    let dateString = isoString;
+    if (!isoString.endsWith('Z') && !isoString.includes('+') && !isoString.includes('-', 10)) {
+      dateString = isoString + 'Z';
+    }
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('en-AU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  };
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView
+      style={styles.container}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
+      {/* Clock Status Card */}
+      <View style={styles.clockCard}>
+        <View style={styles.clockHeader}>
+          <Ionicons 
+            name={clockStatus?.is_clocked_in ? 'time' : 'time-outline'} 
+            size={32} 
+            color={clockStatus?.is_clocked_in ? COLORS.success : COLORS.gray} 
+          />
+          <View style={styles.clockInfo}>
+            <Text style={styles.clockStatus}>
+              {clockStatus?.is_clocked_in ? 'Currently Clocked In' : 'Not Clocked In'}
+            </Text>
+            {clockStatus?.is_clocked_in && clockStatus.clock_in_time && (
+              <Text style={styles.clockTime}>
+                Since {formatTime(clockStatus.clock_in_time)}
+              </Text>
+            )}
+          </View>
+        </View>
+        
+        <TouchableOpacity
+          style={[
+            styles.clockButton,
+            clockStatus?.is_clocked_in ? styles.clockOutBtn : styles.clockInBtn
+          ]}
+          onPress={() => navigation.navigate(
+            clockStatus?.is_clocked_in ? 'ClockOut' : 'ClockIn'
+          )}
+        >
+          <Ionicons
+            name={clockStatus?.is_clocked_in ? 'log-out-outline' : 'log-in-outline'}
+            size={24}
+            color="#FFFFFF"
+          />
+          <Text style={styles.clockButtonText}>
+            {clockStatus?.is_clocked_in ? 'Clock Out' : 'Clock In'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Current/Upcoming Job Assignment */}
+      <Text style={styles.sectionTitle}>My Assigned Jobs</Text>
+      
+      {assignment ? (
+        <View style={styles.jobCard}>
+          <View style={styles.jobHeader}>
+            <View style={styles.jobIconContainer}>
+              <Ionicons name="briefcase" size={24} color={COLORS.primary} />
+            </View>
+            <View style={styles.jobTitleContainer}>
+              <Text style={styles.jobSiteName}>{assignment.job_site_name}</Text>
+              {assignment.accepted === true && (
+                <View style={styles.acceptedBadge}>
+                  <Ionicons name="checkmark-circle" size={14} color="#059669" />
+                  <Text style={styles.badgeText}>Accepted</Text>
+                </View>
+              )}
+              {assignment.accepted === false && (
+                <View style={styles.declinedBadge}>
+                  <Ionicons name="close-circle" size={14} color="#DC2626" />
+                  <Text style={styles.declinedBadgeText}>Declined</Text>
+                </View>
+              )}
+              {assignment.accepted === null && (
+                <View style={styles.pendingBadge}>
+                  <Ionicons name="hourglass" size={14} color="#D97706" />
+                  <Text style={styles.pendingBadgeText}>Pending Response</Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.jobDetails}>
+            {assignment.job_site_address && (
+              <View style={styles.detailRow}>
+                <Ionicons name="location-outline" size={18} color="#6B7280" />
+                <Text style={styles.detailText} numberOfLines={2}>
+                  {assignment.job_site_address}
+                </Text>
+              </View>
+            )}
+            
+            <View style={styles.detailRow}>
+              <Ionicons name="calendar-outline" size={18} color="#6B7280" />
+              <Text style={styles.detailText}>
+                {formatDate(assignment.assignment_date)}
+                {assignment.start_time ? ` at ${assignment.start_time}` : ''}
+              </Text>
+            </View>
+          </View>
+
+          {/* Accept/Decline buttons */}
+          {assignment.accepted === null && (
+            <View style={styles.actionButtons}>
+              <TouchableOpacity
+                style={styles.declineButton}
+                onPress={() => respondToAssignment(false)}
+                disabled={respondingAssignment}
+              >
+                {respondingAssignment ? (
+                  <ActivityIndicator size="small" color="#DC2626" />
+                ) : (
+                  <>
+                    <Ionicons name="close-circle-outline" size={20} color="#DC2626" />
+                    <Text style={styles.declineButtonText}>Decline</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.acceptButton}
+                onPress={() => respondToAssignment(true)}
+                disabled={respondingAssignment}
+              >
+                {respondingAssignment ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" />
+                    <Text style={styles.acceptButtonText}>Accept Job</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      ) : (
+        <View style={styles.noJobsCard}>
+          <Ionicons name="briefcase-outline" size={48} color="#9CA3AF" />
+          <Text style={styles.noJobsText}>No jobs assigned</Text>
+          <Text style={styles.noJobsSubtext}>
+            You'll be notified when a job is assigned to you
+          </Text>
+        </View>
+      )}
+
+      <View style={{ height: 40 }} />
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  clockCard: {
+    backgroundColor: '#FFFFFF',
+    margin: 16,
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  clockHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  clockInfo: {
+    marginLeft: 12,
+  },
+  clockStatus: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  clockTime: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  clockButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  clockInBtn: {
+    backgroundColor: COLORS.primary,
+  },
+  clockOutBtn: {
+    backgroundColor: '#DC2626',
+  },
+  clockButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  jobCard: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  jobHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  jobIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#FFF7ED',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  jobTitleContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  jobSiteName: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  acceptedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#D1FAE5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    gap: 4,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#059669',
+  },
+  declinedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    gap: 4,
+  },
+  declinedBadgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#DC2626',
+  },
+  pendingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    gap: 4,
+  },
+  pendingBadgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#D97706',
+  },
+  jobDetails: {
+    marginTop: 16,
+    gap: 10,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  detailText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#4B5563',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  declineButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    backgroundColor: '#FEF2F2',
+    gap: 6,
+  },
+  declineButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+  acceptButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#059669',
+    gap: 6,
+  },
+  acceptButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  noJobsCard: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  noJobsText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#4B5563',
+    marginTop: 12,
+  },
+  noJobsSubtext: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+});

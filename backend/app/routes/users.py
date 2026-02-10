@@ -517,6 +517,31 @@ async def update_worker_schedule(
     }
 
 
+# ==================== PUSH NOTIFICATION TOKEN ====================
+
+class PushTokenUpdate(BaseModel):
+    push_token: str
+
+
+@router.post("/{user_id}/push-token")
+async def save_push_token(
+    user_id: int,
+    token_data: PushTokenUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Save push notification token for a user"""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user.push_token = token_data.push_token
+    await db.commit()
+    
+    return {"message": "Push token saved"}
+
+
 # ==================== JOB ASSIGNMENT ENDPOINTS ====================
 
 class JobAssignment(BaseModel):
@@ -533,7 +558,7 @@ async def assign_worker_to_job(
     background_tasks: BackgroundTasks = None
 ):
     """Assign a worker to a job site"""
-    from ..services.sms import send_sms
+    from ..services.push_notifications import send_push_notification
     
     result = await db.execute(select(User).where(User.id == worker_id))
     worker = result.scalar_one_or_none()
@@ -556,20 +581,30 @@ async def assign_worker_to_job(
         
         message = f"Worker assigned to {job_site.name}"
         
-        # Send SMS notification to worker
-        if worker.phone:
+        # Send push notification to worker
+        if worker.push_token:
             date_str = assignment.assignment_date.strftime("%a %d %b") if assignment.assignment_date else "TBC"
             time_str = assignment.start_time or "TBC"
-            sms_message = f"RAW Labour Hire: You've been assigned to {job_site.name} on {date_str} at {time_str}. Open the app to accept or decline."
+            notification_title = "New Job Assignment"
+            notification_body = f"You've been assigned to {job_site.name} on {date_str} at {time_str}. Tap to accept or decline."
             
-            async def send_assignment_sms():
-                await send_sms(worker.phone, sms_message)
+            async def send_assignment_notification():
+                await send_push_notification(
+                    worker.push_token,
+                    notification_title,
+                    notification_body,
+                    {"type": "job_assignment", "job_site_id": job_site.id}
+                )
             
             if background_tasks:
-                background_tasks.add_task(send_assignment_sms)
+                background_tasks.add_task(send_assignment_notification)
             else:
-                # Send synchronously if no background tasks
-                await send_sms(worker.phone, sms_message)
+                await send_push_notification(
+                    worker.push_token,
+                    notification_title,
+                    notification_body,
+                    {"type": "job_assignment", "job_site_id": job_site.id}
+                )
     else:
         # Clear assignment
         worker.assigned_job_site_id = None
