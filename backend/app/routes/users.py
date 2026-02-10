@@ -699,3 +699,68 @@ async def deactivate_user(
     await db.commit()
     
     return {"message": "User deactivated"}
+
+
+# ==================== FORCE CLOCK OUT (ADMIN) ====================
+
+@router.post("/admin/workers/{worker_id}/force-clock-out")
+async def force_clock_out_worker(
+    worker_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Force clock out a worker who has stale clock-in entries (admin only)"""
+    import pytz
+    MELBOURNE_TZ = pytz.timezone('Australia/Melbourne')
+    
+    # Find all active clock-in entries for this worker
+    from ..models import Timesheet, TimesheetEntry
+    
+    # Get all timesheets for this worker
+    ts_result = await db.execute(
+        select(Timesheet).where(Timesheet.worker_id == worker_id)
+    )
+    timesheets = ts_result.scalars().all()
+    timesheet_ids = [t.id for t in timesheets]
+    
+    if not timesheet_ids:
+        return {"message": "No timesheets found for this worker", "entries_closed": 0}
+    
+    # Find all entries with clock_in but no clock_out
+    entries_result = await db.execute(
+        select(TimesheetEntry).where(
+            TimesheetEntry.timesheet_id.in_(timesheet_ids),
+            TimesheetEntry.clock_in_time.isnot(None),
+            TimesheetEntry.clock_out_time.is_(None)
+        )
+    )
+    open_entries = entries_result.scalars().all()
+    
+    if not open_entries:
+        return {"message": "No open clock-in entries found", "entries_closed": 0}
+    
+    # Close all open entries with current time
+    now_melb = datetime.now(MELBOURNE_TZ)
+    closed_count = 0
+    
+    for entry in open_entries:
+        # Set clock out to current time
+        entry.clock_out_time = now_melb.replace(tzinfo=None)
+        entry.clock_out_address = "Force clocked out by admin"
+        
+        # Calculate hours
+        if entry.clock_in_time:
+            clock_in_aware = MELBOURNE_TZ.localize(entry.clock_in_time)
+            diff = now_melb - clock_in_aware
+            total_hours = diff.total_seconds() / 3600
+            entry.total_hours = round(max(0, total_hours), 2)
+            entry.ordinary_hours = min(entry.total_hours, 8)
+            entry.overtime_hours = max(0, entry.total_hours - 8)
+        
+        closed_count += 1
+    
+    await db.commit()
+    
+    return {
+        "message": f"Force clocked out {closed_count} open entries",
+        "entries_closed": closed_count
+    }
