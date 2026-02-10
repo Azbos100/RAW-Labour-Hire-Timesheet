@@ -2,7 +2,7 @@
 RAW Labour Hire - Users API (Admin)
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -529,9 +529,12 @@ class JobAssignment(BaseModel):
 async def assign_worker_to_job(
     worker_id: int,
     assignment: JobAssignment,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    background_tasks: BackgroundTasks = None
 ):
     """Assign a worker to a job site"""
+    from ..services.sms import send_sms
+    
     result = await db.execute(select(User).where(User.id == worker_id))
     worker = result.scalar_one_or_none()
     
@@ -552,6 +555,21 @@ async def assign_worker_to_job(
         worker.assigned_at = datetime.utcnow()
         
         message = f"Worker assigned to {job_site.name}"
+        
+        # Send SMS notification to worker
+        if worker.phone:
+            date_str = assignment.assignment_date.strftime("%a %d %b") if assignment.assignment_date else "TBC"
+            time_str = assignment.start_time or "TBC"
+            sms_message = f"RAW Labour Hire: You've been assigned to {job_site.name} on {date_str} at {time_str}. Open the app to accept or decline."
+            
+            async def send_assignment_sms():
+                await send_sms(worker.phone, sms_message)
+            
+            if background_tasks:
+                background_tasks.add_task(send_assignment_sms)
+            else:
+                # Send synchronously if no background tasks
+                await send_sms(worker.phone, sms_message)
     else:
         # Clear assignment
         worker.assigned_job_site_id = None
