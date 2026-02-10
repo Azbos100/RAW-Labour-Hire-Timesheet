@@ -694,8 +694,8 @@
 
     <!-- Assign Job Modal -->
     <div id="assign-job-modal" class="modal">
-        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4">
-            <div class="border-b px-6 py-4 flex justify-between items-center">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center z-10">
                 <div>
                     <h2 class="text-xl font-bold">Assign Job</h2>
                     <p id="assign-worker-name" class="text-gray-500">Worker Name</p>
@@ -724,18 +724,18 @@
                     <div class="text-sm font-medium text-gray-700">Current Assignment:</div>
                     <div id="current-assignment-text" class="text-sm text-gray-600"></div>
                 </div>
-                <div class="pt-4 border-t flex gap-4">
-                    <button type="button" onclick="clearAssignment()" class="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50">
-                        Clear Assignment
-                    </button>
-                    <button type="button" onclick="closeModal('assign-job-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-50">
-                        Cancel
-                    </button>
-                    <button type="submit" class="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700">
-                        Assign Job
-                    </button>
-                </div>
             </form>
+            <div class="sticky bottom-0 bg-white border-t px-6 py-4 flex gap-4">
+                <button type="button" onclick="clearAssignment()" class="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50">
+                    Clear Assignment
+                </button>
+                <button type="button" onclick="closeModal('assign-job-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-50">
+                    Cancel
+                </button>
+                <button type="button" onclick="document.getElementById('assign-job-form').requestSubmit()" class="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700">
+                    Assign Job
+                </button>
+            </div>
         </div>
     </div>
 
