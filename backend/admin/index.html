@@ -713,8 +713,12 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium mb-1">Assignment Date</label>
-                    <input type="date" name="assignment_date" id="assign-job-date" class="w-full border rounded-lg px-3 py-2">
+                    <label class="block text-sm font-medium mb-1">Assignment Date *</label>
+                    <input type="date" name="assignment_date" id="assign-job-date" required class="w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Start Time *</label>
+                    <input type="time" name="start_time" id="assign-job-time" required class="w-full border rounded-lg px-3 py-2">
                 </div>
                 <div id="current-assignment" class="hidden p-3 bg-gray-50 rounded-lg">
                     <div class="text-sm font-medium text-gray-700">Current Assignment:</div>
@@ -1293,9 +1297,10 @@
                 // Assignment status display
                 let assignedJobHtml = '<span class="text-gray-400">-</span>';
                 if (w.assigned_job) {
+                    const timeDisplay = w.assigned_job.start_time ? ` at ${w.assigned_job.start_time}` : '';
                     assignedJobHtml = `
                         <div class="text-sm font-medium">${w.assigned_job.job_site_name}</div>
-                        <div class="text-xs text-gray-500">${w.assigned_job.assignment_date || ''}</div>
+                        <div class="text-xs text-gray-500">${w.assigned_job.assignment_date || ''}${timeDisplay}</div>
                     `;
                 }
                 
@@ -1452,16 +1457,21 @@
                 currentDiv.classList.remove('hidden');
                 let statusText = worker.assigned_job.accepted === true ? '(Accepted)' : 
                                  worker.assigned_job.accepted === false ? '(Declined)' : '(Pending)';
-                currentText.innerHTML = `${worker.assigned_job.job_site_name} - ${worker.assigned_job.assignment_date || 'No date'} ${statusText}`;
+                let timeText = worker.assigned_job.start_time || 'No time';
+                currentText.innerHTML = `${worker.assigned_job.job_site_name} - ${worker.assigned_job.assignment_date || 'No date'} at ${timeText} ${statusText}`;
                 
                 // Pre-select current job
                 select.value = worker.assigned_job.job_site_id;
                 if (worker.assigned_job.assignment_date) {
                     document.getElementById('assign-job-date').value = worker.assigned_job.assignment_date;
                 }
+                if (worker.assigned_job.start_time) {
+                    document.getElementById('assign-job-time').value = worker.assigned_job.start_time;
+                }
             } else {
                 currentDiv.classList.add('hidden');
                 currentText.innerHTML = '';
+                document.getElementById('assign-job-time').value = '';
             }
             
             openModal('assign-job-modal');
@@ -1473,9 +1483,20 @@
             const workerId = document.getElementById('assign-worker-id').value;
             const jobSiteId = document.getElementById('assign-job-select').value;
             const assignmentDate = document.getElementById('assign-job-date').value;
+            const startTime = document.getElementById('assign-job-time').value;
             
             if (!jobSiteId) {
                 alert('Please select a job site');
+                return;
+            }
+            
+            if (!assignmentDate) {
+                alert('Please select a date');
+                return;
+            }
+            
+            if (!startTime) {
+                alert('Please select a start time');
                 return;
             }
             
@@ -1485,7 +1506,8 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         job_site_id: parseInt(jobSiteId),
-                        assignment_date: assignmentDate || null
+                        assignment_date: assignmentDate,
+                        start_time: startTime
                     })
                 });
                 

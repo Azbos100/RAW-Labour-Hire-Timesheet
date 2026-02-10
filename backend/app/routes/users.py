@@ -216,6 +216,7 @@ async def list_all_workers(
                 "job_site_address": js_info.get("address", ""),
                 "accepted": getattr(u, 'assignment_accepted', None),
                 "assignment_date": u.assignment_date.isoformat() if hasattr(u, 'assignment_date') and u.assignment_date else None,
+                "start_time": getattr(u, 'assignment_start_time', None),
                 "assigned_at": u.assigned_at.isoformat() if hasattr(u, 'assigned_at') and u.assigned_at else None
             }
         
@@ -521,6 +522,7 @@ async def update_worker_schedule(
 class JobAssignment(BaseModel):
     job_site_id: Optional[int] = None  # None to clear assignment
     assignment_date: Optional[date] = None  # Date the job is for
+    start_time: Optional[str] = None  # Start time for the shift (e.g., "10:00")
 
 
 @router.post("/admin/workers/{worker_id}/assign")
@@ -545,6 +547,7 @@ async def assign_worker_to_job(
         
         worker.assigned_job_site_id = assignment.job_site_id
         worker.assignment_date = assignment.assignment_date or date.today()
+        worker.assignment_start_time = assignment.start_time
         worker.assignment_accepted = None  # Reset acceptance status
         worker.assigned_at = datetime.utcnow()
         
@@ -553,6 +556,7 @@ async def assign_worker_to_job(
         # Clear assignment
         worker.assigned_job_site_id = None
         worker.assignment_date = None
+        worker.assignment_start_time = None
         worker.assignment_accepted = None
         worker.assigned_at = None
         message = "Assignment cleared"

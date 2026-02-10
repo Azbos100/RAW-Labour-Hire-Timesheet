@@ -98,6 +98,9 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("""
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP;
             """))
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS assignment_start_time VARCHAR(10);
+            """))
         except Exception as e:
             print(f"Migration note (job assignment): {e}")
 

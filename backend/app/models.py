@@ -110,6 +110,7 @@ class User(Base):
     assigned_job_site_id = Column(Integer, ForeignKey("job_sites.id"))
     assignment_accepted = Column(Boolean)  # True=accepted, False=declined, None=pending
     assignment_date = Column(Date)  # Date the job was assigned for
+    assignment_start_time = Column(String(10))  # Start time for the shift (e.g., "10:00")
     assigned_at = Column(DateTime)  # When the assignment was made
     
     # Relationships
