@@ -9,6 +9,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import { Alert } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as Notifications from 'expo-notifications';
 import { 
@@ -211,6 +212,20 @@ export default function App() {
     // Listen for incoming notifications while app is in foreground
     notificationListener.current = addNotificationReceivedListener((notification) => {
       console.log('Notification received:', notification);
+      const data = notification.request.content.data;
+      
+      // Show popup for job assignment when app is in foreground
+      if (data?.type === 'job_assignment') {
+        Alert.alert(
+          '📋 New Job Assignment',
+          `You've been assigned to:\n\n` +
+          `📍 ${data.job_site_name || 'Unknown Site'}\n` +
+          `📅 ${data.assignment_date || 'TBC'}\n` +
+          `🕐 ${data.start_time || 'TBC'}\n\n` +
+          `Go to My Jobs to accept or decline.`,
+          [{ text: 'View Jobs', onPress: () => navigationRef.current?.navigate('Main' as any) }]
+        );
+      }
     });
 
     // Listen for notification taps (when user interacts with notification)
@@ -220,8 +235,21 @@ export default function App() {
       
       // Handle navigation based on notification type
       if (data?.type === 'job_assignment') {
-        // Navigate to MyJobs tab when job assignment notification is tapped
+        // Navigate to app and show job details popup
         navigationRef.current?.navigate('Main' as any);
+        
+        // Show job details after a brief delay to allow navigation
+        setTimeout(() => {
+          Alert.alert(
+            '📋 Job Assignment',
+            `You've been assigned to:\n\n` +
+            `📍 ${data.job_site_name || 'Unknown Site'}\n` +
+            `📅 ${data.assignment_date || 'TBC'}\n` +
+            `🕐 ${data.start_time || 'TBC'}\n\n` +
+            `Accept or decline this job below.`,
+            [{ text: 'OK' }]
+          );
+        }, 500);
       }
     });
 

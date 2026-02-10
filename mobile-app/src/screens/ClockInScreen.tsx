@@ -33,6 +33,28 @@ interface JobSite {
   name: string;
   address: string;
   client_name: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+// Calculate distance between two coordinates using Haversine formula
+function calculateDistance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371; // Earth's radius in kilometers
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in kilometers
 }
 
 export default function ClockInScreen({ navigation }: ClockInScreenProps) {
@@ -127,6 +149,36 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
       return;
     }
 
+    // Check GPS distance from job site (if both have coordinates)
+    if (location && selectedJobSite.latitude && selectedJobSite.longitude) {
+      const distance = calculateDistance(
+        location.coords.latitude,
+        location.coords.longitude,
+        selectedJobSite.latitude,
+        selectedJobSite.longitude
+      );
+
+      // If more than 1km away, show warning and ask for confirmation
+      if (distance > 1) {
+        Alert.alert(
+          '⚠️ Location Warning',
+          `You are ${distance.toFixed(1)}km away from ${selectedJobSite.name}.\n\n` +
+          `The job site is located at:\n${selectedJobSite.address}\n\n` +
+          `Are you sure you want to clock in here?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Clock In Anyway', onPress: () => submitClockIn() },
+          ]
+        );
+        return;
+      }
+    }
+
+    // If within range or no coordinates to check, proceed with clock in
+    submitClockIn();
+  };
+
+  const submitClockIn = async () => {
     // Use manual address if edited, otherwise use GPS address
     const finalAddress = isEditingAddress ? manualAddress : address;
 
@@ -136,14 +188,14 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
         latitude: location?.coords.latitude || 0,
         longitude: location?.coords.longitude || 0,
         address: finalAddress,
-        job_site_id: selectedJobSite.id,
+        job_site_id: selectedJobSite!.id,
         worked_as: workedAs || undefined,
         user_id: user?.id,
       });
 
       Alert.alert(
         'Clocked In!',
-        `You are now clocked in at ${selectedJobSite.name}\n\nDocket #${response.data.docket_number}`,
+        `You are now clocked in at ${selectedJobSite!.name}\n\nDocket #${response.data.docket_number}`,
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     } catch (error: any) {
@@ -260,25 +312,54 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
           {jobSites.length === 0 ? (
             <Text style={styles.noJobSites}>No job sites available</Text>
           ) : (
-            jobSites.map((site) => (
-              <TouchableOpacity
-                key={site.id}
-                style={[
-                  styles.jobSiteItem,
-                  selectedJobSite?.id === site.id && styles.jobSiteItemSelected,
-                ]}
-                onPress={() => setSelectedJobSite(site)}
-              >
-                <View style={styles.jobSiteInfo}>
-                  <Text style={styles.jobSiteName}>{site.name}</Text>
-                  <Text style={styles.jobSiteClient}>{site.client_name}</Text>
-                  <Text style={styles.jobSiteAddress}>{site.address}</Text>
-                </View>
-                {selectedJobSite?.id === site.id && (
-                  <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
-                )}
-              </TouchableOpacity>
-            ))
+            jobSites.map((site) => {
+              // Calculate distance if we have GPS and site coordinates
+              let distanceText = '';
+              let distanceColor = '#6B7280';
+              if (location && site.latitude && site.longitude) {
+                const dist = calculateDistance(
+                  location.coords.latitude,
+                  location.coords.longitude,
+                  site.latitude,
+                  site.longitude
+                );
+                if (dist < 1) {
+                  distanceText = `${(dist * 1000).toFixed(0)}m away`;
+                  distanceColor = '#10B981'; // Green - within range
+                } else {
+                  distanceText = `${dist.toFixed(1)}km away`;
+                  distanceColor = dist > 1 ? '#F59E0B' : '#10B981'; // Orange if >1km
+                }
+              }
+              
+              return (
+                <TouchableOpacity
+                  key={site.id}
+                  style={[
+                    styles.jobSiteItem,
+                    selectedJobSite?.id === site.id && styles.jobSiteItemSelected,
+                  ]}
+                  onPress={() => setSelectedJobSite(site)}
+                >
+                  <View style={styles.jobSiteInfo}>
+                    <Text style={styles.jobSiteName}>{site.name}</Text>
+                    <Text style={styles.jobSiteClient}>{site.client_name}</Text>
+                    <Text style={styles.jobSiteAddress}>{site.address}</Text>
+                    {distanceText && (
+                      <View style={styles.distanceRow}>
+                        <Ionicons name="navigate" size={14} color={distanceColor} />
+                        <Text style={[styles.distanceText, { color: distanceColor }]}>
+                          {distanceText}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  {selectedJobSite?.id === site.id && (
+                    <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
+                  )}
+                </TouchableOpacity>
+              );
+            })
           )}
         </View>
       </View>
@@ -502,6 +583,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6B7280',
     marginTop: 4,
+  },
+  distanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 4,
+  },
+  distanceText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   input: {
     backgroundColor: '#FFFFFF',

@@ -588,12 +588,22 @@ async def assign_worker_to_job(
             notification_title = "New Job Assignment"
             notification_body = f"You've been assigned to {job_site.name} on {date_str} at {time_str}. Tap to accept or decline."
             
+            # Include full job details in the notification data
+            notification_data = {
+                "type": "job_assignment",
+                "job_site_id": job_site.id,
+                "job_site_name": job_site.name,
+                "job_site_address": job_site.address or "",
+                "assignment_date": date_str,
+                "start_time": time_str,
+            }
+            
             async def send_assignment_notification():
                 await send_push_notification(
                     worker.push_token,
                     notification_title,
                     notification_body,
-                    {"type": "job_assignment", "job_site_id": job_site.id}
+                    notification_data
                 )
             
             if background_tasks:
@@ -603,7 +613,7 @@ async def assign_worker_to_job(
                     worker.push_token,
                     notification_title,
                     notification_body,
-                    {"type": "job_assignment", "job_site_id": job_site.id}
+                    notification_data
                 )
     else:
         # Clear assignment
