@@ -41,6 +41,7 @@ interface JobAssignment {
   job_site_name: string;
   job_site_address: string;
   assignment_date: string | null;
+  start_time: string | null;
   assigned_at: string | null;
   accepted: boolean | null;
 }
@@ -304,6 +305,7 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
                     day: 'numeric',
                     month: 'short',
                   })}
+                  {assignment.start_time ? ` at ${assignment.start_time}` : ''}
                 </Text>
               </View>
             )}

@@ -676,6 +676,7 @@ async def get_worker_assignment(
             "job_site_name": job_site.name,
             "job_site_address": job_site.address,
             "assignment_date": worker.assignment_date.isoformat() if worker.assignment_date else None,
+            "start_time": worker.assignment_start_time,
             "assigned_at": worker.assigned_at.isoformat() if worker.assigned_at else None,
             "accepted": worker.assignment_accepted
         }
