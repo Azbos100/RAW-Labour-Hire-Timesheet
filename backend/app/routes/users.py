@@ -811,6 +811,7 @@ async def force_clock_out_worker(
     # Close all open entries with current time
     now_melb = datetime.now(MELBOURNE_TZ)
     closed_count = 0
+    affected_timesheets = set()
     
     for entry in open_entries:
         # Set clock out to current time
@@ -826,11 +827,65 @@ async def force_clock_out_worker(
             entry.ordinary_hours = min(entry.total_hours, 8)
             entry.overtime_hours = max(0, entry.total_hours - 8)
         
+        affected_timesheets.add(entry.timesheet_id)
         closed_count += 1
+    
+    # Update timesheet totals for all affected timesheets
+    for ts_id in affected_timesheets:
+        # Get all entries for this timesheet
+        all_entries_result = await db.execute(
+            select(TimesheetEntry).where(TimesheetEntry.timesheet_id == ts_id)
+        )
+        all_entries = all_entries_result.scalars().all()
+        
+        # Get the timesheet and update totals
+        ts_result = await db.execute(select(Timesheet).where(Timesheet.id == ts_id))
+        timesheet = ts_result.scalar_one_or_none()
+        if timesheet:
+            timesheet.total_ordinary_hours = sum(e.ordinary_hours or 0 for e in all_entries)
+            timesheet.total_overtime_hours = sum(e.overtime_hours or 0 for e in all_entries)
+            timesheet.total_hours = timesheet.total_ordinary_hours + timesheet.total_overtime_hours
     
     await db.commit()
     
     return {
         "message": f"Force clocked out {closed_count} open entries",
         "entries_closed": closed_count
+    }
+
+
+@router.post("/admin/recalculate-timesheet-totals")
+async def recalculate_all_timesheet_totals(
+    db: AsyncSession = Depends(get_db)
+):
+    """Recalculate totals for all timesheets based on their entries (admin fix)"""
+    from ..models import Timesheet, TimesheetEntry
+    
+    # Get all timesheets
+    ts_result = await db.execute(select(Timesheet))
+    timesheets = ts_result.scalars().all()
+    
+    updated_count = 0
+    for timesheet in timesheets:
+        # Get all entries for this timesheet
+        entries_result = await db.execute(
+            select(TimesheetEntry).where(TimesheetEntry.timesheet_id == timesheet.id)
+        )
+        entries = entries_result.scalars().all()
+        
+        # Calculate totals
+        old_total = timesheet.total_hours or 0
+        timesheet.total_ordinary_hours = sum(e.ordinary_hours or 0 for e in entries)
+        timesheet.total_overtime_hours = sum(e.overtime_hours or 0 for e in entries)
+        timesheet.total_hours = timesheet.total_ordinary_hours + timesheet.total_overtime_hours
+        
+        if old_total != timesheet.total_hours:
+            updated_count += 1
+    
+    await db.commit()
+    
+    return {
+        "message": f"Recalculated totals for {len(timesheets)} timesheets, {updated_count} had incorrect totals",
+        "total_timesheets": len(timesheets),
+        "updated": updated_count
     }
