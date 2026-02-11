@@ -934,6 +934,89 @@ async def delete_entry(
     return {"message": "Entry deleted", "entry_id": entry_id}
 
 
+class EditEntryRequest(BaseModel):
+    clock_in_time: Optional[str] = None  # ISO format datetime string
+    clock_out_time: Optional[str] = None  # ISO format datetime string
+    entry_date: Optional[str] = None  # YYYY-MM-DD format
+    clock_in_address: Optional[str] = None
+    clock_out_address: Optional[str] = None
+    comments: Optional[str] = None
+
+
+@router.put("/admin/entries/{entry_id}")
+async def edit_entry(
+    entry_id: int,
+    request: EditEntryRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Edit a timesheet entry (admin) - for correcting clock times"""
+    result = await db.execute(
+        select(TimesheetEntry).where(TimesheetEntry.id == entry_id)
+    )
+    entry = result.scalar_one_or_none()
+    
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    
+    # Update fields if provided
+    if request.clock_in_time:
+        entry.clock_in_time = datetime.fromisoformat(request.clock_in_time.replace('Z', '+00:00').replace('+00:00', ''))
+        entry.time_start = entry.clock_in_time.time()
+    
+    if request.clock_out_time:
+        entry.clock_out_time = datetime.fromisoformat(request.clock_out_time.replace('Z', '+00:00').replace('+00:00', ''))
+        entry.time_finish = entry.clock_out_time.time()
+    
+    if request.entry_date:
+        entry.entry_date = date.fromisoformat(request.entry_date)
+    
+    if request.clock_in_address is not None:
+        entry.clock_in_address = request.clock_in_address
+    
+    if request.clock_out_address is not None:
+        entry.clock_out_address = request.clock_out_address
+    
+    if request.comments is not None:
+        entry.comments = request.comments
+    
+    # Recalculate hours if both clock times are set
+    if entry.clock_in_time and entry.clock_out_time:
+        total_seconds = (entry.clock_out_time - entry.clock_in_time).total_seconds()
+        total_hours = total_seconds / 3600
+        
+        # Cap ordinary hours at 8, rest is overtime
+        entry.ordinary_hours = min(8.0, total_hours)
+        entry.overtime_hours = max(0, total_hours - 8.0)
+        entry.total_hours = round(total_hours, 2)
+    
+    await db.commit()
+    
+    # Recalculate timesheet totals
+    ts_result = await db.execute(select(Timesheet).where(Timesheet.id == entry.timesheet_id))
+    timesheet = ts_result.scalar_one_or_none()
+    
+    if timesheet:
+        entries_result = await db.execute(
+            select(TimesheetEntry).where(TimesheetEntry.timesheet_id == entry.timesheet_id)
+        )
+        entries = entries_result.scalars().all()
+        
+        timesheet.total_ordinary_hours = sum(e.ordinary_hours or 0 for e in entries)
+        timesheet.total_overtime_hours = sum(e.overtime_hours or 0 for e in entries)
+        timesheet.total_hours = timesheet.total_ordinary_hours + timesheet.total_overtime_hours
+        await db.commit()
+    
+    return {
+        "message": "Entry updated",
+        "entry_id": entry_id,
+        "clock_in_time": entry.clock_in_time.isoformat() if entry.clock_in_time else None,
+        "clock_out_time": entry.clock_out_time.isoformat() if entry.clock_out_time else None,
+        "total_hours": entry.total_hours,
+        "ordinary_hours": entry.ordinary_hours,
+        "overtime_hours": entry.overtime_hours
+    }
+
+
 @router.get("/admin/approved-entries")
 async def get_approved_entries(
     db: AsyncSession = Depends(get_db)

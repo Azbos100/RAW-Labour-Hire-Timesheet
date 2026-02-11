@@ -897,6 +897,74 @@
         </div>
     </div>
 
+    <!-- Edit Entry Modal -->
+    <div id="edit-entry-modal" class="modal">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4">
+            <div class="border-b px-6 py-4 flex justify-between items-center">
+                <h2 class="text-xl font-bold">Edit Entry Times</h2>
+                <button onclick="closeModal('edit-entry-modal')" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <input type="hidden" id="edit-entry-id">
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Entry Date</label>
+                    <input type="date" id="edit-entry-date" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Clock In Date</label>
+                        <input type="date" id="edit-clock-in-date" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Clock In Time</label>
+                        <input type="time" id="edit-clock-in-time" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Clock Out Date</label>
+                        <input type="date" id="edit-clock-out-date" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Clock Out Time</label>
+                        <input type="time" id="edit-clock-out-time" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Clock In Address</label>
+                    <input type="text" id="edit-clock-in-address" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Clock Out Address</label>
+                    <input type="text" id="edit-clock-out-address" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Comments</label>
+                    <textarea id="edit-entry-comments" rows="2" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
+                </div>
+                
+                <div class="bg-blue-50 p-3 rounded-lg text-sm text-blue-700">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Hours will be automatically recalculated based on clock in/out times. Ordinary hours capped at 8h, rest counts as overtime.
+                </div>
+            </div>
+            <div class="border-t px-6 py-4 flex justify-end gap-3">
+                <button onclick="closeModal('edit-entry-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-100">Cancel</button>
+                <button onclick="saveEntryEdit()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                    <i class="fas fa-save mr-1"></i>Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Add Job Site Modal -->
     <div id="add-jobsite-modal" class="modal">
         <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
@@ -1408,6 +1476,9 @@
                                 `}
                             </div>
                             <div class="flex gap-2">
+                                <button onclick="openEditEntryModal(${entry.id}, '${entry.entry_date}', '${entry.clock_in_time || ''}', '${entry.clock_out_time || ''}', '${(entry.clock_in_address || '').replace(/'/g, "\\'")}', '${(entry.clock_out_address || '').replace(/'/g, "\\'")}', '${(entry.comments || '').replace(/'/g, "\\'")}')" class="px-3 py-2 border border-blue-500 text-blue-500 rounded-lg hover:bg-blue-50 text-sm" title="Edit Entry Times">
+                                    <i class="fas fa-edit mr-1"></i>Edit
+                                </button>
                                 <button onclick="deleteEntry(${entry.id})" class="px-3 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-100 text-sm" title="Delete Entry">
                                     <i class="fas fa-trash mr-1"></i>Delete
                                 </button>
@@ -1587,6 +1658,98 @@
             } catch (error) {
                 console.error('Error:', error);
                 alert('Error deleting entry');
+            }
+        }
+        
+        // Edit Entry Modal Functions
+        function openEditEntryModal(entryId, entryDate, clockInTime, clockOutTime, clockInAddress, clockOutAddress, comments) {
+            document.getElementById('edit-entry-id').value = entryId;
+            document.getElementById('edit-entry-date').value = entryDate || '';
+            document.getElementById('edit-clock-in-address').value = clockInAddress || '';
+            document.getElementById('edit-clock-out-address').value = clockOutAddress || '';
+            document.getElementById('edit-entry-comments').value = comments || '';
+            
+            // Parse clock in datetime
+            if (clockInTime && clockInTime !== 'null') {
+                const clockIn = new Date(clockInTime);
+                document.getElementById('edit-clock-in-date').value = clockIn.toISOString().split('T')[0];
+                document.getElementById('edit-clock-in-time').value = clockIn.toTimeString().slice(0, 5);
+            } else {
+                document.getElementById('edit-clock-in-date').value = entryDate || '';
+                document.getElementById('edit-clock-in-time').value = '';
+            }
+            
+            // Parse clock out datetime
+            if (clockOutTime && clockOutTime !== 'null') {
+                const clockOut = new Date(clockOutTime);
+                document.getElementById('edit-clock-out-date').value = clockOut.toISOString().split('T')[0];
+                document.getElementById('edit-clock-out-time').value = clockOut.toTimeString().slice(0, 5);
+            } else {
+                document.getElementById('edit-clock-out-date').value = '';
+                document.getElementById('edit-clock-out-time').value = '';
+            }
+            
+            openModal('edit-entry-modal');
+        }
+        
+        async function saveEntryEdit() {
+            const entryId = document.getElementById('edit-entry-id').value;
+            const entryDate = document.getElementById('edit-entry-date').value;
+            const clockInDate = document.getElementById('edit-clock-in-date').value;
+            const clockInTime = document.getElementById('edit-clock-in-time').value;
+            const clockOutDate = document.getElementById('edit-clock-out-date').value;
+            const clockOutTime = document.getElementById('edit-clock-out-time').value;
+            const clockInAddress = document.getElementById('edit-clock-in-address').value;
+            const clockOutAddress = document.getElementById('edit-clock-out-address').value;
+            const comments = document.getElementById('edit-entry-comments').value;
+            
+            // Build update payload
+            const payload = {};
+            
+            if (entryDate) {
+                payload.entry_date = entryDate;
+            }
+            
+            if (clockInDate && clockInTime) {
+                payload.clock_in_time = `${clockInDate}T${clockInTime}:00`;
+            }
+            
+            if (clockOutDate && clockOutTime) {
+                payload.clock_out_time = `${clockOutDate}T${clockOutTime}:00`;
+            }
+            
+            if (clockInAddress !== undefined) {
+                payload.clock_in_address = clockInAddress;
+            }
+            
+            if (clockOutAddress !== undefined) {
+                payload.clock_out_address = clockOutAddress;
+            }
+            
+            if (comments !== undefined) {
+                payload.comments = comments;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/timesheets/admin/entries/${entryId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    closeModal('edit-entry-modal');
+                    closeModal('timesheet-modal');
+                    await loadTimesheets();
+                    alert(`Entry updated!\n\nNew hours: ${data.total_hours?.toFixed(2)}h\nOrdinary: ${data.ordinary_hours?.toFixed(2)}h\nOvertime: ${data.overtime_hours?.toFixed(2)}h`);
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Error updating entry');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error updating entry');
             }
         }
 
