@@ -22,8 +22,8 @@ from ..services.sms import send_sms
 
 router = APIRouter()
 
-# Security config
-SECRET_KEY = "your-secret-key-change-in-production"  # TODO: Move to env
+# Security config - use environment variables in production
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "raw-labour-hire-dev-key-change-in-production-abc123xyz")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 week
 

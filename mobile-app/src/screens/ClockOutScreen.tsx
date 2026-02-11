@@ -39,6 +39,18 @@ export default function ClockOutScreen({ navigation }: ClockOutScreenProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [comments, setComments] = useState('');
   const [firstAidInjury, setFirstAidInjury] = useState(false);
+  const [leavingEarly, setLeavingEarly] = useState(false);
+  const [earlyLeaveReason, setEarlyLeaveReason] = useState<string | null>(null);
+  const [earlyLeaveDetails, setEarlyLeaveDetails] = useState('');
+
+  const earlyLeaveReasons = [
+    { id: 'sick', label: 'Sick / Unwell', icon: 'medkit-outline' },
+    { id: 'family', label: 'Family Emergency', icon: 'people-outline' },
+    { id: 'personal', label: 'Personal Reasons', icon: 'person-outline' },
+    { id: 'weather', label: 'Weather Conditions', icon: 'cloud-outline' },
+    { id: 'site_issue', label: 'Site Issue / Job Completed Early', icon: 'construct-outline' },
+    { id: 'other', label: 'Other', icon: 'ellipsis-horizontal-outline' },
+  ];
 
   useEffect(() => {
     getLocation();
@@ -112,13 +124,24 @@ export default function ClockOutScreen({ navigation }: ClockOutScreenProps) {
   const submitClockOut = async () => {
     const finalAddress = isEditingAddress ? manualAddress : address;
     
+    // Build comments with early leave info if applicable
+    let finalComments = comments;
+    if (leavingEarly && earlyLeaveReason) {
+      const reasonLabel = earlyLeaveReasons.find(r => r.id === earlyLeaveReason)?.label || earlyLeaveReason;
+      let earlyLeaveNote = `[EARLY LEAVE: ${reasonLabel}]`;
+      if (earlyLeaveDetails.trim()) {
+        earlyLeaveNote += ` - ${earlyLeaveDetails.trim()}`;
+      }
+      finalComments = earlyLeaveNote + (comments ? `\n\n${comments}` : '');
+    }
+    
     setIsSubmitting(true);
     try {
       const response = await clockAPI.clockOut({
         latitude: location?.coords.latitude || 0,
         longitude: location?.coords.longitude || 0,
         address: finalAddress,
-        comments: comments || undefined,
+        comments: finalComments || undefined,
         first_aid_injury: firstAidInjury,
         user_id: user?.id,
       });
@@ -235,6 +258,82 @@ export default function ClockOutScreen({ navigation }: ClockOutScreenProps) {
                 <Text style={styles.retryText}>Try GPS Again</Text>
               </TouchableOpacity>
             </View>
+          )}
+        </View>
+      </View>
+
+      {/* Early Leave Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Leaving Early?</Text>
+        <View style={styles.earlyLeaveCard}>
+          <View style={styles.earlyLeaveToggle}>
+            <View style={styles.earlyLeaveInfo}>
+              <Text style={styles.earlyLeaveLabel}>Are you leaving before your shift ends?</Text>
+              <Text style={styles.earlyLeaveHint}>
+                Select if you're finishing early for any reason
+              </Text>
+            </View>
+            <Switch
+              value={leavingEarly}
+              onValueChange={(value) => {
+                setLeavingEarly(value);
+                if (!value) {
+                  setEarlyLeaveReason(null);
+                  setEarlyLeaveDetails('');
+                }
+              }}
+              trackColor={{ false: '#D1D5DB', true: '#FCD34D' }}
+              thumbColor={leavingEarly ? '#F59E0B' : '#F3F4F6'}
+            />
+          </View>
+          
+          {leavingEarly && (
+            <>
+              <View style={styles.reasonsContainer}>
+                <Text style={styles.reasonsTitle}>Select a reason:</Text>
+                <View style={styles.reasonsGrid}>
+                  {earlyLeaveReasons.map((reason) => (
+                    <TouchableOpacity
+                      key={reason.id}
+                      style={[
+                        styles.reasonButton,
+                        earlyLeaveReason === reason.id && styles.reasonButtonSelected,
+                      ]}
+                      onPress={() => setEarlyLeaveReason(reason.id)}
+                    >
+                      <Ionicons
+                        name={reason.icon as any}
+                        size={20}
+                        color={earlyLeaveReason === reason.id ? '#FFFFFF' : '#6B7280'}
+                      />
+                      <Text
+                        style={[
+                          styles.reasonButtonText,
+                          earlyLeaveReason === reason.id && styles.reasonButtonTextSelected,
+                        ]}
+                      >
+                        {reason.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+              
+              {earlyLeaveReason && (
+                <View style={styles.earlyDetailsContainer}>
+                  <Text style={styles.earlyDetailsLabel}>Additional details (optional):</Text>
+                  <TextInput
+                    style={styles.earlyDetailsInput}
+                    placeholder="Provide more details if needed..."
+                    placeholderTextColor="#9CA3AF"
+                    value={earlyLeaveDetails}
+                    onChangeText={setEarlyLeaveDetails}
+                    multiline
+                    numberOfLines={2}
+                  />
+                </View>
+              )}
+            </>
           )}
         </View>
       </View>
@@ -452,6 +551,89 @@ const styles = StyleSheet.create({
   retryText: {
     color: COLORS.primary,
     fontWeight: '500',
+  },
+  earlyLeaveCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+  },
+  earlyLeaveToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  earlyLeaveInfo: {
+    flex: 1,
+    marginRight: 16,
+  },
+  earlyLeaveLabel: {
+    fontSize: 15,
+    color: '#1A1A1A',
+    fontWeight: '500',
+  },
+  earlyLeaveHint: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  reasonsContainer: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  reasonsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 12,
+  },
+  reasonsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  reasonButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    gap: 6,
+  },
+  reasonButtonSelected: {
+    backgroundColor: '#F59E0B',
+    borderColor: '#F59E0B',
+  },
+  reasonButtonText: {
+    fontSize: 13,
+    color: '#4B5563',
+    fontWeight: '500',
+  },
+  reasonButtonTextSelected: {
+    color: '#FFFFFF',
+  },
+  earlyDetailsContainer: {
+    marginTop: 16,
+  },
+  earlyDetailsLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  earlyDetailsInput: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 15,
+    color: '#1A1A1A',
+    minHeight: 60,
+    textAlignVertical: 'top',
   },
   injuryCard: {
     backgroundColor: '#FFFFFF',

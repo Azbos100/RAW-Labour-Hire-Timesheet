@@ -58,7 +58,6 @@ export default function ProfileScreen() {
   const [showPersonalInfo, setShowPersonalInfo] = useState(false);
   const [showAddress, setShowAddress] = useState(false);
   const [showEmergencyContact, setShowEmergencyContact] = useState(false);
-  const [showBankDetails, setShowBankDetails] = useState(false);
   const [showEmployment, setShowEmployment] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
@@ -83,11 +82,6 @@ export default function ProfileScreen() {
   const [emergencyPhone, setEmergencyPhone] = useState('');
   const [emergencyRelationship, setEmergencyRelationship] = useState('');
   
-  // Bank details form
-  const [bankAccountName, setBankAccountName] = useState('');
-  const [bankBsb, setBankBsb] = useState('');
-  const [bankAccountNumber, setBankAccountNumber] = useState('');
-  const [tfn, setTfn] = useState('');
   
   // Employment form
   const [employmentType, setEmploymentType] = useState('casual');
@@ -223,35 +217,6 @@ export default function ProfileScreen() {
     }
   };
 
-  // Bank details handlers
-  const openBankDetails = () => {
-    setBankAccountName(extendedUser?.bank_account_name || '');
-    setBankBsb(extendedUser?.bank_bsb || '');
-    setBankAccountNumber(extendedUser?.bank_account_number || '');
-    setTfn(extendedUser?.tax_file_number || '');
-    setShowBankDetails(true);
-  };
-
-  const saveBankDetails = async () => {
-    setSaving(true);
-    try {
-      const response = await profileAPI.updateProfile({
-        bank_account_name: bankAccountName.trim() || undefined,
-        bank_bsb: bankBsb.trim() || undefined,
-        bank_account_number: bankAccountNumber.trim() || undefined,
-        tax_file_number: tfn.trim() || undefined,
-      }, user?.id);
-      
-      setExtendedUser(prev => ({ ...prev!, ...response.data.user }));
-      setShowBankDetails(false);
-      Alert.alert('Success', 'Bank details updated');
-    } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to update');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   // Employment handlers
   const openEmployment = () => {
     setEmploymentType(extendedUser?.employment_type || 'casual');
@@ -337,14 +302,6 @@ export default function ProfileScreen() {
   const getEmergencyContactSummary = () => {
     if (extendedUser?.emergency_contact_name) {
       return `${extendedUser.emergency_contact_name}${extendedUser.emergency_contact_relationship ? ` (${extendedUser.emergency_contact_relationship})` : ''}`;
-    }
-    return 'Not set';
-  };
-
-  const getBankDetailsSummary = () => {
-    if (extendedUser?.bank_account_number) {
-      const masked = '****' + extendedUser.bank_account_number.slice(-4);
-      return `Account ending ${masked}`;
     }
     return 'Not set';
   };
@@ -499,17 +456,10 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {/* Payment Details Section */}
+      {/* Employment Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Payment Details</Text>
+        <Text style={styles.sectionTitle}>Employment</Text>
         <View style={styles.menuCard}>
-          <MenuItem
-            icon="card-outline"
-            title="Bank Details"
-            subtitle={getBankDetailsSummary()}
-            onPress={openBankDetails}
-            warning={!extendedUser?.bank_account_number}
-          />
           <MenuItem
             icon="briefcase-outline"
             title="Employment Type"
@@ -723,66 +673,6 @@ export default function ProfileScreen() {
           />
         </>,
         saveEmergencyContact
-      )}
-
-      {/* Bank Details Modal */}
-      {renderModal(
-        showBankDetails,
-        () => setShowBankDetails(false),
-        'Bank Details',
-        <>
-          <View style={styles.secureBox}>
-            <Ionicons name="shield-checkmark" size={20} color="#10B981" />
-            <Text style={styles.secureText}>
-              Your bank details are encrypted and used only for payroll purposes.
-            </Text>
-          </View>
-          
-          <Text style={styles.inputLabel}>Account Name</Text>
-          <TextInput
-            style={styles.input}
-            value={bankAccountName}
-            onChangeText={setBankAccountName}
-            placeholder="Name on bank account"
-            autoCapitalize="words"
-          />
-          
-          <View style={styles.row}>
-            <View style={styles.bsbInput}>
-              <Text style={styles.inputLabel}>BSB</Text>
-              <TextInput
-                style={styles.input}
-                value={bankBsb}
-                onChangeText={setBankBsb}
-                placeholder="000-000"
-                keyboardType="number-pad"
-                maxLength={7}
-              />
-            </View>
-            <View style={styles.accountInput}>
-              <Text style={styles.inputLabel}>Account Number</Text>
-              <TextInput
-                style={styles.input}
-                value={bankAccountNumber}
-                onChangeText={setBankAccountNumber}
-                placeholder="Account number"
-                keyboardType="number-pad"
-              />
-            </View>
-          </View>
-          
-          <Text style={styles.inputLabel}>Tax File Number (TFN)</Text>
-          <TextInput
-            style={styles.input}
-            value={tfn}
-            onChangeText={setTfn}
-            placeholder="000 000 000"
-            keyboardType="number-pad"
-            maxLength={11}
-          />
-          <Text style={styles.inputHint}>Your TFN is stored securely and used for tax purposes only</Text>
-        </>,
-        saveBankDetails
       )}
 
       {/* Employment Modal */}

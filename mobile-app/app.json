@@ -27,9 +27,6 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "RAW Timesheet needs your location to record clock in/out positions for timesheet verification.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "entitlements": {
-        "aps-environment": "production"
-      }
     },
     "android": {
       "adaptiveIcon": {

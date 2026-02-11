@@ -258,11 +258,21 @@ async def get_timesheet(
                 "worked_as": e.worked_as,
                 "comments": e.comments,
                 "first_aid_injury": e.first_aid_injury,
+                # GPS coordinates
                 "clock_in_address": e.clock_in_address,
+                "clock_in_latitude": e.clock_in_latitude,
+                "clock_in_longitude": e.clock_in_longitude,
                 "clock_out_address": e.clock_out_address,
+                "clock_out_latitude": e.clock_out_latitude,
+                "clock_out_longitude": e.clock_out_longitude,
+                # Status and supervisor
                 "entry_status": e.entry_status or "draft",
+                "job_site_name": e.job_site_name,
+                "company_name": e.host_company_name,
                 "host_company_name": e.host_company_name,
-                "supervisor_name": e.supervisor_name
+                "supervisor_name": e.supervisor_name,
+                "supervisor_contact": e.supervisor_contact,
+                "supervisor_signature": e.supervisor_signature
             }
             for e in entries
         ]

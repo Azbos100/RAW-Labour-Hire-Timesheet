@@ -21,7 +21,7 @@ import * as Location from 'expo-location';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { COLORS } from '../constants/colors';
-import api, { clockAPI, clientsAPI } from '../services/api';
+import api, { clockAPI, assignmentAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 type ClockInScreenProps = {
@@ -76,20 +76,39 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
 
   const fetchJobSites = async () => {
     try {
-      // Debug: Check what headers are being sent
-      const debugResponse = await api.get('/debug/headers');
-      console.log('DEBUG HEADERS:', JSON.stringify(debugResponse.data, null, 2));
+      if (!user?.id) return;
       
-      const response = await clientsAPI.getAllJobSites();
-      setJobSites(response.data.job_sites || []);
+      // Fetch worker's assigned jobs only - not all job sites
+      const response = await assignmentAPI.getAssignment(user.id);
+      const assignment = response.data.assignment;
+      
+      if (assignment && assignment.accepted === true) {
+        // Worker has an accepted assignment - show only that job site
+        const assignedJobSite: JobSite = {
+          id: assignment.job_site_id,
+          name: assignment.job_site_name,
+          address: assignment.job_site_address || '',
+          client_name: '', // Not returned in assignment response
+          latitude: assignment.job_site_latitude,
+          longitude: assignment.job_site_longitude,
+        };
+        setJobSites([assignedJobSite]);
+        setSelectedJobSite(assignedJobSite); // Auto-select the assigned job
+      } else if (assignment && assignment.accepted === null) {
+        // Assignment pending - tell worker to accept first
+        Alert.alert(
+          'Accept Job First',
+          'You have a pending job assignment. Please go to My Jobs and accept it before clocking in.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+        setJobSites([]);
+      } else {
+        // No assignment
+        setJobSites([]);
+      }
     } catch (error: any) {
-      console.warn('Error fetching job sites:', error);
-      const status = error.response?.status;
-      const detail = error.response?.data?.detail || error.message || 'Unknown error';
-      Alert.alert(
-        'Job Sites Unavailable',
-        `Unable to load job sites.\n\nError: ${status ? `${status} - ` : ''}${detail}`
-      );
+      console.warn('Error fetching assigned job:', error);
+      setJobSites([]);
     }
   };
 
@@ -305,12 +324,18 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
         </View>
       </View>
 
-      {/* Job Site Selection */}
+      {/* Assigned Job Site */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Select Job Site *</Text>
+        <Text style={styles.sectionTitle}>Your Assigned Job</Text>
         <View style={styles.jobSiteList}>
           {jobSites.length === 0 ? (
-            <Text style={styles.noJobSites}>No job sites available</Text>
+            <View style={styles.noJobSitesContainer}>
+              <Ionicons name="briefcase-outline" size={40} color="#9CA3AF" />
+              <Text style={styles.noJobSites}>No assigned jobs</Text>
+              <Text style={styles.noJobSitesSubtext}>
+                You need to be assigned a job by admin before you can clock in
+              </Text>
+            </View>
           ) : (
             jobSites.map((site) => {
               // Calculate distance if we have GPS and site coordinates
@@ -548,10 +573,24 @@ const styles = StyleSheet.create({
   jobSiteList: {
     gap: 8,
   },
+  noJobSitesContainer: {
+    alignItems: 'center',
+    padding: 24,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+  },
   noJobSites: {
-    color: '#6B7280',
+    color: '#4B5563',
     textAlign: 'center',
-    padding: 20,
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 12,
+  },
+  noJobSitesSubtext: {
+    color: '#9CA3AF',
+    textAlign: 'center',
+    fontSize: 14,
+    marginTop: 4,
   },
   jobSiteItem: {
     backgroundColor: '#FFFFFF',
