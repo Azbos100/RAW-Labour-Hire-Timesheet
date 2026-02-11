@@ -922,3 +922,41 @@ async def get_approved_entries(
         })
     
     return {"entries": entry_data}
+
+
+@router.delete("/admin/entries/{entry_id}")
+async def delete_entry(
+    entry_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a specific timesheet entry (admin) - useful for fixing bad data"""
+    result = await db.execute(
+        select(TimesheetEntry).where(TimesheetEntry.id == entry_id)
+    )
+    entry = result.scalar_one_or_none()
+    
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    
+    timesheet_id = entry.timesheet_id
+    
+    # Delete the entry
+    await db.delete(entry)
+    await db.commit()
+    
+    # Recalculate timesheet totals
+    ts_result = await db.execute(select(Timesheet).where(Timesheet.id == timesheet_id))
+    timesheet = ts_result.scalar_one_or_none()
+    
+    if timesheet:
+        entries_result = await db.execute(
+            select(TimesheetEntry).where(TimesheetEntry.timesheet_id == timesheet_id)
+        )
+        entries = entries_result.scalars().all()
+        
+        timesheet.total_ordinary_hours = sum(e.ordinary_hours or 0 for e in entries)
+        timesheet.total_overtime_hours = sum(e.overtime_hours or 0 for e in entries)
+        timesheet.total_hours = timesheet.total_ordinary_hours + timesheet.total_overtime_hours
+        await db.commit()
+    
+    return {"message": "Entry deleted", "entry_id": entry_id}

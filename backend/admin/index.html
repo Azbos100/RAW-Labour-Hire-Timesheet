@@ -1385,22 +1385,42 @@
                             </div>
                         ` : ''}
                         
-                        <!-- Entry Approve/Reject Buttons -->
-                        ${entry.entry_status === 'submitted' ? `
-                            <div class="mt-3 pt-3 border-t flex justify-end gap-2">
-                                <button onclick="rejectEntry(${entry.id})" class="px-3 py-2 border border-red-500 text-red-500 rounded-lg hover:bg-red-50 text-sm">
-                                    <i class="fas fa-times mr-1"></i>Reject Entry
-                                </button>
-                                <button onclick="approveEntry(${entry.id})" class="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">
-                                    <i class="fas fa-check mr-1"></i>Approve Entry
-                                </button>
+                        <!-- Warning for unusually high hours -->
+                        ${entry.total_hours > 24 ? `
+                            <div class="mt-3 p-3 bg-red-100 border border-red-300 rounded-lg">
+                                <p class="text-red-700 text-sm font-medium">
+                                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                                    Warning: ${entry.total_hours?.toFixed(1)}h is unusually high for a single day!
+                                </p>
+                                <p class="text-red-600 text-xs mt-1">This may be due to a stale clock-in. Consider deleting this entry.</p>
                             </div>
                         ` : ''}
-                        ${entry.entry_status === 'approved' ? `
-                            <div class="mt-3 pt-3 border-t flex justify-end">
-                                <span class="text-green-600 text-sm"><i class="fas fa-check-circle mr-1"></i>Entry Approved</span>
+                        
+                        <!-- Entry Actions -->
+                        <div class="mt-3 pt-3 border-t flex justify-between items-center">
+                            <div>
+                                ${entry.entry_status === 'approved' ? `
+                                    <span class="text-green-600 text-sm"><i class="fas fa-check-circle mr-1"></i>Entry Approved</span>
+                                ` : entry.entry_status === 'rejected' ? `
+                                    <span class="text-red-600 text-sm"><i class="fas fa-times-circle mr-1"></i>Entry Rejected</span>
+                                ` : `
+                                    <span class="text-gray-500 text-sm"><i class="fas fa-clock mr-1"></i>${entry.entry_status || 'Draft'}</span>
+                                `}
                             </div>
-                        ` : ''}
+                            <div class="flex gap-2">
+                                <button onclick="deleteEntry(${entry.id})" class="px-3 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-100 text-sm" title="Delete Entry">
+                                    <i class="fas fa-trash mr-1"></i>Delete
+                                </button>
+                                ${entry.entry_status !== 'approved' ? `
+                                    <button onclick="rejectEntry(${entry.id})" class="px-3 py-2 border border-red-500 text-red-500 rounded-lg hover:bg-red-50 text-sm">
+                                        <i class="fas fa-times mr-1"></i>Reject
+                                    </button>
+                                    <button onclick="approveEntry(${entry.id})" class="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">
+                                        <i class="fas fa-check mr-1"></i>Approve
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
                     </div>
                 `).join('');
 
@@ -1437,8 +1457,8 @@
                 `;
 
                 // Show appropriate actions based on status
-                // Check if any entries are submitted (awaiting approval)
-                const submittedEntries = (ts.entries || []).filter(e => e.entry_status === 'submitted');
+                // Check for entries that need approval (draft or submitted)
+                const pendingEntries = (ts.entries || []).filter(e => e.entry_status !== 'approved' && e.entry_status !== 'rejected');
                 const approvedEntries = (ts.entries || []).filter(e => e.entry_status === 'approved');
                 
                 // Cancel button for all states
@@ -1447,10 +1467,10 @@
                 </button>`;
                 
                 let actionsHtml = '';
-                if (submittedEntries.length > 0) {
+                if (pendingEntries.length > 0) {
                     actionsHtml = `
                         ${cancelBtn}
-                        <span class="text-orange-600 mr-4"><i class="fas fa-clock mr-1"></i>${submittedEntries.length} entries awaiting approval</span>
+                        <span class="text-orange-600 mr-4"><i class="fas fa-clock mr-1"></i>${pendingEntries.length} entries pending</span>
                         <button onclick="approveAllEntries(${ts.id})" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
                             <i class="fas fa-check-double mr-2"></i>Approve All Entries
                         </button>
@@ -1548,6 +1568,27 @@
                 alert('Error approving entry');
             }
         }
+        
+        async function deleteEntry(entryId) {
+            if (!confirm('Delete this entry? This will remove it permanently and recalculate the timesheet totals.')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/timesheets/admin/entries/${entryId}`, {
+                    method: 'DELETE'
+                });
+                if (response.ok) {
+                    closeModal('timesheet-modal');
+                    await loadTimesheets();
+                    alert('Entry deleted and timesheet totals recalculated!');
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Error deleting entry');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error deleting entry');
+            }
+        }
 
         async function rejectEntry(entryId) {
             const reason = prompt('Reason for rejection (optional):');
@@ -1580,9 +1621,10 @@
                 const response = await fetch(`${API_BASE}/timesheets/${timesheetId}`);
                 const ts = await response.json();
                 
-                const submittedEntries = (ts.entries || []).filter(e => e.entry_status === 'submitted');
+                // Approve all entries that aren't already approved or rejected
+                const pendingEntries = (ts.entries || []).filter(e => e.entry_status !== 'approved' && e.entry_status !== 'rejected');
                 
-                for (const entry of submittedEntries) {
+                for (const entry of pendingEntries) {
                     await fetch(`${API_BASE}/timesheets/admin/entries/${entry.id}/approve`, {
                         method: 'POST'
                     });
@@ -1590,7 +1632,7 @@
                 
                 closeModal('timesheet-modal');
                 await loadTimesheets();
-                alert(`${submittedEntries.length} entries approved!`);
+                alert(`${pendingEntries.length} entries approved!`);
             } catch (error) {
                 console.error('Error:', error);
                 alert('Error approving entries');
