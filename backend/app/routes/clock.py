@@ -492,9 +492,11 @@ async def clock_out(
         "clock_in_time": clock_in_time_aware.isoformat(),
         "clock_out_time": now_melb.isoformat(),  # Include timezone info
         "clock_out_address": clock_out_address,
+        "gross_hours": gross_hours,  # Hours before break deduction
+        "unpaid_break_minutes": unpaid_break,
         "ordinary_hours": ordinary_hours,
         "overtime_hours": overtime_hours,
-        "total_hours": total_hours,
+        "total_hours": total_hours,  # Net hours after break
         "weekly_total": timesheet.total_hours
     }
 

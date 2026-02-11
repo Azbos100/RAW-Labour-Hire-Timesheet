@@ -146,9 +146,10 @@ export default function ClockOutScreen({ navigation }: ClockOutScreenProps) {
         user_id: user?.id,
       });
 
-      const { entry_id, ordinary_hours, overtime_hours, total_hours, docket_number } = response.data;
+      const { entry_id, ordinary_hours, overtime_hours, total_hours, gross_hours, unpaid_break_minutes, docket_number } = response.data;
       
-      const hoursWorked = `${total_hours}h (Ordinary: ${ordinary_hours}h, Overtime: ${overtime_hours}h)`;
+      const breakInfo = unpaid_break_minutes ? ` (${unpaid_break_minutes}min break deducted)` : '';
+      const hoursWorked = `${total_hours}h paid${breakInfo}\nOrdinary: ${ordinary_hours}h, Overtime: ${overtime_hours}h`;
 
       // Navigate to supervisor signature screen instead of showing alert
       navigation.replace('SupervisorSignature', {
@@ -404,7 +405,7 @@ export default function ClockOutScreen({ navigation }: ClockOutScreenProps) {
       <View style={styles.footer}>
         <Text style={styles.footerText}>
           Your GPS location and time will be recorded for this clock-out.
-          Hours will be automatically calculated.
+          Hours will be automatically calculated with a 30-minute unpaid lunch break deducted.
         </Text>
       </View>
     </ScrollView>

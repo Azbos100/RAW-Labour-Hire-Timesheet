@@ -42,6 +42,9 @@ interface TimesheetEntry {
   ordinary_hours: number;
   overtime_hours: number;
   total_hours: number;
+  gross_hours?: number;  // Hours before break deduction
+  unpaid_break_minutes?: number;  // Default 30
+  paid_break_minutes?: number;
   worked_as?: string;
   comments?: string;
   clock_in_address?: string;
@@ -316,8 +319,15 @@ export default function TimesheetDetailScreen({ navigation, route }: TimesheetDe
                       {formatTime(entry.clock_in_time || entry.time_start)} - {formatTime(entry.clock_out_time || entry.time_finish)}
                     </Text>
                   </View>
-                  <View style={styles.entryHours}>
-                    <Text style={styles.entryHoursText}>{formatHoursMinutes(entry.total_hours)}</Text>
+                  <View style={styles.entryHoursContainer}>
+                    <View style={styles.entryHours}>
+                      <Text style={styles.entryHoursText}>{formatHoursMinutes(entry.total_hours)}</Text>
+                    </View>
+                    {entry.unpaid_break_minutes !== undefined && entry.unpaid_break_minutes > 0 && (
+                      <Text style={styles.entryBreakText}>
+                        -{entry.unpaid_break_minutes}min break
+                      </Text>
+                    )}
                   </View>
                 </View>
                 {entry.worked_as && (
@@ -673,6 +683,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
   },
+  entryHoursContainer: {
+    alignItems: 'flex-end',
+  },
   entryHours: {
     backgroundColor: '#F3F4F6',
     paddingHorizontal: 12,
@@ -683,6 +696,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#1A1A1A',
+  },
+  entryBreakText: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 2,
   },
   entryWorkedAs: {
     fontSize: 13,
