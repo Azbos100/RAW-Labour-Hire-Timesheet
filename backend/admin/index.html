@@ -1353,11 +1353,11 @@
                         </span>
                     </td>
                     <td class="px-4 py-3">
-                        <button onclick="viewTimesheet(${ts.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="View">
-                            <i class="fas fa-eye"></i>
+                        <button onclick="viewTimesheet(${ts.id})" class="px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-xs font-medium mr-1" title="View & Edit Entries">
+                            <i class="fas fa-edit mr-1"></i>Edit
                         </button>
-                        <button onclick="deleteTimesheet(${ts.id}, '${ts.docket_number}')" class="text-orange-600 hover:text-orange-800" title="Archive">
-                            <i class="fas fa-archive"></i>
+                        <button onclick="deleteTimesheet(${ts.id}, '${ts.docket_number}')" class="px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-xs font-medium" title="Delete Timesheet">
+                            <i class="fas fa-trash mr-1"></i>Delete
                         </button>
                     </td>
                 </tr>
@@ -1832,18 +1832,41 @@
         }
 
         async function deleteTimesheet(id, docketNumber) {
-            if (!confirm(`Archive timesheet #${docketNumber}?\n\nIt will be moved to the Archived tab and can be restored later.`)) return;
+            // Find the timesheet to check its status
+            const ts = allTimesheets.find(t => t.id === id);
+            const isDraft = ts && ts.status === 'draft';
+            
+            let action = 'archive';
+            if (isDraft) {
+                // For drafts, offer permanent delete option
+                const choice = confirm(`Delete timesheet #${docketNumber}?\n\nClick OK to PERMANENTLY DELETE\nClick Cancel to keep it`);
+                if (!choice) return;
+                action = 'permanent';
+            } else {
+                // For non-drafts, archive instead
+                if (!confirm(`Archive timesheet #${docketNumber}?\n\nIt will be moved to the Archived tab and can be restored later.`)) return;
+                action = 'archive';
+            }
             
             try {
-                const response = await fetch(`${API_BASE}/timesheets/${id}`, {
+                let url = `${API_BASE}/timesheets/${id}`;
+                if (action === 'permanent') {
+                    url = `${API_BASE}/timesheets/${id}/permanent`;
+                }
+                
+                const response = await fetch(url, {
                     method: 'DELETE'
                 });
                 if (response.ok) {
                     await loadTimesheets();
-                    alert('Timesheet archived. You can restore it from the Archived tab.');
+                    if (action === 'permanent') {
+                        alert('Timesheet permanently deleted.');
+                    } else {
+                        alert('Timesheet archived. You can restore it from the Archived tab.');
+                    }
                 } else {
                     const data = await response.json();
-                    alert(data.detail || 'Error archiving timesheet');
+                    alert(data.detail || 'Error deleting timesheet');
                 }
             } catch (error) {
                 console.error('Error:', error);
