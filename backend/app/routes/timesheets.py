@@ -223,6 +223,19 @@ async def get_timesheet(
     if not timesheet:
         raise HTTPException(status_code=404, detail="Timesheet not found")
     
+    # Get worker info
+    worker_result = await db.execute(select(User).where(User.id == timesheet.worker_id))
+    worker = worker_result.scalar_one_or_none()
+    worker_name = f"{worker.first_name} {worker.surname}" if worker else "Unknown"
+    
+    # Get client info from first entry's job site or timesheet client
+    client_name = None
+    if timesheet.client_id:
+        from ..models import Client
+        client_result = await db.execute(select(Client).where(Client.id == timesheet.client_id))
+        client = client_result.scalar_one_or_none()
+        client_name = client.name if client else None
+    
     # Get entries
     result = await db.execute(
         select(TimesheetEntry)
@@ -238,11 +251,16 @@ async def get_timesheet(
         "week_starting": timesheet.week_starting.isoformat(),
         "week_ending": timesheet.week_ending.isoformat(),
         "status": timesheet.status.value,
+        "worker_name": worker_name,
+        "client_name": client_name,
         "total_ordinary_hours": timesheet.total_ordinary_hours,
         "total_overtime_hours": timesheet.total_overtime_hours,
         "total_hours": timesheet.total_hours,
         "injury_reported": timesheet.injury_reported.value if timesheet.injury_reported else "n/a",
         "supervisor_signed_at": timesheet.supervisor_signed_at.isoformat() if timesheet.supervisor_signed_at else None,
+        "supervisor_name": timesheet.supervisor_name,
+        "supervisor_contact": timesheet.supervisor_contact,
+        "supervisor_signature": timesheet.supervisor_signature,
         "entries": [
             {
                 "id": e.id,
