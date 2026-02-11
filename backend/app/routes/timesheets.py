@@ -18,7 +18,7 @@ MELBOURNE_TZ = pytz.timezone('Australia/Melbourne')
 def get_melbourne_now():
     """Get current time in Melbourne, Australia (AEST/AEDT)"""
     return datetime.now(MELBOURNE_TZ)
-from ..models import User, Timesheet, TimesheetEntry, TimesheetStatus, InjuryStatus, Client
+from ..models import User, Timesheet, TimesheetEntry, TimesheetStatus, InjuryStatus, Client, JobSite
 from .auth import get_current_user
 
 router = APIRouter()
@@ -228,21 +228,61 @@ async def get_timesheet(
     worker = worker_result.scalar_one_or_none()
     worker_name = f"{worker.first_name} {worker.surname}" if worker else "Unknown"
     
-    # Get client info from first entry's job site or timesheet client
+    # Get client info from timesheet client
     client_name = None
     if timesheet.client_id:
-        from ..models import Client
         client_result = await db.execute(select(Client).where(Client.id == timesheet.client_id))
         client = client_result.scalar_one_or_none()
         client_name = client.name if client else None
     
-    # Get entries
+    # Get entries with job site names
     result = await db.execute(
         select(TimesheetEntry)
         .where(TimesheetEntry.timesheet_id == timesheet_id)
         .order_by(TimesheetEntry.entry_date)
     )
     entries = result.scalars().all()
+    
+    # Build entries with job site names
+    entries_data = []
+    for e in entries:
+        # Get job site name if job_site_id exists
+        job_site_name = None
+        if e.job_site_id:
+            job_site_result = await db.execute(select(JobSite).where(JobSite.id == e.job_site_id))
+            job_site = job_site_result.scalar_one_or_none()
+            job_site_name = job_site.name if job_site else None
+        
+        entries_data.append({
+            "id": e.id,
+            "day_of_week": e.day_of_week,
+            "entry_date": e.entry_date.isoformat(),
+            "time_start": e.time_start.isoformat() if e.time_start else None,
+            "time_finish": e.time_finish.isoformat() if e.time_finish else None,
+            "clock_in_time": e.clock_in_time.isoformat() if e.clock_in_time else None,
+            "clock_out_time": e.clock_out_time.isoformat() if e.clock_out_time else None,
+            "ordinary_hours": e.ordinary_hours,
+            "overtime_hours": e.overtime_hours,
+            "total_hours": e.total_hours,
+            "worked_as": e.worked_as,
+            "comments": e.comments,
+            "first_aid_injury": e.first_aid_injury,
+            # GPS coordinates
+            "clock_in_address": e.clock_in_address,
+            "clock_in_latitude": e.clock_in_latitude,
+            "clock_in_longitude": e.clock_in_longitude,
+            "clock_out_address": e.clock_out_address,
+            "clock_out_latitude": e.clock_out_latitude,
+            "clock_out_longitude": e.clock_out_longitude,
+            # Status and supervisor
+            "entry_status": e.entry_status or "draft",
+            "job_site_name": job_site_name,
+            "company_name": e.host_company_name,
+            "host_company_name": e.host_company_name,
+            "supervisor_name": e.supervisor_name,
+            "supervisor_contact": e.supervisor_contact,
+            "supervisor_signature": e.supervisor_signature
+        })
     
     return {
         "id": timesheet.id,
@@ -261,39 +301,7 @@ async def get_timesheet(
         "supervisor_name": timesheet.supervisor_name,
         "supervisor_contact": timesheet.supervisor_contact,
         "supervisor_signature": timesheet.supervisor_signature,
-        "entries": [
-            {
-                "id": e.id,
-                "day_of_week": e.day_of_week,
-                "entry_date": e.entry_date.isoformat(),
-                "time_start": e.time_start.isoformat() if e.time_start else None,
-                "time_finish": e.time_finish.isoformat() if e.time_finish else None,
-                "clock_in_time": e.clock_in_time.isoformat() if e.clock_in_time else None,
-                "clock_out_time": e.clock_out_time.isoformat() if e.clock_out_time else None,
-                "ordinary_hours": e.ordinary_hours,
-                "overtime_hours": e.overtime_hours,
-                "total_hours": e.total_hours,
-                "worked_as": e.worked_as,
-                "comments": e.comments,
-                "first_aid_injury": e.first_aid_injury,
-                # GPS coordinates
-                "clock_in_address": e.clock_in_address,
-                "clock_in_latitude": e.clock_in_latitude,
-                "clock_in_longitude": e.clock_in_longitude,
-                "clock_out_address": e.clock_out_address,
-                "clock_out_latitude": e.clock_out_latitude,
-                "clock_out_longitude": e.clock_out_longitude,
-                # Status and supervisor
-                "entry_status": e.entry_status or "draft",
-                "job_site_name": e.job_site_name,
-                "company_name": e.host_company_name,
-                "host_company_name": e.host_company_name,
-                "supervisor_name": e.supervisor_name,
-                "supervisor_contact": e.supervisor_contact,
-                "supervisor_signature": e.supervisor_signature
-            }
-            for e in entries
-        ]
+        "entries": entries_data
     }
 
 
