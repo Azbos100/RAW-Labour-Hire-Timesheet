@@ -711,6 +711,7 @@
                     <select name="job_site_id" id="assign-job-select" required class="w-full border rounded-lg px-3 py-2">
                         <option value="">Select a job site...</option>
                     </select>
+                    <div id="job-site-details" class="hidden mt-2 p-3 bg-gray-50 rounded-lg"></div>
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1">Assignment Date *</label>
@@ -1244,6 +1245,23 @@
                                 <i class="fas fa-comment-alt mr-1"></i> ${entry.comments}
                             </div>
                         ` : ''}
+                        
+                        <!-- Entry Approve/Reject Buttons -->
+                        ${entry.entry_status === 'submitted' ? `
+                            <div class="mt-3 pt-3 border-t flex justify-end gap-2">
+                                <button onclick="rejectEntry(${entry.id})" class="px-3 py-2 border border-red-500 text-red-500 rounded-lg hover:bg-red-50 text-sm">
+                                    <i class="fas fa-times mr-1"></i>Reject Entry
+                                </button>
+                                <button onclick="approveEntry(${entry.id})" class="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">
+                                    <i class="fas fa-check mr-1"></i>Approve Entry
+                                </button>
+                            </div>
+                        ` : ''}
+                        ${entry.entry_status === 'approved' ? `
+                            <div class="mt-3 pt-3 border-t flex justify-end">
+                                <span class="text-green-600 text-sm"><i class="fas fa-check-circle mr-1"></i>Entry Approved</span>
+                            </div>
+                        ` : ''}
                     </div>
                 `).join('');
 
@@ -1280,8 +1298,19 @@
                 `;
 
                 // Show appropriate actions based on status
+                // Check if any entries are submitted (awaiting approval)
+                const submittedEntries = (ts.entries || []).filter(e => e.entry_status === 'submitted');
+                const approvedEntries = (ts.entries || []).filter(e => e.entry_status === 'approved');
+                
                 let actionsHtml = '';
-                if (ts.status === 'submitted') {
+                if (submittedEntries.length > 0) {
+                    actionsHtml = `
+                        <span class="text-orange-600 mr-4"><i class="fas fa-clock mr-1"></i>${submittedEntries.length} entries awaiting approval</span>
+                        <button onclick="approveAllEntries(${ts.id})" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                            <i class="fas fa-check-double mr-2"></i>Approve All Entries
+                        </button>
+                    `;
+                } else if (ts.status === 'submitted') {
                     actionsHtml = `
                         <button onclick="rejectTimesheet(${ts.id})" class="px-4 py-2 border border-red-500 text-red-500 rounded-lg hover:bg-red-50">
                             <i class="fas fa-times mr-2"></i>Reject
@@ -1290,8 +1319,8 @@
                             <i class="fas fa-check mr-2"></i>Approve
                         </button>
                     `;
-                } else if (ts.status === 'approved') {
-                    actionsHtml = `<span class="text-green-600"><i class="fas fa-check-circle mr-2"></i>Approved</span>`;
+                } else if (approvedEntries.length > 0 || ts.status === 'approved') {
+                    actionsHtml = `<span class="text-green-600"><i class="fas fa-check-circle mr-2"></i>${approvedEntries.length} entries approved</span>`;
                 } else if (ts.status === 'rejected') {
                     actionsHtml = `<span class="text-red-600"><i class="fas fa-times-circle mr-2"></i>Rejected</span>`;
                 }
@@ -1346,6 +1375,76 @@
             } catch (error) {
                 console.error('Error:', error);
                 alert('Error rejecting timesheet');
+            }
+        }
+
+        // Entry-level approval functions
+        async function approveEntry(entryId) {
+            if (!confirm('Approve this entry?')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/timesheets/admin/entries/${entryId}/approve`, {
+                    method: 'POST'
+                });
+                if (response.ok) {
+                    closeModal('timesheet-modal');
+                    await loadTimesheets();
+                    alert('Entry approved!');
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Error approving entry');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error approving entry');
+            }
+        }
+
+        async function rejectEntry(entryId) {
+            const reason = prompt('Reason for rejection (optional):');
+            if (reason === null) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/timesheets/admin/entries/${entryId}/reject`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason })
+                });
+                if (response.ok) {
+                    closeModal('timesheet-modal');
+                    await loadTimesheets();
+                    alert('Entry rejected');
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Error rejecting entry');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error rejecting entry');
+            }
+        }
+
+        async function approveAllEntries(timesheetId) {
+            if (!confirm('Approve ALL submitted entries in this timesheet?')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/timesheets/${timesheetId}`);
+                const ts = await response.json();
+                
+                const submittedEntries = (ts.entries || []).filter(e => e.entry_status === 'submitted');
+                
+                for (const entry of submittedEntries) {
+                    await fetch(`${API_BASE}/timesheets/admin/entries/${entry.id}/approve`, {
+                        method: 'POST'
+                    });
+                }
+                
+                closeModal('timesheet-modal');
+                await loadTimesheets();
+                alert(`${submittedEntries.length} entries approved!`);
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error approving entries');
             }
         }
 
@@ -1547,10 +1646,33 @@
             const today = new Date().toISOString().split('T')[0];
             document.getElementById('assign-job-date').value = today;
             
-            // Populate job site dropdown
+            // Populate job site dropdown with GPS status
             const select = document.getElementById('assign-job-select');
             select.innerHTML = '<option value="">Select a job site...</option>' +
-                allJobSites.map(js => `<option value="${js.id}">${js.name} - ${js.client_name || 'No Client'}</option>`).join('');
+                allJobSites.map(js => {
+                    const gpsStatus = (js.latitude && js.longitude) ? '📍' : '⚠️ No GPS';
+                    return `<option value="${js.id}">${js.name} - ${js.client_name || 'No Client'} ${gpsStatus}</option>`;
+                }).join('');
+            
+            // Show selected job site details
+            select.addEventListener('change', function() {
+                const selectedSite = allJobSites.find(js => js.id == this.value);
+                const detailsDiv = document.getElementById('job-site-details');
+                if (selectedSite && detailsDiv) {
+                    detailsDiv.innerHTML = `
+                        <div class="text-sm text-gray-600">
+                            <p><i class="fas fa-map-marker-alt mr-1"></i>${selectedSite.address || 'No address'}</p>
+                            ${selectedSite.latitude && selectedSite.longitude ? 
+                                `<p class="text-green-600"><i class="fas fa-check-circle mr-1"></i>GPS: ${selectedSite.latitude.toFixed(4)}, ${selectedSite.longitude.toFixed(4)}</p>` :
+                                `<p class="text-yellow-600"><i class="fas fa-exclamation-triangle mr-1"></i>No GPS set - worker can clock in anywhere</p>`
+                            }
+                        </div>
+                    `;
+                    detailsDiv.classList.remove('hidden');
+                } else if (detailsDiv) {
+                    detailsDiv.classList.add('hidden');
+                }
+            });
             
             // Check if worker has current assignment
             const worker = allWorkers.find(w => w.id === workerId);
