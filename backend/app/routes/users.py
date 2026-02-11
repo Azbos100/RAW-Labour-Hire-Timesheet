@@ -551,7 +551,8 @@ async def save_push_token(
 class JobAssignment(BaseModel):
     job_site_id: Optional[int] = None  # None to clear assignment
     assignment_date: Optional[date] = None  # Date the job is for
-    start_time: Optional[str] = None  # Start time for the shift (e.g., "10:00")
+    start_time: Optional[str] = None  # Start time for the shift (e.g., "07:00")
+    end_time: Optional[str] = None  # End time for the shift (e.g., "15:30")
 
 
 @router.post("/admin/workers/{worker_id}/assign")
@@ -580,6 +581,7 @@ async def assign_worker_to_job(
         worker.assigned_job_site_id = assignment.job_site_id
         worker.assignment_date = assignment.assignment_date or date.today()
         worker.assignment_start_time = assignment.start_time
+        worker.assignment_end_time = assignment.end_time
         worker.assignment_accepted = None  # Reset acceptance status
         worker.assigned_at = datetime.utcnow()
         
@@ -624,6 +626,7 @@ async def assign_worker_to_job(
         worker.assigned_job_site_id = None
         worker.assignment_date = None
         worker.assignment_start_time = None
+        worker.assignment_end_time = None
         worker.assignment_accepted = None
         worker.assigned_at = None
         message = "Assignment cleared"

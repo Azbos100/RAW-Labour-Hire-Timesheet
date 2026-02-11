@@ -133,6 +133,25 @@ async def lifespan(app: FastAPI):
             """))
         except Exception as e:
             print(f"Migration note (break columns): {e}")
+        
+        # Assignment end time for users
+        try:
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS assignment_end_time VARCHAR(10);
+            """))
+        except Exception as e:
+            print(f"Migration note (assignment_end_time): {e}")
+        
+        # Assigned shift times stored on entry for hour calculations
+        try:
+            await conn.execute(text("""
+                ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS assigned_start_time VARCHAR(10);
+            """))
+            await conn.execute(text("""
+                ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS assigned_end_time VARCHAR(10);
+            """))
+        except Exception as e:
+            print(f"Migration note (assigned shift times): {e}")
 
     # Seed a default client/job site if none exist
     async with AsyncSessionLocal() as session:

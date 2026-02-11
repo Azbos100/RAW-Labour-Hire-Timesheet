@@ -106,6 +106,39 @@ export default function ClockOutScreen({ navigation }: ClockOutScreenProps) {
       return;
     }
 
+    // Check if we need to prompt for overtime
+    try {
+      const overtimeCheck = await clockAPI.checkOvertime(user?.id);
+      const { should_prompt, assigned_end_time, minutes_past_shift } = overtimeCheck.data;
+      
+      if (should_prompt && minutes_past_shift > 0) {
+        // Worker is past their assigned shift end - ask about overtime
+        Alert.alert(
+          'Overtime?',
+          `Your assigned shift ended at ${assigned_end_time}.\n\nYou're clocking out ${minutes_past_shift} minutes late.\n\nAre you working overtime?`,
+          [
+            { 
+              text: 'No - Finished at ' + assigned_end_time, 
+              onPress: () => proceedWithClockOut(false),
+              style: 'cancel'
+            },
+            { 
+              text: 'Yes - Overtime', 
+              onPress: () => proceedWithClockOut(true) 
+            },
+          ]
+        );
+        return;
+      }
+    } catch (error) {
+      console.log('Overtime check failed, proceeding with clock out:', error);
+    }
+
+    // No overtime prompt needed, proceed normally
+    proceedWithClockOut(undefined);
+  };
+  
+  const proceedWithClockOut = (isOvertime?: boolean) => {
     // Confirm if injury is reported
     if (firstAidInjury) {
       Alert.alert(
@@ -113,15 +146,15 @@ export default function ClockOutScreen({ navigation }: ClockOutScreenProps) {
         'You have indicated a first aid/injury incident. This will be flagged on your timesheet.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Continue', onPress: () => submitClockOut() },
+          { text: 'Continue', onPress: () => submitClockOut(isOvertime) },
         ]
       );
     } else {
-      submitClockOut();
+      submitClockOut(isOvertime);
     }
   };
 
-  const submitClockOut = async () => {
+  const submitClockOut = async (isOvertime?: boolean) => {
     const finalAddress = isEditingAddress ? manualAddress : address;
     
     // Build comments with early leave info if applicable
@@ -144,6 +177,7 @@ export default function ClockOutScreen({ navigation }: ClockOutScreenProps) {
         comments: finalComments || undefined,
         first_aid_injury: firstAidInjury,
         user_id: user?.id,
+        is_overtime: isOvertime,
       });
 
       const { entry_id, ordinary_hours, overtime_hours, total_hours, gross_hours, unpaid_break_minutes, docket_number } = response.data;

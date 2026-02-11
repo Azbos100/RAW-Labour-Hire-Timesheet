@@ -753,10 +753,17 @@
                     <label class="block text-sm font-medium mb-1">Assignment Date *</label>
                     <input type="date" name="assignment_date" id="assign-job-date" required class="w-full border rounded-lg px-3 py-2">
                 </div>
-                <div>
-                    <label class="block text-sm font-medium mb-1">Start Time *</label>
-                    <input type="time" name="start_time" id="assign-job-time" required class="w-full border rounded-lg px-3 py-2">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Start Time *</label>
+                        <input type="time" name="start_time" id="assign-job-time" required class="w-full border rounded-lg px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">End Time *</label>
+                        <input type="time" name="end_time" id="assign-job-end-time" required class="w-full border rounded-lg px-3 py-2">
+                    </div>
                 </div>
+                <p class="text-xs text-gray-500">Early clock-ins will be rounded to start time. Late clock-outs will prompt for overtime.</p>
                 <div id="current-assignment" class="hidden p-3 bg-gray-50 rounded-lg">
                     <div class="text-sm font-medium text-gray-700">Current Assignment:</div>
                     <div id="current-assignment-text" class="text-sm text-gray-600"></div>
@@ -2102,6 +2109,12 @@
                 return;
             }
             
+            const endTime = document.getElementById('assign-job-end-time').value;
+            if (!endTime) {
+                alert('Please select an end time');
+                return;
+            }
+            
             try {
                 const response = await fetch(`${API_BASE}/users/admin/workers/${workerId}/assign`, {
                     method: 'POST',
@@ -2109,7 +2122,8 @@
                     body: JSON.stringify({
                         job_site_id: parseInt(jobSiteId),
                         assignment_date: assignmentDate,
-                        start_time: startTime
+                        start_time: startTime,
+                        end_time: endTime
                     })
                 });
                 

@@ -110,7 +110,8 @@ class User(Base):
     assigned_job_site_id = Column(Integer, ForeignKey("job_sites.id"))
     assignment_accepted = Column(Boolean)  # True=accepted, False=declined, None=pending
     assignment_date = Column(Date)  # Date the job was assigned for
-    assignment_start_time = Column(String(10))  # Start time for the shift (e.g., "10:00")
+    assignment_start_time = Column(String(10))  # Start time for the shift (e.g., "07:00")
+    assignment_end_time = Column(String(10))  # End time for the shift (e.g., "15:30")
     assigned_at = Column(DateTime)  # When the assignment was made
     
     # Push Notifications
@@ -302,6 +303,10 @@ class TimesheetEntry(Base):
     unpaid_break_minutes = Column(Integer, default=30)  # Default 30 min unpaid lunch
     paid_break_minutes = Column(Integer, default=0)  # Paid breaks (not deducted)
     gross_hours = Column(Float, default=0)  # Hours before break deduction
+    
+    # Assigned shift times (for overtime calculation)
+    assigned_start_time = Column(String(10))  # e.g., "07:00"
+    assigned_end_time = Column(String(10))  # e.g., "15:30"
     
     # Relationships
     timesheet = relationship("Timesheet", back_populates="entries")

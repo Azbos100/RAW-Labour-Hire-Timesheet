@@ -102,7 +102,11 @@ export const clockAPI = {
     comments?: string;
     first_aid_injury?: boolean;
     user_id?: number;
+    is_overtime?: boolean;  // true=overtime, false=finished at assigned time
   }) => api.post('/clock/out', data),
+  
+  // Check if overtime prompt should be shown before clock-out
+  checkOvertime: (userId?: number) => api.get('/clock/check-overtime', { params: { user_id: userId } }),
   
   getHistory: (days: number = 7) => api.get(`/clock/history?days=${days}`),
   
