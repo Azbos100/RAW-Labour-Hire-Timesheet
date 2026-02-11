@@ -235,6 +235,7 @@ class Timesheet(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     submitted_at = Column(DateTime)
+    archived_at = Column(DateTime, nullable=True)  # Soft delete - when archived
     
     # Relationships
     worker = relationship("User", back_populates="timesheets", foreign_keys=[worker_id])

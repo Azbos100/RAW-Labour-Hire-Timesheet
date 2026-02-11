@@ -107,6 +107,9 @@
                 <button onclick="switchTab('timesheets')" id="tab-timesheets" class="py-4 px-2 font-medium tab-active whitespace-nowrap">
                     <i class="fas fa-clock mr-2"></i>Timesheets
                 </button>
+                <button onclick="switchTab('archived')" id="tab-archived" class="py-4 px-2 font-medium text-gray-500 hover:text-gray-700 whitespace-nowrap">
+                    <i class="fas fa-archive mr-2"></i>Archived
+                </button>
                 <button onclick="switchTab('tickets')" id="tab-tickets" class="py-4 px-2 font-medium text-gray-500 hover:text-gray-700 whitespace-nowrap">
                     <i class="fas fa-id-card mr-2"></i>Tickets
                 </button>
@@ -218,6 +221,39 @@
                         <tbody id="timesheets-table" class="divide-y divide-gray-100">
                             <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">
                                 <div class="loader mx-auto mb-2"></div>Loading timesheets...
+                            </td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Archived Timesheets Tab -->
+        <div id="content-archived" class="hidden">
+            <div class="flex justify-between items-center mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800">Archived Timesheets</h2>
+                    <p class="text-gray-500">Deleted and old timesheets are stored here</p>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-xl shadow overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            <tr>
+                                <th class="px-4 py-3">Docket #</th>
+                                <th class="px-4 py-3">Worker</th>
+                                <th class="px-4 py-3">Week</th>
+                                <th class="px-4 py-3">Client</th>
+                                <th class="px-4 py-3">Hours</th>
+                                <th class="px-4 py-3">Archived</th>
+                                <th class="px-4 py-3">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="archived-timesheets-table" class="divide-y divide-gray-100">
+                            <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">
+                                <div class="loader mx-auto mb-2"></div>Loading archived timesheets...
                             </td></tr>
                         </tbody>
                     </table>
@@ -1067,6 +1103,11 @@
                 content.classList.add('hidden');
             });
             document.getElementById(`content-${tab}`).classList.remove('hidden');
+            
+            // Load data for specific tabs
+            if (tab === 'archived') {
+                loadArchivedTimesheets();
+            }
         }
 
         // ==================== TIMESHEETS ====================
@@ -1091,6 +1132,104 @@
                 console.error('Error loading timesheets:', error);
                 document.getElementById('timesheets-table').innerHTML = 
                     `<tr><td colspan="7" class="px-4 py-8 text-center text-red-500">Error loading timesheets</td></tr>`;
+            }
+        }
+
+        // ==================== ARCHIVED TIMESHEETS ====================
+        
+        let archivedTimesheets = [];
+        
+        async function loadArchivedTimesheets() {
+            try {
+                const response = await fetch(`${API_BASE}/timesheets/admin/archived`);
+                const data = await response.json();
+                archivedTimesheets = data.timesheets || [];
+                renderArchivedTimesheets();
+            } catch (error) {
+                console.error('Error loading archived timesheets:', error);
+                document.getElementById('archived-timesheets-table').innerHTML = 
+                    `<tr><td colspan="7" class="px-4 py-8 text-center text-red-500">Error loading archived timesheets</td></tr>`;
+            }
+        }
+        
+        function renderArchivedTimesheets() {
+            const tbody = document.getElementById('archived-timesheets-table');
+            
+            if (archivedTimesheets.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">
+                    <i class="fas fa-archive text-4xl text-gray-300 mb-2"></i>
+                    <p>No archived timesheets</p>
+                </td></tr>`;
+                return;
+            }
+            
+            tbody.innerHTML = archivedTimesheets.map(ts => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3">
+                        <span class="font-medium text-blue-600">#${ts.docket_number}</span>
+                    </td>
+                    <td class="px-4 py-3 font-medium">${ts.worker_name}</td>
+                    <td class="px-4 py-3 text-sm text-gray-500">
+                        ${formatDate(ts.week_starting)} - ${formatDate(ts.week_ending)}
+                    </td>
+                    <td class="px-4 py-3">${ts.client_name || '-'}</td>
+                    <td class="px-4 py-3">
+                        <span class="font-medium">${ts.total_hours?.toFixed(1) || '0.0'}h</span>
+                        <span class="text-xs text-gray-400 block">${ts.total_overtime_hours?.toFixed(2) || '0.00'}h OT</span>
+                    </td>
+                    <td class="px-4 py-3 text-sm text-gray-500">
+                        ${ts.archived_at ? new Date(ts.archived_at).toLocaleDateString() : '-'}
+                    </td>
+                    <td class="px-4 py-3">
+                        <button onclick="restoreTimesheet(${ts.id})" class="text-green-600 hover:text-green-800 mr-2" title="Restore">
+                            <i class="fas fa-undo"></i>
+                        </button>
+                        <button onclick="viewTimesheet(${ts.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="View">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button onclick="permanentlyDeleteTimesheet(${ts.id})" class="text-red-600 hover:text-red-800" title="Delete Permanently">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+        
+        async function restoreTimesheet(id) {
+            if (!confirm('Restore this timesheet to active timesheets?')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/timesheets/${id}/restore`, { method: 'POST' });
+                if (response.ok) {
+                    await loadArchivedTimesheets();
+                    await loadTimesheets();
+                    alert('Timesheet restored!');
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Error restoring timesheet');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error restoring timesheet');
+            }
+        }
+        
+        async function permanentlyDeleteTimesheet(id) {
+            if (!confirm('PERMANENTLY delete this timesheet? This cannot be undone!')) return;
+            if (!confirm('Are you absolutely sure? All entries will be lost forever.')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/timesheets/${id}/permanent`, { method: 'DELETE' });
+                if (response.ok) {
+                    await loadArchivedTimesheets();
+                    alert('Timesheet permanently deleted');
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Error deleting timesheet');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error deleting timesheet');
             }
         }
 
@@ -1129,8 +1268,8 @@
                         <button onclick="viewTimesheet(${ts.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="View">
                             <i class="fas fa-eye"></i>
                         </button>
-                        <button onclick="deleteTimesheet(${ts.id}, '${ts.docket_number}')" class="text-red-600 hover:text-red-800" title="Delete">
-                            <i class="fas fa-trash"></i>
+                        <button onclick="deleteTimesheet(${ts.id}, '${ts.docket_number}')" class="text-orange-600 hover:text-orange-800" title="Archive">
+                            <i class="fas fa-archive"></i>
                         </button>
                     </td>
                 </tr>
@@ -1459,7 +1598,7 @@
         }
 
         async function deleteTimesheet(id, docketNumber) {
-            if (!confirm(`Are you sure you want to DELETE timesheet #${docketNumber}?\n\nThis action cannot be undone!`)) return;
+            if (!confirm(`Archive timesheet #${docketNumber}?\n\nIt will be moved to the Archived tab and can be restored later.`)) return;
             
             try {
                 const response = await fetch(`${API_BASE}/timesheets/${id}`, {
@@ -1467,14 +1606,14 @@
                 });
                 if (response.ok) {
                     await loadTimesheets();
-                    alert('Timesheet deleted');
+                    alert('Timesheet archived. You can restore it from the Archived tab.');
                 } else {
                     const data = await response.json();
-                    alert(data.detail || 'Error deleting timesheet');
+                    alert(data.detail || 'Error archiving timesheet');
                 }
             } catch (error) {
                 console.error('Error:', error);
-                alert('Error deleting timesheet');
+                alert('Error archiving timesheet');
             }
         }
 

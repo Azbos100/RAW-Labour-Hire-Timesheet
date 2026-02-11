@@ -111,6 +111,14 @@ async def lifespan(app: FastAPI):
             """))
         except Exception as e:
             print(f"Migration note (push_token): {e}")
+        
+        # Timesheet archive column
+        try:
+            await conn.execute(text("""
+                ALTER TABLE timesheets ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP;
+            """))
+        except Exception as e:
+            print(f"Migration note (archived_at): {e}")
 
     # Seed a default client/job site if none exist
     async with AsyncSessionLocal() as session:

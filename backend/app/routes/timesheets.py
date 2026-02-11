@@ -32,8 +32,8 @@ async def get_all_timesheets_admin(
     worker_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db)
 ):
-    """Get all timesheets for admin dashboard (no auth required)"""
-    query = select(Timesheet).order_by(Timesheet.week_starting.desc())
+    """Get all active (non-archived) timesheets for admin dashboard"""
+    query = select(Timesheet).where(Timesheet.archived_at.is_(None)).order_by(Timesheet.week_starting.desc())
     
     if status:
         query = query.where(Timesheet.status == TimesheetStatus(status))
@@ -71,6 +71,46 @@ async def get_all_timesheets_admin(
             "supervisor_contact": ts.supervisor_contact,
             "supervisor_signature": ts.supervisor_signature,
             "submitted_at": ts.submitted_at.isoformat() if ts.submitted_at else None,
+        })
+    
+    return {"timesheets": response_data}
+
+
+@router.get("/admin/archived")
+async def get_archived_timesheets(
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all archived timesheets for admin dashboard"""
+    query = select(Timesheet).where(Timesheet.archived_at.isnot(None)).order_by(Timesheet.archived_at.desc())
+    
+    result = await db.execute(query)
+    timesheets = result.scalars().all()
+    
+    # Get worker and client names
+    response_data = []
+    for ts in timesheets:
+        # Get worker
+        worker_result = await db.execute(select(User).where(User.id == ts.worker_id))
+        worker = worker_result.scalar_one_or_none()
+        
+        # Get client
+        client_result = await db.execute(select(Client).where(Client.id == ts.client_id))
+        client = client_result.scalar_one_or_none()
+        
+        response_data.append({
+            "id": ts.id,
+            "docket_number": ts.docket_number,
+            "worker_id": ts.worker_id,
+            "worker_name": f"{worker.first_name} {worker.surname}" if worker else "Unknown",
+            "client_id": ts.client_id,
+            "client_name": client.name if client else None,
+            "week_starting": ts.week_starting.isoformat(),
+            "week_ending": ts.week_ending.isoformat(),
+            "status": ts.status.value,
+            "total_ordinary_hours": ts.total_ordinary_hours or 0,
+            "total_overtime_hours": ts.total_overtime_hours or 0,
+            "total_hours": ts.total_hours or 0,
+            "archived_at": ts.archived_at.isoformat() if ts.archived_at else None,
         })
     
     return {"timesheets": response_data}
@@ -121,11 +161,52 @@ async def reject_timesheet(
 
 
 @router.delete("/{timesheet_id}")
-async def delete_timesheet(
+async def archive_timesheet(
     timesheet_id: int,
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete a timesheet and all its entries (admin)"""
+    """Archive a timesheet (soft delete) - moves to archived folder"""
+    result = await db.execute(select(Timesheet).where(Timesheet.id == timesheet_id))
+    timesheet = result.scalar_one_or_none()
+    
+    if not timesheet:
+        raise HTTPException(status_code=404, detail="Timesheet not found")
+    
+    # Soft delete - set archived_at timestamp
+    timesheet.archived_at = datetime.utcnow()
+    await db.commit()
+    
+    return {"message": "Timesheet archived", "id": timesheet_id}
+
+
+@router.post("/{timesheet_id}/restore")
+async def restore_timesheet(
+    timesheet_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Restore an archived timesheet back to active"""
+    result = await db.execute(select(Timesheet).where(Timesheet.id == timesheet_id))
+    timesheet = result.scalar_one_or_none()
+    
+    if not timesheet:
+        raise HTTPException(status_code=404, detail="Timesheet not found")
+    
+    if not timesheet.archived_at:
+        raise HTTPException(status_code=400, detail="Timesheet is not archived")
+    
+    # Restore by clearing archived_at
+    timesheet.archived_at = None
+    await db.commit()
+    
+    return {"message": "Timesheet restored", "id": timesheet_id}
+
+
+@router.delete("/{timesheet_id}/permanent")
+async def permanently_delete_timesheet(
+    timesheet_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Permanently delete a timesheet and all its entries (cannot be undone)"""
     result = await db.execute(select(Timesheet).where(Timesheet.id == timesheet_id))
     timesheet = result.scalar_one_or_none()
     
@@ -141,7 +222,7 @@ async def delete_timesheet(
     await db.delete(timesheet)
     await db.commit()
     
-    return {"message": "Timesheet deleted"}
+    return {"message": "Timesheet permanently deleted"}
 
 
 class TimesheetResponse(BaseModel):
