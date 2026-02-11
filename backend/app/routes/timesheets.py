@@ -838,7 +838,7 @@ async def approve_entry(
     entry_id: int,
     db: AsyncSession = Depends(get_db)
 ):
-    """Approve a submitted entry"""
+    """Approve a submitted entry and update parent timesheet if all entries approved"""
     result = await db.execute(
         select(TimesheetEntry).where(TimesheetEntry.id == entry_id)
     )
@@ -848,9 +848,32 @@ async def approve_entry(
         raise HTTPException(status_code=404, detail="Entry not found")
     
     entry.entry_status = "approved"
+    
+    # Check if all entries in the timesheet are now approved
+    all_entries_result = await db.execute(
+        select(TimesheetEntry).where(TimesheetEntry.timesheet_id == entry.timesheet_id)
+    )
+    all_entries = all_entries_result.scalars().all()
+    
+    # If all entries are approved, update the timesheet status
+    all_approved = all(e.entry_status == "approved" for e in all_entries)
+    any_approved = any(e.entry_status == "approved" for e in all_entries)
+    
+    # Get the parent timesheet
+    ts_result = await db.execute(select(Timesheet).where(Timesheet.id == entry.timesheet_id))
+    timesheet = ts_result.scalar_one_or_none()
+    
+    if timesheet:
+        if all_approved:
+            timesheet.status = TimesheetStatus.APPROVED
+        elif any_approved:
+            # At least some entries approved - mark as submitted (in progress)
+            if timesheet.status == TimesheetStatus.DRAFT:
+                timesheet.status = TimesheetStatus.SUBMITTED
+    
     await db.commit()
     
-    return {"message": "Entry approved", "entry_id": entry_id}
+    return {"message": "Entry approved", "entry_id": entry_id, "timesheet_status": timesheet.status.value if timesheet else None}
 
 
 @router.post("/admin/entries/{entry_id}/reject")

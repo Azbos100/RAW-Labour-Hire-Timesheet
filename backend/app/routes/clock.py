@@ -147,9 +147,10 @@ async def get_clock_status(
     week_total_hours = sum(e.total_hours or 0 for e in completed_week_entries)
     week_overtime_hours = sum(e.overtime_hours or 0 for e in completed_week_entries)
     
-    # Find today's active entry (clocked in but not out)
+    # Find active entry (clocked in but not out) - check today AND yesterday for overnight shifts
+    yesterday = today - timedelta(days=1)
     active_entry = next(
-        (e for e in week_entries if e.entry_date == today and e.clock_in_time and not e.clock_out_time),
+        (e for e in week_entries if e.entry_date in [today, yesterday] and e.clock_in_time and not e.clock_out_time),
         None
     )
     
@@ -215,14 +216,15 @@ async def toggle_overtime_mode(
     
     # Use Australian Eastern Time
     today = get_melbourne_now().date()
+    yesterday = today - timedelta(days=1)
     
-    # Find active entry (clocked in but not out)
+    # Find active entry (clocked in but not out) - check today and yesterday for overnight shifts
     result = await db.execute(
         select(TimesheetEntry)
         .join(Timesheet)
         .where(
             Timesheet.worker_id == current_user.id,
-            TimesheetEntry.entry_date == today,
+            TimesheetEntry.entry_date.in_([today, yesterday]),
             TimesheetEntry.clock_in_time.isnot(None),
             TimesheetEntry.clock_out_time.is_(None)
         )
@@ -272,13 +274,14 @@ async def clock_in(
     today = now_melb.date()
     week_start, week_end = get_week_dates(today)
     
-    # Check if already clocked in
+    # Check if already clocked in (check today and yesterday for overnight shifts)
+    yesterday = today - timedelta(days=1)
     result = await db.execute(
         select(TimesheetEntry)
         .join(Timesheet)
         .where(
             Timesheet.worker_id == current_user.id,
-            TimesheetEntry.entry_date == today,
+            TimesheetEntry.entry_date.in_([today, yesterday]),
             TimesheetEntry.clock_in_time.isnot(None),
             TimesheetEntry.clock_out_time.is_(None)
         )
@@ -406,14 +409,15 @@ async def clock_out(
     now_melb = get_melbourne_now()
     now = now_melb.replace(tzinfo=None)  # Store as naive datetime for DB compatibility
     today = now_melb.date()
+    yesterday = today - timedelta(days=1)
     
-    # Find active clock-in entry
+    # Find active clock-in entry (check today and yesterday for overnight shifts)
     result = await db.execute(
         select(TimesheetEntry)
         .join(Timesheet)
         .where(
             Timesheet.worker_id == current_user.id,
-            TimesheetEntry.entry_date == today,
+            TimesheetEntry.entry_date.in_([today, yesterday]),
             TimesheetEntry.clock_in_time.isnot(None),
             TimesheetEntry.clock_out_time.is_(None)
         )

@@ -170,13 +170,17 @@ async def list_all_workers(
     result = await db.execute(query.order_by(User.surname, User.first_name))
     users = result.scalars().all()
     
-    # Get all active clock-ins (entries with clock_in but no clock_out)
-    today = date.today()
+    # Get all active clock-ins (entries with clock_in but no clock_out, from today only)
+    import pytz
+    MELBOURNE_TZ = pytz.timezone('Australia/Melbourne')
+    today = datetime.now(MELBOURNE_TZ).date()
+    
     active_entries_result = await db.execute(
         select(TimesheetEntry)
         .where(
             TimesheetEntry.clock_in_time.isnot(None),
-            TimesheetEntry.clock_out_time.is_(None)
+            TimesheetEntry.clock_out_time.is_(None),
+            TimesheetEntry.entry_date == today  # Only today's entries
         )
     )
     active_entries = active_entries_result.scalars().all()
