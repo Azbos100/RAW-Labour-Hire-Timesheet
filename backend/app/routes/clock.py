@@ -79,19 +79,27 @@ def get_address_from_coords(lat: float, lon: float) -> str:
         return f"{lat}, {lon}"
 
 
-def calculate_hours(start: datetime, end: datetime) -> tuple[float, float]:
+def calculate_hours(start: datetime, end: datetime, unpaid_break_minutes: int = 30) -> tuple[float, float, float]:
     """
-    Calculate ordinary and overtime hours.
-    Ordinary: first 8 hours
-    Overtime: anything over 8 hours
+    Calculate gross hours, ordinary hours, and overtime hours.
+    - Gross hours: total time between clock in and out
+    - Net hours: gross hours minus unpaid break
+    - Ordinary: first 8 hours of net time
+    - Overtime: anything over 8 hours of net time
+    
+    Returns: (ordinary_hours, overtime_hours, gross_hours)
     """
     total_seconds = (end - start).total_seconds()
-    total_hours = total_seconds / 3600
+    gross_hours = total_seconds / 3600
     
-    ordinary = min(total_hours, 8.0)
-    overtime = max(total_hours - 8.0, 0.0)
+    # Deduct unpaid break
+    break_hours = unpaid_break_minutes / 60
+    net_hours = max(0, gross_hours - break_hours)
     
-    return round(ordinary, 2), round(overtime, 2)
+    ordinary = min(net_hours, 8.0)
+    overtime = max(net_hours - 8.0, 0.0)
+    
+    return round(ordinary, 2), round(overtime, 2), round(gross_hours, 2)
 
 
 def get_day_of_week(d: date) -> str:
@@ -438,8 +446,9 @@ async def clock_out(
     else:
         clock_out_address = "Address not provided"
     
-    # Calculate hours
-    ordinary_hours, overtime_hours = calculate_hours(entry.clock_in_time, now)
+    # Calculate hours with break deduction (default 30 min unpaid)
+    unpaid_break = entry.unpaid_break_minutes if entry.unpaid_break_minutes is not None else 30
+    ordinary_hours, overtime_hours, gross_hours = calculate_hours(entry.clock_in_time, now, unpaid_break)
     total_hours = ordinary_hours + overtime_hours
     
     # Update entry
@@ -448,6 +457,7 @@ async def clock_out(
     entry.clock_out_latitude = request.latitude if request.latitude != 0 else None
     entry.clock_out_longitude = request.longitude if request.longitude != 0 else None
     entry.clock_out_address = clock_out_address
+    entry.gross_hours = gross_hours
     entry.ordinary_hours = ordinary_hours
     entry.overtime_hours = overtime_hours
     entry.total_hours = total_hours

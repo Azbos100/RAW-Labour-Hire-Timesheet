@@ -298,6 +298,11 @@ class TimesheetEntry(Base):
     supervisor_signature = Column(Text)  # Base64 encoded
     submitted_at = Column(DateTime)
     
+    # Break tracking
+    unpaid_break_minutes = Column(Integer, default=30)  # Default 30 min unpaid lunch
+    paid_break_minutes = Column(Integer, default=0)  # Paid breaks (not deducted)
+    gross_hours = Column(Float, default=0)  # Hours before break deduction
+    
     # Relationships
     timesheet = relationship("Timesheet", back_populates="entries")
     job_site = relationship("JobSite", back_populates="timesheet_entries")

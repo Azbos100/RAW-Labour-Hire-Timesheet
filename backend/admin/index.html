@@ -946,6 +946,19 @@
                     <input type="text" id="edit-clock-out-address" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
                 </div>
                 
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Unpaid Break (mins)</label>
+                        <input type="number" id="edit-unpaid-break" min="0" max="120" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="30">
+                        <p class="text-xs text-gray-500 mt-1">Deducted from total hours</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Paid Break (mins)</label>
+                        <input type="number" id="edit-paid-break" min="0" max="60" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="0">
+                        <p class="text-xs text-gray-500 mt-1">Not deducted (tracked only)</p>
+                    </div>
+                </div>
+                
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Comments</label>
                     <textarea id="edit-entry-comments" rows="2" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
@@ -953,7 +966,7 @@
                 
                 <div class="bg-blue-50 p-3 rounded-lg text-sm text-blue-700">
                     <i class="fas fa-info-circle mr-1"></i>
-                    Hours will be automatically recalculated based on clock in/out times. Ordinary hours capped at 8h, rest counts as overtime.
+                    <strong>Hours calculation:</strong> Gross time - unpaid break = paid hours. First 8h ordinary, rest is overtime.
                 </div>
             </div>
             <div class="border-t px-6 py-4 flex justify-end gap-3">
@@ -1380,7 +1393,8 @@
                             </div>
                             <div>
                                 <p class="text-gray-500">Hours</p>
-                                <p>${(entry.total_hours || 0).toFixed(2)}h (${(entry.overtime_hours || 0).toFixed(2)}h OT)</p>
+                                <p>${(entry.total_hours || 0).toFixed(2)}h paid (${(entry.overtime_hours || 0).toFixed(2)}h OT)</p>
+                                <p class="text-xs text-gray-400">Gross: ${(entry.gross_hours || entry.total_hours || 0).toFixed(2)}h - ${entry.unpaid_break_minutes || 30}min break</p>
                             </div>
                             <div>
                                 <p class="text-gray-500">Role</p>
@@ -1476,7 +1490,7 @@
                                 `}
                             </div>
                             <div class="flex gap-2">
-                                <button onclick="openEditEntryModal(${entry.id}, '${entry.entry_date}', '${entry.clock_in_time || ''}', '${entry.clock_out_time || ''}', '${(entry.clock_in_address || '').replace(/'/g, "\\'")}', '${(entry.clock_out_address || '').replace(/'/g, "\\'")}', '${(entry.comments || '').replace(/'/g, "\\'")}')" class="px-3 py-2 border border-blue-500 text-blue-500 rounded-lg hover:bg-blue-50 text-sm" title="Edit Entry Times">
+                                <button onclick="openEditEntryModal(${entry.id}, '${entry.entry_date}', '${entry.clock_in_time || ''}', '${entry.clock_out_time || ''}', '${(entry.clock_in_address || '').replace(/'/g, "\\'")}', '${(entry.clock_out_address || '').replace(/'/g, "\\'")}', '${(entry.comments || '').replace(/'/g, "\\'")}', ${entry.unpaid_break_minutes || 30}, ${entry.paid_break_minutes || 0})" class="px-3 py-2 border border-blue-500 text-blue-500 rounded-lg hover:bg-blue-50 text-sm" title="Edit Entry Times">
                                     <i class="fas fa-edit mr-1"></i>Edit
                                 </button>
                                 <button onclick="deleteEntry(${entry.id})" class="px-3 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-100 text-sm" title="Delete Entry">
@@ -1662,12 +1676,14 @@
         }
         
         // Edit Entry Modal Functions
-        function openEditEntryModal(entryId, entryDate, clockInTime, clockOutTime, clockInAddress, clockOutAddress, comments) {
+        function openEditEntryModal(entryId, entryDate, clockInTime, clockOutTime, clockInAddress, clockOutAddress, comments, unpaidBreak = 30, paidBreak = 0) {
             document.getElementById('edit-entry-id').value = entryId;
             document.getElementById('edit-entry-date').value = entryDate || '';
             document.getElementById('edit-clock-in-address').value = clockInAddress || '';
             document.getElementById('edit-clock-out-address').value = clockOutAddress || '';
             document.getElementById('edit-entry-comments').value = comments || '';
+            document.getElementById('edit-unpaid-break').value = unpaidBreak;
+            document.getElementById('edit-paid-break').value = paidBreak;
             
             // Parse clock in datetime
             if (clockInTime && clockInTime !== 'null') {
@@ -1702,6 +1718,8 @@
             const clockInAddress = document.getElementById('edit-clock-in-address').value;
             const clockOutAddress = document.getElementById('edit-clock-out-address').value;
             const comments = document.getElementById('edit-entry-comments').value;
+            const unpaidBreak = document.getElementById('edit-unpaid-break').value;
+            const paidBreak = document.getElementById('edit-paid-break').value;
             
             // Build update payload
             const payload = {};
@@ -1726,6 +1744,10 @@
                 payload.clock_out_address = clockOutAddress;
             }
             
+            // Always include break values
+            payload.unpaid_break_minutes = parseInt(unpaidBreak) || 30;
+            payload.paid_break_minutes = parseInt(paidBreak) || 0;
+            
             if (comments !== undefined) {
                 payload.comments = comments;
             }
@@ -1742,7 +1764,7 @@
                     closeModal('edit-entry-modal');
                     closeModal('timesheet-modal');
                     await loadTimesheets();
-                    alert(`Entry updated!\n\nNew hours: ${data.total_hours?.toFixed(2)}h\nOrdinary: ${data.ordinary_hours?.toFixed(2)}h\nOvertime: ${data.overtime_hours?.toFixed(2)}h`);
+                    alert(`Entry updated!\n\nGross hours: ${data.gross_hours?.toFixed(2)}h\nBreak deducted: ${data.unpaid_break_minutes || 30} mins\n\nPaid hours: ${data.total_hours?.toFixed(2)}h\n- Ordinary: ${data.ordinary_hours?.toFixed(2)}h\n- Overtime: ${data.overtime_hours?.toFixed(2)}h`);
                 } else {
                     const data = await response.json();
                     alert(data.detail || 'Error updating entry');

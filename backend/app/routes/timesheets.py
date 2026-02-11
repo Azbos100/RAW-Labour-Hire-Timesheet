@@ -345,6 +345,9 @@ async def get_timesheet(
             "ordinary_hours": e.ordinary_hours,
             "overtime_hours": e.overtime_hours,
             "total_hours": e.total_hours,
+            "gross_hours": e.gross_hours,  # Hours before break deduction
+            "unpaid_break_minutes": e.unpaid_break_minutes if e.unpaid_break_minutes is not None else 30,
+            "paid_break_minutes": e.paid_break_minutes or 0,
             "worked_as": e.worked_as,
             "comments": e.comments,
             "first_aid_injury": e.first_aid_injury,
@@ -941,6 +944,8 @@ class EditEntryRequest(BaseModel):
     clock_in_address: Optional[str] = None
     clock_out_address: Optional[str] = None
     comments: Optional[str] = None
+    unpaid_break_minutes: Optional[int] = None  # Unpaid break (deducted from hours)
+    paid_break_minutes: Optional[int] = None  # Paid break (tracked but not deducted)
 
 
 @router.put("/admin/entries/{entry_id}")
@@ -979,15 +984,28 @@ async def edit_entry(
     if request.comments is not None:
         entry.comments = request.comments
     
+    if request.unpaid_break_minutes is not None:
+        entry.unpaid_break_minutes = request.unpaid_break_minutes
+    
+    if request.paid_break_minutes is not None:
+        entry.paid_break_minutes = request.paid_break_minutes
+    
     # Recalculate hours if both clock times are set
     if entry.clock_in_time and entry.clock_out_time:
         total_seconds = (entry.clock_out_time - entry.clock_in_time).total_seconds()
-        total_hours = total_seconds / 3600
+        gross_hours = total_seconds / 3600
         
-        # Cap ordinary hours at 8, rest is overtime
-        entry.ordinary_hours = min(8.0, total_hours)
-        entry.overtime_hours = max(0, total_hours - 8.0)
-        entry.total_hours = round(total_hours, 2)
+        # Deduct unpaid break
+        unpaid_break = entry.unpaid_break_minutes if entry.unpaid_break_minutes is not None else 30
+        break_hours = unpaid_break / 60
+        net_hours = max(0, gross_hours - break_hours)
+        
+        entry.gross_hours = round(gross_hours, 2)
+        
+        # Cap ordinary hours at 8, rest is overtime (based on NET hours after break)
+        entry.ordinary_hours = min(8.0, net_hours)
+        entry.overtime_hours = max(0, net_hours - 8.0)
+        entry.total_hours = round(net_hours, 2)  # Total PAID hours (after break deduction)
     
     await db.commit()
     
@@ -1011,9 +1029,12 @@ async def edit_entry(
         "entry_id": entry_id,
         "clock_in_time": entry.clock_in_time.isoformat() if entry.clock_in_time else None,
         "clock_out_time": entry.clock_out_time.isoformat() if entry.clock_out_time else None,
-        "total_hours": entry.total_hours,
+        "gross_hours": entry.gross_hours,
+        "total_hours": entry.total_hours,  # Net hours after break
         "ordinary_hours": entry.ordinary_hours,
-        "overtime_hours": entry.overtime_hours
+        "overtime_hours": entry.overtime_hours,
+        "unpaid_break_minutes": entry.unpaid_break_minutes,
+        "paid_break_minutes": entry.paid_break_minutes
     }
 
 

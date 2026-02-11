@@ -119,6 +119,20 @@ async def lifespan(app: FastAPI):
             """))
         except Exception as e:
             print(f"Migration note (archived_at): {e}")
+        
+        # Break tracking columns for timesheet entries
+        try:
+            await conn.execute(text("""
+                ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS unpaid_break_minutes INTEGER DEFAULT 30;
+            """))
+            await conn.execute(text("""
+                ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS paid_break_minutes INTEGER DEFAULT 0;
+            """))
+            await conn.execute(text("""
+                ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS gross_hours FLOAT DEFAULT 0;
+            """))
+        except Exception as e:
+            print(f"Migration note (break columns): {e}")
 
     # Seed a default client/job site if none exist
     async with AsyncSessionLocal() as session:
