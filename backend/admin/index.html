@@ -1302,9 +1302,15 @@
                 const submittedEntries = (ts.entries || []).filter(e => e.entry_status === 'submitted');
                 const approvedEntries = (ts.entries || []).filter(e => e.entry_status === 'approved');
                 
+                // Cancel button for all states
+                const cancelBtn = `<button onclick="closeModal('timesheet-modal')" class="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-100 mr-2">
+                    <i class="fas fa-arrow-left mr-2"></i>Cancel
+                </button>`;
+                
                 let actionsHtml = '';
                 if (submittedEntries.length > 0) {
                     actionsHtml = `
+                        ${cancelBtn}
                         <span class="text-orange-600 mr-4"><i class="fas fa-clock mr-1"></i>${submittedEntries.length} entries awaiting approval</span>
                         <button onclick="approveAllEntries(${ts.id})" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
                             <i class="fas fa-check-double mr-2"></i>Approve All Entries
@@ -1312,6 +1318,7 @@
                     `;
                 } else if (ts.status === 'submitted') {
                     actionsHtml = `
+                        ${cancelBtn}
                         <button onclick="rejectTimesheet(${ts.id})" class="px-4 py-2 border border-red-500 text-red-500 rounded-lg hover:bg-red-50">
                             <i class="fas fa-times mr-2"></i>Reject
                         </button>
@@ -1320,9 +1327,12 @@
                         </button>
                     `;
                 } else if (approvedEntries.length > 0 || ts.status === 'approved') {
-                    actionsHtml = `<span class="text-green-600"><i class="fas fa-check-circle mr-2"></i>${approvedEntries.length} entries approved</span>`;
+                    actionsHtml = `${cancelBtn}<span class="text-green-600"><i class="fas fa-check-circle mr-2"></i>${approvedEntries.length} entries approved</span>`;
                 } else if (ts.status === 'rejected') {
-                    actionsHtml = `<span class="text-red-600"><i class="fas fa-times-circle mr-2"></i>Rejected</span>`;
+                    actionsHtml = `${cancelBtn}<span class="text-red-600"><i class="fas fa-times-circle mr-2"></i>Rejected</span>`;
+                } else {
+                    // Draft status or other - just show cancel
+                    actionsHtml = cancelBtn;
                 }
                 document.getElementById('modal-actions').innerHTML = actionsHtml;
 
