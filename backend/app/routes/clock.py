@@ -517,6 +517,11 @@ async def clock_out(
         except (ValueError, AttributeError):
             pass
     
+    # Handle overnight shifts - if end time appears to be before start time, add a day
+    # This handles cases where worker clocks in at night (e.g., 22:00) and out next morning (e.g., 06:30)
+    if effective_end_dt < effective_start_dt:
+        effective_end_dt = effective_end_dt + timedelta(days=1)
+    
     # Calculate hours with break deduction (default 30 min unpaid)
     unpaid_break = entry.unpaid_break_minutes if entry.unpaid_break_minutes is not None else 30
     ordinary_hours, overtime_hours, gross_hours = calculate_hours(effective_start_dt, effective_end_dt, unpaid_break)
