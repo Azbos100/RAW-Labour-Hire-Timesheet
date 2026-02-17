@@ -221,6 +221,7 @@ async def list_all_workers(
                 "accepted": getattr(u, 'assignment_accepted', None),
                 "assignment_date": u.assignment_date.isoformat() if hasattr(u, 'assignment_date') and u.assignment_date else None,
                 "start_time": getattr(u, 'assignment_start_time', None),
+                "end_time": getattr(u, 'assignment_end_time', None),
                 "assigned_at": u.assigned_at.isoformat() if hasattr(u, 'assigned_at') and u.assigned_at else None
             }
         
