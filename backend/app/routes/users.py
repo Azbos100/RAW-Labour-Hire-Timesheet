@@ -88,6 +88,7 @@ class WorkerCreate(BaseModel):
 
 
 class WorkerUpdate(BaseModel):
+    email: Optional[str] = None
     first_name: Optional[str] = None
     surname: Optional[str] = None
     phone: Optional[str] = None
