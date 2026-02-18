@@ -223,7 +223,9 @@ async def list_all_job_sites(
                 "client_id": client.id,
                 "client_name": client.name,
                 "latitude": site.latitude,
-                "longitude": site.longitude
+                "longitude": site.longitude,
+                "contact_name": site.contact_name,
+                "contact_phone": site.contact_phone
             }
             for site, client in rows
         ]

@@ -207,7 +207,12 @@ async def list_all_workers(
     if job_site_ids:
         js_result = await db.execute(select(JobSite).where(JobSite.id.in_(job_site_ids)))
         for js in js_result.scalars().all():
-            job_sites_map[js.id] = {"name": js.name, "address": js.address}
+            job_sites_map[js.id] = {
+                "name": js.name, 
+                "address": js.address,
+                "contact_name": js.contact_name,
+                "contact_phone": js.contact_phone
+            }
     
     workers_data = []
     for u in users:
@@ -215,6 +220,9 @@ async def list_all_workers(
         assigned_job = None
         if hasattr(u, 'assigned_job_site_id') and u.assigned_job_site_id:
             js_info = job_sites_map.get(u.assigned_job_site_id, {})
+            # Use assignment contact override if set, otherwise job site default
+            contact_name = getattr(u, 'assignment_contact_name', None) or js_info.get("contact_name", "")
+            contact_phone = getattr(u, 'assignment_contact_phone', None) or js_info.get("contact_phone", "")
             assigned_job = {
                 "job_site_id": u.assigned_job_site_id,
                 "job_site_name": js_info.get("name", "Unknown"),
@@ -223,7 +231,9 @@ async def list_all_workers(
                 "assignment_date": u.assignment_date.isoformat() if hasattr(u, 'assignment_date') and u.assignment_date else None,
                 "start_time": getattr(u, 'assignment_start_time', None),
                 "end_time": getattr(u, 'assignment_end_time', None),
-                "assigned_at": u.assigned_at.isoformat() if hasattr(u, 'assigned_at') and u.assigned_at else None
+                "assigned_at": u.assigned_at.isoformat() if hasattr(u, 'assigned_at') and u.assigned_at else None,
+                "contact_name": contact_name,
+                "contact_phone": contact_phone
             }
         
         # Check clock-in status
@@ -555,6 +565,8 @@ class JobAssignment(BaseModel):
     assignment_date: Optional[date] = None  # Date the job is for
     start_time: Optional[str] = None  # Start time for the shift (e.g., "07:00")
     end_time: Optional[str] = None  # End time for the shift (e.g., "15:30")
+    contact_name: Optional[str] = None  # Override site contact name
+    contact_phone: Optional[str] = None  # Override site contact phone
 
 
 @router.post("/admin/workers/{worker_id}/assign")
@@ -584,6 +596,8 @@ async def assign_worker_to_job(
         worker.assignment_date = assignment.assignment_date or date.today()
         worker.assignment_start_time = assignment.start_time
         worker.assignment_end_time = assignment.end_time
+        worker.assignment_contact_name = assignment.contact_name
+        worker.assignment_contact_phone = assignment.contact_phone
         worker.assignment_accepted = None  # Reset acceptance status
         worker.assigned_at = datetime.utcnow()
         
@@ -629,6 +643,8 @@ async def assign_worker_to_job(
         worker.assignment_date = None
         worker.assignment_start_time = None
         worker.assignment_end_time = None
+        worker.assignment_contact_name = None
+        worker.assignment_contact_phone = None
         worker.assignment_accepted = None
         worker.assigned_at = None
         message = "Assignment cleared"
@@ -724,6 +740,10 @@ async def get_worker_assignment(
     if not job_site:
         return {"assignment": None}
     
+    # Use assignment contact override if set, otherwise job site default
+    contact_name = worker.assignment_contact_name or job_site.contact_name or ""
+    contact_phone = worker.assignment_contact_phone or job_site.contact_phone or ""
+    
     return {
         "assignment": {
             "job_site_id": job_site.id,
@@ -734,7 +754,9 @@ async def get_worker_assignment(
             "assignment_date": worker.assignment_date.isoformat() if worker.assignment_date else None,
             "start_time": worker.assignment_start_time,
             "assigned_at": worker.assigned_at.isoformat() if worker.assigned_at else None,
-            "accepted": worker.assignment_accepted
+            "accepted": worker.assignment_accepted,
+            "contact_name": contact_name,
+            "contact_phone": contact_phone
         }
     }
 
