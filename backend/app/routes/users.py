@@ -225,9 +225,9 @@ async def list_all_workers(
         assigned_job = None
         if hasattr(u, 'assigned_job_site_id') and u.assigned_job_site_id:
             js_info = job_sites_map.get(u.assigned_job_site_id, {})
-            # Use assignment contact override if set, otherwise job site default
-            contact_name = getattr(u, 'assignment_contact_name', None) or js_info.get("contact_name", "")
-            contact_phone = getattr(u, 'assignment_contact_phone', None) or js_info.get("contact_phone", "")
+            # Use job site default contact info
+            contact_name = js_info.get("contact_name", "")
+            contact_phone = js_info.get("contact_phone", "")
             assigned_job = {
                 "job_site_id": u.assigned_job_site_id,
                 "job_site_name": js_info.get("name", "Unknown"),
