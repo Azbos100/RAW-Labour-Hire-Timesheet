@@ -568,3 +568,4 @@ async def admin_static(filename: str):
             media_type = "application/octet-stream"
         return FileResponse(file_path, media_type=media_type)
     return {"error": "File not found"}
+
