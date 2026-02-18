@@ -78,70 +78,36 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
     try {
       if (!user?.id) return;
       
-      // First try to get worker's assigned job
-      let assignedJobSite: JobSite | null = null;
-      try {
-        const response = await assignmentAPI.getAssignment(user.id);
-        const assignment = response.data.assignment;
-        
-        if (assignment && assignment.accepted === true) {
-          // Worker has an accepted assignment - this will be pre-selected
-          assignedJobSite = {
-            id: assignment.job_site_id,
-            name: assignment.job_site_name,
-            address: assignment.job_site_address || '',
-            client_name: '', 
-            latitude: assignment.job_site_latitude,
-            longitude: assignment.job_site_longitude,
-          };
-        } else if (assignment && assignment.accepted === null) {
-          // Assignment pending - warn but still allow manual selection
-          Alert.alert(
-            'Pending Assignment',
-            'You have a pending job assignment. You can accept it in My Jobs, or select a different job site below.',
-          );
-        }
-      } catch (error: any) {
-        console.warn('Error fetching assignment:', error);
-      }
+      // Fetch worker's assigned jobs only - not all job sites
+      const response = await assignmentAPI.getAssignment(user.id);
+      const assignment = response.data.assignment;
       
-      // Fetch all active job sites so worker can select manually if needed
-      try {
-        const allSitesResponse = await api.get('/clients/job-sites/all');
-        const allSites: JobSite[] = (allSitesResponse.data || [])
-          .filter((site: any) => site.is_active !== false)
-          .map((site: any) => ({
-            id: site.id,
-            name: site.name,
-            address: site.address || '',
-            client_name: site.client_name || '',
-            latitude: site.latitude,
-            longitude: site.longitude,
-          }));
-        
-        // If worker has assigned job, put it first and mark it
-        if (assignedJobSite) {
-          // Remove duplicate if assigned job is in all sites list
-          const otherSites = allSites.filter(s => s.id !== assignedJobSite!.id);
-          // Mark the assigned job
-          assignedJobSite.name = `⭐ ${assignedJobSite.name} (Assigned)`;
-          setJobSites([assignedJobSite, ...otherSites]);
-          setSelectedJobSite(assignedJobSite); // Auto-select assigned job
-        } else {
-          setJobSites(allSites);
-        }
-      } catch (error: any) {
-        console.warn('Error fetching all job sites:', error);
-        // If we have an assigned job, use that at minimum
-        if (assignedJobSite) {
-          setJobSites([assignedJobSite]);
-          setSelectedJobSite(assignedJobSite);
-        } else {
-          setJobSites([]);
-        }
+      if (assignment && assignment.accepted === true) {
+        // Worker has an accepted assignment - show only that job site
+        const assignedJobSite: JobSite = {
+          id: assignment.job_site_id,
+          name: assignment.job_site_name,
+          address: assignment.job_site_address || '',
+          client_name: '', // Not returned in assignment response
+          latitude: assignment.job_site_latitude,
+          longitude: assignment.job_site_longitude,
+        };
+        setJobSites([assignedJobSite]);
+        setSelectedJobSite(assignedJobSite); // Auto-select the assigned job
+      } else if (assignment && assignment.accepted === null) {
+        // Assignment pending - tell worker to accept first
+        Alert.alert(
+          'Accept Job First',
+          'You have a pending job assignment. Please go to My Jobs and accept it before clocking in.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+        setJobSites([]);
+      } else {
+        // No assignment
+        setJobSites([]);
       }
     } catch (error: any) {
-      console.warn('Error in fetchJobSites:', error);
+      console.warn('Error fetching assigned job:', error);
       setJobSites([]);
     }
   };
@@ -358,16 +324,16 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
         </View>
       </View>
 
-      {/* Job Site Selection */}
+      {/* Assigned Job Site */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Select Job Site</Text>
+        <Text style={styles.sectionTitle}>Your Assigned Job</Text>
         <View style={styles.jobSiteList}>
           {jobSites.length === 0 ? (
             <View style={styles.noJobSitesContainer}>
               <Ionicons name="briefcase-outline" size={40} color="#9CA3AF" />
-              <Text style={styles.noJobSites}>No job sites available</Text>
+              <Text style={styles.noJobSites}>No assigned jobs</Text>
               <Text style={styles.noJobSitesSubtext}>
-                Please contact admin to set up job sites
+                You need to be assigned a job by admin before you can clock in
               </Text>
             </View>
           ) : (
