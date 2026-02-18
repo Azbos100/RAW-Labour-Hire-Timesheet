@@ -1,9 +1,9 @@
 /**
  * Clock In Screen
- * GPS-enabled clock in with job site selection
+ * GPS-enabled clock in with automatic job site detection
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -37,6 +37,17 @@ interface JobSite {
   longitude?: number;
 }
 
+interface AssignedJob {
+  job_site_id: number;
+  job_site_name: string;
+  job_site_address?: string;
+  job_site_latitude?: number;
+  job_site_longitude?: number;
+}
+
+// GPS matching threshold in kilometers
+const GPS_MATCH_THRESHOLD_KM = 1;
+
 // Calculate distance between two coordinates using Haversine formula
 function calculateDistance(
   lat1: number,
@@ -65,50 +76,139 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
   const [isEditingAddress, setIsEditingAddress] = useState(false);
   const [isLoadingLocation, setIsLoadingLocation] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [jobSites, setJobSites] = useState<JobSite[]>([]);
-  const [selectedJobSite, setSelectedJobSite] = useState<JobSite | null>(null);
   const [workedAs, setWorkedAs] = useState('');
+  
+  // Job site detection (hidden from user)
+  const [allJobSites, setAllJobSites] = useState<JobSite[]>([]);
+  const [assignedJob, setAssignedJob] = useState<AssignedJob | null>(null);
+  const [detectedJobSite, setDetectedJobSite] = useState<JobSite | null>(null);
+  const [detectionStatus, setDetectionStatus] = useState<'loading' | 'detected' | 'no_match'>('loading');
+  
+  // Track if we've done initial detection
+  const hasDetectedRef = useRef(false);
 
   useEffect(() => {
-    getLocation();
-    fetchJobSites();
+    loadData();
   }, []);
+  
+  // Re-run detection when location changes
+  useEffect(() => {
+    if (location && allJobSites.length > 0 && !hasDetectedRef.current) {
+      detectJobSite();
+      hasDetectedRef.current = true;
+    }
+  }, [location, allJobSites]);
 
-  const fetchJobSites = async () => {
+  const loadData = async () => {
+    if (!user?.id) return;
+    
+    // Fetch assignment and all job sites in parallel
+    const [assignmentResult, jobSitesResult] = await Promise.all([
+      fetchAssignment(),
+      fetchAllJobSites(),
+    ]);
+    
+    // Start getting location
+    getLocation();
+  };
+  
+  const fetchAssignment = async (): Promise<AssignedJob | null> => {
     try {
-      if (!user?.id) return;
-      
-      // Fetch worker's assigned jobs only - not all job sites
+      if (!user?.id) return null;
       const response = await assignmentAPI.getAssignment(user.id);
       const assignment = response.data.assignment;
       
       if (assignment && assignment.accepted === true) {
-        // Worker has an accepted assignment - show only that job site
-        const assignedJobSite: JobSite = {
-          id: assignment.job_site_id,
-          name: assignment.job_site_name,
-          address: assignment.job_site_address || '',
-          client_name: '', // Not returned in assignment response
-          latitude: assignment.job_site_latitude,
-          longitude: assignment.job_site_longitude,
+        const job: AssignedJob = {
+          job_site_id: assignment.job_site_id,
+          job_site_name: assignment.job_site_name,
+          job_site_address: assignment.job_site_address || '',
+          job_site_latitude: assignment.job_site_latitude,
+          job_site_longitude: assignment.job_site_longitude,
         };
-        setJobSites([assignedJobSite]);
-        setSelectedJobSite(assignedJobSite); // Auto-select the assigned job
-      } else if (assignment && assignment.accepted === null) {
-        // Assignment pending - tell worker to accept first
-        Alert.alert(
-          'Accept Job First',
-          'You have a pending job assignment. Please go to My Jobs and accept it before clocking in.',
-          [{ text: 'OK', onPress: () => navigation.goBack() }]
-        );
-        setJobSites([]);
-      } else {
-        // No assignment
-        setJobSites([]);
+        setAssignedJob(job);
+        return job;
       }
+      return null;
     } catch (error: any) {
-      console.warn('Error fetching assigned job:', error);
-      setJobSites([]);
+      console.warn('Error fetching assignment:', error);
+      return null;
+    }
+  };
+  
+  const fetchAllJobSites = async (): Promise<JobSite[]> => {
+    try {
+      const response = await api.get('/clients/job-sites/all');
+      const sites: JobSite[] = (response.data || [])
+        .filter((site: any) => site.is_active !== false && site.latitude && site.longitude)
+        .map((site: any) => ({
+          id: site.id,
+          name: site.name,
+          address: site.address || '',
+          client_name: site.client_name || '',
+          latitude: site.latitude,
+          longitude: site.longitude,
+        }));
+      setAllJobSites(sites);
+      return sites;
+    } catch (error: any) {
+      console.warn('Error fetching job sites:', error);
+      return [];
+    }
+  };
+  
+  const detectJobSite = () => {
+    if (!location) {
+      setDetectionStatus('no_match');
+      return;
+    }
+    
+    const userLat = location.coords.latitude;
+    const userLon = location.coords.longitude;
+    
+    // Priority 1: Check if near assigned job site
+    if (assignedJob && assignedJob.job_site_latitude && assignedJob.job_site_longitude) {
+      const distToAssigned = calculateDistance(
+        userLat, userLon,
+        assignedJob.job_site_latitude, assignedJob.job_site_longitude
+      );
+      
+      if (distToAssigned <= GPS_MATCH_THRESHOLD_KM) {
+        // Near assigned job - use it
+        setDetectedJobSite({
+          id: assignedJob.job_site_id,
+          name: assignedJob.job_site_name,
+          address: assignedJob.job_site_address || '',
+          client_name: '',
+          latitude: assignedJob.job_site_latitude,
+          longitude: assignedJob.job_site_longitude,
+        });
+        setDetectionStatus('detected');
+        return;
+      }
+    }
+    
+    // Priority 2: Find nearest job site within threshold
+    let nearestSite: JobSite | null = null;
+    let nearestDistance = Infinity;
+    
+    for (const site of allJobSites) {
+      if (site.latitude && site.longitude) {
+        const dist = calculateDistance(userLat, userLon, site.latitude, site.longitude);
+        if (dist <= GPS_MATCH_THRESHOLD_KM && dist < nearestDistance) {
+          nearestDistance = dist;
+          nearestSite = site;
+        }
+      }
+    }
+    
+    if (nearestSite) {
+      setDetectedJobSite(nearestSite);
+      setDetectionStatus('detected');
+    } else {
+      // No match - but still allow clock in
+      setDetectedJobSite(null);
+      setDetectionStatus('no_match');
     }
   };
 
@@ -121,18 +221,19 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
           'Location permission is required to clock in. Please enable it in settings.'
         );
         setIsLoadingLocation(false);
+        setDetectionStatus('no_match');
         return;
       }
 
-      const location = await Location.getCurrentPositionAsync({
+      const loc = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.High,
       });
-      setLocation(location);
+      setLocation(loc);
 
       // Reverse geocode to get address
       const [addressResult] = await Location.reverseGeocodeAsync({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
       });
 
       if (addressResult) {
@@ -148,9 +249,18 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
     } catch (error) {
       console.warn('Error getting location:', error);
       Alert.alert('Location Error', 'Unable to get your current location. Please try again.');
+      setDetectionStatus('no_match');
     } finally {
       setIsLoadingLocation(false);
     }
+  };
+  
+  const refreshLocation = async () => {
+    setIsLoadingLocation(true);
+    hasDetectedRef.current = false;
+    setDetectionStatus('loading');
+    await getLocation();
+    // Detection will re-run via useEffect when location updates
   };
 
   const handleClockIn = async () => {
@@ -163,37 +273,7 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
       return;
     }
 
-    if (!selectedJobSite) {
-      Alert.alert('Error', 'Please select a job site');
-      return;
-    }
-
-    // Check GPS distance from job site (if both have coordinates)
-    if (location && selectedJobSite.latitude && selectedJobSite.longitude) {
-      const distance = calculateDistance(
-        location.coords.latitude,
-        location.coords.longitude,
-        selectedJobSite.latitude,
-        selectedJobSite.longitude
-      );
-
-      // If more than 1km away, show warning and ask for confirmation
-      if (distance > 1) {
-        Alert.alert(
-          '⚠️ Location Warning',
-          `You are ${distance.toFixed(1)}km away from ${selectedJobSite.name}.\n\n` +
-          `The job site is located at:\n${selectedJobSite.address}\n\n` +
-          `Are you sure you want to clock in here?`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Clock In Anyway', onPress: () => submitClockIn() },
-          ]
-        );
-        return;
-      }
-    }
-
-    // If within range or no coordinates to check, proceed with clock in
+    // Proceed with clock in - job site is optional
     submitClockIn();
   };
 
@@ -207,14 +287,15 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
         latitude: location?.coords.latitude || 0,
         longitude: location?.coords.longitude || 0,
         address: finalAddress,
-        job_site_id: selectedJobSite!.id,
+        job_site_id: detectedJobSite?.id || undefined, // Optional - may be null
         worked_as: workedAs || undefined,
         user_id: user?.id,
       });
 
+      const locationName = detectedJobSite ? detectedJobSite.name : 'your current location';
       Alert.alert(
         'Clocked In!',
-        `You are now clocked in at ${selectedJobSite!.name}\n\nDocket #${response.data.docket_number}`,
+        `You are now clocked in at ${locationName}\n\nDocket #${response.data.docket_number}`,
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     } catch (error: any) {
@@ -289,7 +370,7 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
                 )}
               </View>
 
-              <TouchableOpacity style={styles.refreshButton} onPress={getLocation}>
+              <TouchableOpacity style={styles.refreshButton} onPress={refreshLocation}>
                 <Ionicons name="refresh" size={20} color={COLORS.primary} />
                 <Text style={styles.refreshText}>Refresh GPS</Text>
               </TouchableOpacity>
@@ -324,67 +405,40 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
         </View>
       </View>
 
-      {/* Assigned Job Site */}
+      {/* Detected Job Site (Read-only) */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Your Assigned Job</Text>
-        <View style={styles.jobSiteList}>
-          {jobSites.length === 0 ? (
-            <View style={styles.noJobSitesContainer}>
-              <Ionicons name="briefcase-outline" size={40} color="#9CA3AF" />
-              <Text style={styles.noJobSites}>No assigned jobs</Text>
-              <Text style={styles.noJobSitesSubtext}>
-                You need to be assigned a job by admin before you can clock in
-              </Text>
+        <Text style={styles.sectionTitle}>Job Site</Text>
+        <View style={styles.detectedSiteCard}>
+          {detectionStatus === 'loading' || isLoadingLocation ? (
+            <View style={styles.detectingContainer}>
+              <ActivityIndicator color={COLORS.primary} size="small" />
+              <Text style={styles.detectingText}>Detecting job site from GPS...</Text>
+            </View>
+          ) : detectionStatus === 'detected' && detectedJobSite ? (
+            <View style={styles.detectedContainer}>
+              <View style={styles.detectedIconContainer}>
+                <Ionicons name="checkmark-circle" size={24} color="#10B981" />
+              </View>
+              <View style={styles.detectedInfo}>
+                <Text style={styles.detectedLabel}>Detected Location:</Text>
+                <Text style={styles.detectedName}>{detectedJobSite.name}</Text>
+                {detectedJobSite.address ? (
+                  <Text style={styles.detectedAddress}>{detectedJobSite.address}</Text>
+                ) : null}
+              </View>
             </View>
           ) : (
-            jobSites.map((site) => {
-              // Calculate distance if we have GPS and site coordinates
-              let distanceText = '';
-              let distanceColor = '#6B7280';
-              if (location && site.latitude && site.longitude) {
-                const dist = calculateDistance(
-                  location.coords.latitude,
-                  location.coords.longitude,
-                  site.latitude,
-                  site.longitude
-                );
-                if (dist < 1) {
-                  distanceText = `${(dist * 1000).toFixed(0)}m away`;
-                  distanceColor = '#10B981'; // Green - within range
-                } else {
-                  distanceText = `${dist.toFixed(1)}km away`;
-                  distanceColor = dist > 1 ? '#F59E0B' : '#10B981'; // Orange if >1km
-                }
-              }
-              
-              return (
-                <TouchableOpacity
-                  key={site.id}
-                  style={[
-                    styles.jobSiteItem,
-                    selectedJobSite?.id === site.id && styles.jobSiteItemSelected,
-                  ]}
-                  onPress={() => setSelectedJobSite(site)}
-                >
-                  <View style={styles.jobSiteInfo}>
-                    <Text style={styles.jobSiteName}>{site.name}</Text>
-                    <Text style={styles.jobSiteClient}>{site.client_name}</Text>
-                    <Text style={styles.jobSiteAddress}>{site.address}</Text>
-                    {distanceText && (
-                      <View style={styles.distanceRow}>
-                        <Ionicons name="navigate" size={14} color={distanceColor} />
-                        <Text style={[styles.distanceText, { color: distanceColor }]}>
-                          {distanceText}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                  {selectedJobSite?.id === site.id && (
-                    <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
-                  )}
-                </TouchableOpacity>
-              );
-            })
+            <View style={styles.noMatchContainer}>
+              <View style={styles.noMatchIconContainer}>
+                <Ionicons name="location" size={24} color="#F59E0B" />
+              </View>
+              <View style={styles.noMatchInfo}>
+                <Text style={styles.noMatchLabel}>Location Recorded</Text>
+                <Text style={styles.noMatchText}>
+                  Your GPS location will be saved. Admin can assign the job site later.
+                </Text>
+              </View>
+            </View>
           )}
         </View>
       </View>
@@ -405,10 +459,10 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
       <TouchableOpacity
         style={[
           styles.clockInButton,
-          ((!location && !manualAddress.trim()) || !selectedJobSite || isSubmitting) && styles.clockInButtonDisabled,
+          ((!location && !manualAddress.trim()) || isSubmitting || isLoadingLocation) && styles.clockInButtonDisabled,
         ]}
         onPress={handleClockIn}
-        disabled={(!location && !manualAddress.trim()) || !selectedJobSite || isSubmitting}
+        disabled={(!location && !manualAddress.trim()) || isSubmitting || isLoadingLocation}
       >
         {isSubmitting ? (
           <ActivityIndicator color="#FFFFFF" />
@@ -570,68 +624,79 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontWeight: '500',
   },
-  jobSiteList: {
-    gap: 8,
-  },
-  noJobSitesContainer: {
-    alignItems: 'center',
-    padding: 24,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-  },
-  noJobSites: {
-    color: '#4B5563',
-    textAlign: 'center',
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 12,
-  },
-  noJobSitesSubtext: {
-    color: '#9CA3AF',
-    textAlign: 'center',
-    fontSize: 14,
-    marginTop: 4,
-  },
-  jobSiteItem: {
+  // Detected Job Site Styles
+  detectedSiteCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
+  },
+  detectingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
+    justifyContent: 'center',
+    padding: 12,
   },
-  jobSiteItemSelected: {
-    borderColor: COLORS.primary,
-    backgroundColor: '#EFF6FF',
+  detectingText: {
+    marginLeft: 12,
+    color: '#6B7280',
+    fontSize: 14,
   },
-  jobSiteInfo: {
+  detectedContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  detectedIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#ECFDF5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detectedInfo: {
     flex: 1,
+    marginLeft: 12,
   },
-  jobSiteName: {
+  detectedLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  detectedName: {
     fontSize: 16,
     fontWeight: '600',
     color: '#1A1A1A',
   },
-  jobSiteClient: {
-    fontSize: 14,
-    color: COLORS.primary,
-    marginTop: 2,
-  },
-  jobSiteAddress: {
+  detectedAddress: {
     fontSize: 13,
     color: '#6B7280',
     marginTop: 4,
   },
-  distanceRow: {
+  noMatchContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-    gap: 4,
+    alignItems: 'flex-start',
   },
-  distanceText: {
+  noMatchIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noMatchInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  noMatchLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
+  noMatchText: {
     fontSize: 13,
-    fontWeight: '500',
+    color: '#6B7280',
+    marginTop: 4,
   },
   input: {
     backgroundColor: '#FFFFFF',
