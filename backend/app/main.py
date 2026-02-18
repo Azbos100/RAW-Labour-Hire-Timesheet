@@ -520,7 +520,8 @@ async def root():
 async def health_check():
     return {
         "status": "healthy",
-        "service": "raw-timesheet-api"
+        "service": "raw-timesheet-api",
+        "version": "2.1.0"
     }
 
 
