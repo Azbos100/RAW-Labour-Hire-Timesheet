@@ -84,7 +84,7 @@ def calculate_hours(start: datetime, end: datetime, unpaid_break_minutes: int = 
     """
     Calculate gross hours, ordinary hours, and overtime hours.
     - Gross hours: total time between clock in and out
-    - Net hours: gross hours minus unpaid break
+    - Net hours: gross hours minus unpaid break (only if shift >= 4 hours)
     - Ordinary: first 8 hours of net time
     - Overtime: anything over 8 hours of net time
     
@@ -93,8 +93,11 @@ def calculate_hours(start: datetime, end: datetime, unpaid_break_minutes: int = 
     total_seconds = (end - start).total_seconds()
     gross_hours = total_seconds / 3600
     
-    # Deduct unpaid break
-    break_hours = unpaid_break_minutes / 60
+    # Only deduct unpaid break if shift is 4+ hours
+    if gross_hours >= 4:
+        break_hours = unpaid_break_minutes / 60
+    else:
+        break_hours = 0
     net_hours = max(0, gross_hours - break_hours)
     
     ordinary = min(net_hours, 8.0)
