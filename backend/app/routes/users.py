@@ -205,18 +205,25 @@ async def list_all_workers(
     job_site_ids = [u.assigned_job_site_id for u in users if hasattr(u, 'assigned_job_site_id') and u.assigned_job_site_id]
     job_sites_map = {}
     if job_site_ids:
-        js_result = await db.execute(
-            select(JobSite, Client)
-            .outerjoin(Client, JobSite.client_id == Client.id)
-            .where(JobSite.id.in_(job_site_ids))
-        )
-        for js, client in js_result.all():
-            job_sites_map[js.id] = {
+        # Get job sites
+        js_result = await db.execute(select(JobSite).where(JobSite.id.in_(job_site_ids)))
+        job_sites = {js.id: js for js in js_result.scalars().all()}
+        
+        # Get clients for these job sites
+        client_ids = [js.client_id for js in job_sites.values() if js.client_id]
+        clients_map = {}
+        if client_ids:
+            client_result = await db.execute(select(Client).where(Client.id.in_(client_ids)))
+            clients_map = {c.id: c.name for c in client_result.scalars().all()}
+        
+        # Build the map
+        for js_id, js in job_sites.items():
+            job_sites_map[js_id] = {
                 "name": js.name, 
                 "address": js.address,
                 "contact_name": js.contact_name,
                 "contact_phone": js.contact_phone,
-                "client_name": client.name if client else None
+                "client_name": clients_map.get(js.client_id, "") if js.client_id else ""
             }
     
     workers_data = []
