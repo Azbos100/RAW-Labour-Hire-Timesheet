@@ -578,8 +578,6 @@ class JobAssignment(BaseModel):
     assignment_date: Optional[date] = None  # Date the job is for
     start_time: Optional[str] = None  # Start time for the shift (e.g., "07:00")
     end_time: Optional[str] = None  # End time for the shift (e.g., "15:30")
-    contact_name: Optional[str] = None  # Override site contact name
-    contact_phone: Optional[str] = None  # Override site contact phone
 
 
 @router.post("/admin/workers/{worker_id}/assign")
@@ -609,8 +607,6 @@ async def assign_worker_to_job(
         worker.assignment_date = assignment.assignment_date or date.today()
         worker.assignment_start_time = assignment.start_time
         worker.assignment_end_time = assignment.end_time
-        worker.assignment_contact_name = assignment.contact_name
-        worker.assignment_contact_phone = assignment.contact_phone
         worker.assignment_accepted = None  # Reset acceptance status
         worker.assigned_at = datetime.utcnow()
         
@@ -656,8 +652,6 @@ async def assign_worker_to_job(
         worker.assignment_date = None
         worker.assignment_start_time = None
         worker.assignment_end_time = None
-        worker.assignment_contact_name = None
-        worker.assignment_contact_phone = None
         worker.assignment_accepted = None
         worker.assigned_at = None
         message = "Assignment cleared"
@@ -753,9 +747,9 @@ async def get_worker_assignment(
     if not job_site:
         return {"assignment": None}
     
-    # Use assignment contact override if set, otherwise job site default
-    contact_name = worker.assignment_contact_name or job_site.contact_name or ""
-    contact_phone = worker.assignment_contact_phone or job_site.contact_phone or ""
+    # Use job site default contact info
+    contact_name = job_site.contact_name or ""
+    contact_phone = job_site.contact_phone or ""
     
     return {
         "assignment": {

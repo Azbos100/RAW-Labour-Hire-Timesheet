@@ -765,24 +765,6 @@
                 </div>
                 <p class="text-xs text-gray-500">Early clock-ins will be rounded to start time. Late clock-outs will prompt for overtime.</p>
                 
-                <!-- Site Contact Override Section -->
-                <div class="border-t pt-4 mt-2">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
-                        <i class="fas fa-user-tie text-gray-500 mr-1"></i>Site Contact (optional override)
-                    </label>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-xs text-gray-500 mb-1">Contact Name</label>
-                            <input type="text" name="contact_name" id="assign-contact-name" placeholder="From job site" class="w-full border rounded-lg px-3 py-2 text-sm">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-500 mb-1">Mobile Number</label>
-                            <input type="tel" name="contact_phone" id="assign-contact-phone" placeholder="From job site" class="w-full border rounded-lg px-3 py-2 text-sm">
-                        </div>
-                    </div>
-                    <p class="text-xs text-gray-400 mt-1">Leave blank to use job site default contact</p>
-                </div>
-                
                 <div id="current-assignment" class="hidden p-3 bg-gray-50 rounded-lg">
                     <div class="text-sm font-medium text-gray-700">Current Assignment:</div>
                     <div id="current-assignment-text" class="text-sm text-gray-600"></div>
@@ -2083,12 +2065,10 @@
                     return `<option value="${js.id}">${js.name} - ${js.client_name || 'No Client'} ${gpsStatus}</option>`;
                 }).join('');
             
-            // Show selected job site details and pre-fill contact
+            // Show selected job site details
             select.addEventListener('change', function() {
                 const selectedSite = allJobSites.find(js => js.id == this.value);
                 const detailsDiv = document.getElementById('job-site-details');
-                const contactNameInput = document.getElementById('assign-contact-name');
-                const contactPhoneInput = document.getElementById('assign-contact-phone');
                 
                 if (selectedSite && detailsDiv) {
                     detailsDiv.innerHTML = `
@@ -2098,18 +2078,12 @@
                                 `<p class="text-green-600"><i class="fas fa-check-circle mr-1"></i>GPS: ${selectedSite.latitude.toFixed(4)}, ${selectedSite.longitude.toFixed(4)}</p>` :
                                 `<p class="text-yellow-600"><i class="fas fa-exclamation-triangle mr-1"></i>No GPS set - worker can clock in anywhere</p>`
                             }
-                            ${selectedSite.contact_name ? `<p><i class="fas fa-user mr-1"></i>Default contact: ${selectedSite.contact_name} ${selectedSite.contact_phone || ''}</p>` : ''}
+                            ${selectedSite.contact_name ? `<p><i class="fas fa-user mr-1"></i>Contact: ${selectedSite.contact_name} ${selectedSite.contact_phone || ''}</p>` : ''}
                         </div>
                     `;
                     detailsDiv.classList.remove('hidden');
-                    
-                    // Pre-fill contact fields with job site defaults as placeholders
-                    contactNameInput.placeholder = selectedSite.contact_name || 'No default contact';
-                    contactPhoneInput.placeholder = selectedSite.contact_phone || 'No default phone';
                 } else if (detailsDiv) {
                     detailsDiv.classList.add('hidden');
-                    contactNameInput.placeholder = 'From job site';
-                    contactPhoneInput.placeholder = 'From job site';
                 }
             });
             
@@ -2138,12 +2112,6 @@
                 currentText.innerHTML = '';
                 document.getElementById('assign-job-time').value = '';
             }
-            
-            // Clear contact override fields
-            document.getElementById('assign-contact-name').value = '';
-            document.getElementById('assign-contact-phone').value = '';
-            document.getElementById('assign-contact-name').placeholder = 'From job site';
-            document.getElementById('assign-contact-phone').placeholder = 'From job site';
             
             openModal('assign-job-modal');
         }
@@ -2177,10 +2145,6 @@
                 return;
             }
             
-            // Get optional contact override fields
-            const contactName = document.getElementById('assign-contact-name').value.trim() || null;
-            const contactPhone = document.getElementById('assign-contact-phone').value.trim() || null;
-            
             try {
                 const response = await fetch(`${API_BASE}/users/admin/workers/${workerId}/assign`, {
                     method: 'POST',
@@ -2189,9 +2153,7 @@
                         job_site_id: parseInt(jobSiteId),
                         assignment_date: assignmentDate,
                         start_time: startTime,
-                        end_time: endTime,
-                        contact_name: contactName,
-                        contact_phone: contactPhone
+                        end_time: endTime
                     })
                 });
                 

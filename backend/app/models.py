@@ -113,8 +113,6 @@ class User(Base):
     assignment_start_time = Column(String(10))  # Start time for the shift (e.g., "07:00")
     assignment_end_time = Column(String(10))  # End time for the shift (e.g., "15:30")
     assigned_at = Column(DateTime)  # When the assignment was made
-    assignment_contact_name = Column(String(100))  # Override site contact for this assignment
-    assignment_contact_phone = Column(String(20))  # Override site contact phone for this assignment
     
     # Push Notifications
     push_token = Column(String(255))  # Expo push token for notifications
