@@ -12,7 +12,7 @@ import hashlib
 import secrets
 
 from ..database import get_db
-from ..models import User, UserRole, JobSite, TimesheetEntry, Client
+from ..models import User, UserRole, JobSite, TimesheetEntry
 from .auth import get_current_user
 
 router = APIRouter()
@@ -201,30 +201,13 @@ async def list_all_workers(
                 "job_site_id": entry.job_site_id
             }
     
-    # Get job site names and client info for assigned workers
+    # Get job site names for assigned workers
     job_site_ids = [u.assigned_job_site_id for u in users if hasattr(u, 'assigned_job_site_id') and u.assigned_job_site_id]
     job_sites_map = {}
     if job_site_ids:
-        # Get job sites
         js_result = await db.execute(select(JobSite).where(JobSite.id.in_(job_site_ids)))
-        job_sites = {js.id: js for js in js_result.scalars().all()}
-        
-        # Get clients for these job sites
-        client_ids = [js.client_id for js in job_sites.values() if js.client_id]
-        clients_map = {}
-        if client_ids:
-            client_result = await db.execute(select(Client).where(Client.id.in_(client_ids)))
-            clients_map = {c.id: c.name for c in client_result.scalars().all()}
-        
-        # Build the map
-        for js_id, js in job_sites.items():
-            job_sites_map[js_id] = {
-                "name": js.name, 
-                "address": js.address,
-                "contact_name": js.contact_name,
-                "contact_phone": js.contact_phone,
-                "client_name": clients_map.get(js.client_id, "") if js.client_id else ""
-            }
+        for js in js_result.scalars().all():
+            job_sites_map[js.id] = {"name": js.name, "address": js.address}
     
     workers_data = []
     for u in users:
@@ -232,21 +215,15 @@ async def list_all_workers(
         assigned_job = None
         if hasattr(u, 'assigned_job_site_id') and u.assigned_job_site_id:
             js_info = job_sites_map.get(u.assigned_job_site_id, {})
-            # Use job site default contact info
-            contact_name = js_info.get("contact_name", "")
-            contact_phone = js_info.get("contact_phone", "")
             assigned_job = {
                 "job_site_id": u.assigned_job_site_id,
                 "job_site_name": js_info.get("name", "Unknown"),
                 "job_site_address": js_info.get("address", ""),
-                "client_name": js_info.get("client_name", ""),
                 "accepted": getattr(u, 'assignment_accepted', None),
                 "assignment_date": u.assignment_date.isoformat() if hasattr(u, 'assignment_date') and u.assignment_date else None,
                 "start_time": getattr(u, 'assignment_start_time', None),
                 "end_time": getattr(u, 'assignment_end_time', None),
-                "assigned_at": u.assigned_at.isoformat() if hasattr(u, 'assigned_at') and u.assigned_at else None,
-                "contact_name": contact_name,
-                "contact_phone": contact_phone
+                "assigned_at": u.assigned_at.isoformat() if hasattr(u, 'assigned_at') and u.assigned_at else None
             }
         
         # Check clock-in status

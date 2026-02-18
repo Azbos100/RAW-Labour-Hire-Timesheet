@@ -1911,11 +1911,9 @@
                 let assignedJobHtml = '<span class="text-gray-400">-</span>';
                 if (w.assigned_job) {
                     const timeDisplay = w.assigned_job.start_time ? ` at ${w.assigned_job.start_time}` : '';
-                    const clientDisplay = w.assigned_job.client_name ? `<div class="text-xs text-blue-600">${w.assigned_job.client_name}</div>` : '';
                     const addressDisplay = w.assigned_job.job_site_address ? `<div class="text-xs text-gray-400 truncate max-w-[200px]" title="${w.assigned_job.job_site_address}">${w.assigned_job.job_site_address}</div>` : '';
                     assignedJobHtml = `
                         <div class="text-sm font-medium">${w.assigned_job.job_site_name}</div>
-                        ${clientDisplay}
                         ${addressDisplay}
                         <div class="text-xs text-gray-500">${w.assigned_job.assignment_date || ''}${timeDisplay}</div>
                     `;
