@@ -55,9 +55,10 @@ async def get_push_token_status(db: AsyncSession = Depends(get_db)):
         
         for w in workers:
             try:
+                full_name = f"{w.first_name or ''} {w.surname or ''}".strip() or "Unknown"
                 worker_info = {
                     "id": w.id,
-                    "name": w.name or "Unknown",
+                    "name": full_name,
                     "phone": (w.phone[:4] + "...") if w.phone and len(w.phone) >= 4 else None
                 }
                 if w.push_token:
@@ -65,7 +66,7 @@ async def get_push_token_status(db: AsyncSession = Depends(get_db)):
                 else:
                     without_token.append(worker_info)
             except Exception as worker_err:
-                without_token.append({"id": w.id, "name": "Error reading worker", "phone": None})
+                without_token.append({"id": w.id, "name": f"Error: {str(worker_err)}", "phone": None})
         
         return {
             "total_workers": len(workers),
