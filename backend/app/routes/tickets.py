@@ -344,3 +344,23 @@ async def reject_ticket(
     await db.commit()
     
     return {"message": "Ticket rejected", "ticket_id": ticket_id}
+
+
+@router.delete("/admin/{ticket_id}")
+async def admin_delete_ticket(
+    ticket_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a ticket (admin) - for removing expired or rejected tickets"""
+    result = await db.execute(
+        select(UserTicket).where(UserTicket.id == ticket_id)
+    )
+    ticket = result.scalar_one_or_none()
+    
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    await db.delete(ticket)
+    await db.commit()
+    
+    return {"message": "Ticket deleted successfully", "ticket_id": ticket_id}
