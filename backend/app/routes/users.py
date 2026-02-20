@@ -201,13 +201,25 @@ async def list_all_workers(
                 "job_site_id": entry.job_site_id
             }
     
-    # Get job site names for assigned workers
+    # Get job site names and client info for assigned workers
+    from ..models import Client
     job_site_ids = [u.assigned_job_site_id for u in users if hasattr(u, 'assigned_job_site_id') and u.assigned_job_site_id]
     job_sites_map = {}
     if job_site_ids:
-        js_result = await db.execute(select(JobSite).where(JobSite.id.in_(job_site_ids)))
-        for js in js_result.scalars().all():
-            job_sites_map[js.id] = {"name": js.name, "address": js.address}
+        # Join with Client to get client name
+        js_result = await db.execute(
+            select(JobSite, Client.name.label('client_name'))
+            .outerjoin(Client, JobSite.client_id == Client.id)
+            .where(JobSite.id.in_(job_site_ids))
+        )
+        for row in js_result.all():
+            js = row[0]  # JobSite object
+            client_name = row[1]  # client_name from join
+            job_sites_map[js.id] = {
+                "name": js.name, 
+                "address": js.address,
+                "client_name": client_name
+            }
     
     workers_data = []
     for u in users:
@@ -219,6 +231,7 @@ async def list_all_workers(
                 "job_site_id": u.assigned_job_site_id,
                 "job_site_name": js_info.get("name", "Unknown"),
                 "job_site_address": js_info.get("address", ""),
+                "client_name": js_info.get("client_name"),
                 "accepted": getattr(u, 'assignment_accepted', None),
                 "assignment_date": u.assignment_date.isoformat() if hasattr(u, 'assignment_date') and u.assignment_date else None,
                 "start_time": getattr(u, 'assignment_start_time', None),
@@ -270,7 +283,9 @@ async def list_all_workers(
             "assigned_job": assigned_job,
             # New: Clock-in status
             "is_clocked_in": clock_in_status is not None,
-            "clock_in_info": clock_in_status
+            "clock_in_info": clock_in_status,
+            # Push notification status
+            "has_push_token": bool(u.push_token)
         })
     
     return {"workers": workers_data}

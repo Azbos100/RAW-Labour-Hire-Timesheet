@@ -1911,13 +1911,20 @@
                 let assignedJobHtml = '<span class="text-gray-400">-</span>';
                 if (w.assigned_job) {
                     const timeDisplay = w.assigned_job.start_time ? ` at ${w.assigned_job.start_time}` : '';
+                    const clientDisplay = w.assigned_job.client_name ? `<div class="text-xs text-blue-600 font-medium">${w.assigned_job.client_name}</div>` : '';
                     const addressDisplay = w.assigned_job.job_site_address ? `<div class="text-xs text-gray-400 truncate max-w-[200px]" title="${w.assigned_job.job_site_address}">${w.assigned_job.job_site_address}</div>` : '';
                     assignedJobHtml = `
                         <div class="text-sm font-medium">${w.assigned_job.job_site_name}</div>
+                        ${clientDisplay}
                         ${addressDisplay}
                         <div class="text-xs text-gray-500">${w.assigned_job.assignment_date || ''}${timeDisplay}</div>
                     `;
                 }
+                
+                // Push notification status
+                let pushStatusHtml = w.has_push_token 
+                    ? '<span class="text-green-500" title="Push notifications enabled"><i class="fas fa-bell"></i></span>'
+                    : '<span class="text-gray-300" title="Push notifications NOT enabled - worker needs to allow notifications in app"><i class="fas fa-bell-slash"></i></span>';
                 
                 // Acceptance status
                 let acceptedHtml = '<span class="text-gray-400">-</span>';
@@ -1940,7 +1947,10 @@
                 return `
                 <tr class="hover:bg-gray-50">
                     <td class="px-4 py-3">
-                        <div class="font-medium">${w.first_name} ${w.surname}</div>
+                        <div class="flex items-center gap-2">
+                            <div class="font-medium">${w.first_name} ${w.surname}</div>
+                            ${pushStatusHtml}
+                        </div>
                         <div class="text-xs text-gray-500">${w.email}</div>
                     </td>
                     <td class="px-4 py-3">${w.phone || '-'}</td>
