@@ -828,6 +828,89 @@
         </div>
     </div>
 
+    <!-- Edit Worker Modal -->
+    <div id="edit-worker-modal" class="modal">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
+                <h2 class="text-xl font-bold">Edit Worker</h2>
+                <button onclick="closeModal('edit-worker-modal')" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            <form id="edit-worker-form" onsubmit="submitEditWorker(event)" class="p-6 space-y-4">
+                <input type="hidden" name="worker_id" id="edit-worker-id">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-1">First Name *</label>
+                        <input type="text" name="first_name" id="edit-first-name" required class="w-full border rounded-lg px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Surname *</label>
+                        <input type="text" name="surname" id="edit-surname" required class="w-full border rounded-lg px-3 py-2">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Email *</label>
+                    <input type="email" name="email" id="edit-email" required class="w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Phone</label>
+                    <input type="tel" name="phone" id="edit-phone" class="w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Address</label>
+                    <input type="text" name="address" id="edit-address" class="w-full border rounded-lg px-3 py-2">
+                </div>
+                <div class="grid grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Suburb</label>
+                        <input type="text" name="suburb" id="edit-suburb" class="w-full border rounded-lg px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">State</label>
+                        <select name="state" id="edit-state" class="w-full border rounded-lg px-3 py-2">
+                            <option value="">Select</option>
+                            <option value="VIC">VIC</option>
+                            <option value="NSW">NSW</option>
+                            <option value="QLD">QLD</option>
+                            <option value="WA">WA</option>
+                            <option value="SA">SA</option>
+                            <option value="TAS">TAS</option>
+                            <option value="NT">NT</option>
+                            <option value="ACT">ACT</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Postcode</label>
+                        <input type="text" name="postcode" id="edit-postcode" class="w-full border rounded-lg px-3 py-2">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Date of Birth</label>
+                        <input type="date" name="date_of_birth" id="edit-dob" class="w-full border rounded-lg px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Start Date</label>
+                        <input type="date" name="start_date" id="edit-start-date" class="w-full border rounded-lg px-3 py-2">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Employment Type</label>
+                    <select name="employment_type" id="edit-employment-type" class="w-full border rounded-lg px-3 py-2">
+                        <option value="casual">Casual</option>
+                        <option value="full_time">Full Time</option>
+                        <option value="part_time">Part Time</option>
+                    </select>
+                </div>
+                <div class="pt-4 border-t flex gap-4 justify-end">
+                    <button type="button" onclick="closeModal('edit-worker-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Add Client Modal -->
     <div id="add-client-modal" class="modal">
         <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4">
@@ -1994,6 +2077,9 @@
                         </span>
                     </td>
                     <td class="px-4 py-3">
+                        <button onclick="viewWorker(${w.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit Worker">
+                            <i class="fas fa-edit"></i>
+                        </button>
                         <button onclick="assignJob(${w.id}, '${w.first_name} ${w.surname}')" class="text-orange-600 hover:text-orange-800 mr-2" title="Assign Job">
                             <i class="fas fa-briefcase"></i>
                         </button>
@@ -2273,7 +2359,67 @@
         }
 
         async function viewWorker(id) {
-            alert('Worker details view coming soon');
+            // Find worker in allWorkers array
+            const worker = allWorkers.find(w => w.id === id);
+            if (!worker) {
+                alert('Worker not found');
+                return;
+            }
+            
+            // Populate the edit form
+            document.getElementById('edit-worker-id').value = worker.id;
+            document.getElementById('edit-first-name').value = worker.first_name || '';
+            document.getElementById('edit-surname').value = worker.surname || '';
+            document.getElementById('edit-email').value = worker.email || '';
+            document.getElementById('edit-phone').value = worker.phone || '';
+            document.getElementById('edit-address').value = worker.address || '';
+            document.getElementById('edit-suburb').value = worker.suburb || '';
+            document.getElementById('edit-state').value = worker.state || '';
+            document.getElementById('edit-postcode').value = worker.postcode || '';
+            document.getElementById('edit-dob').value = worker.date_of_birth || '';
+            document.getElementById('edit-start-date').value = worker.start_date || '';
+            document.getElementById('edit-employment-type').value = worker.employment_type || 'casual';
+            
+            openModal('edit-worker-modal');
+        }
+
+        async function submitEditWorker(event) {
+            event.preventDefault();
+            
+            const workerId = document.getElementById('edit-worker-id').value;
+            const formData = {
+                first_name: document.getElementById('edit-first-name').value,
+                surname: document.getElementById('edit-surname').value,
+                email: document.getElementById('edit-email').value,
+                phone: document.getElementById('edit-phone').value || null,
+                address: document.getElementById('edit-address').value || null,
+                suburb: document.getElementById('edit-suburb').value || null,
+                state: document.getElementById('edit-state').value || null,
+                postcode: document.getElementById('edit-postcode').value || null,
+                date_of_birth: document.getElementById('edit-dob').value || null,
+                start_date: document.getElementById('edit-start-date').value || null,
+                employment_type: document.getElementById('edit-employment-type').value
+            };
+            
+            try {
+                const response = await authFetch(`${API_BASE}/users/admin/workers/${workerId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
+                
+                if (response.ok) {
+                    closeModal('edit-worker-modal');
+                    await loadWorkers();
+                    alert('Worker updated successfully!');
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Error updating worker');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error updating worker');
+            }
         }
 
         async function activateWorker(id) {

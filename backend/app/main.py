@@ -521,7 +521,7 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "raw-timesheet-api",
-        "version": "2.6.0"
+        "version": "2.7.0"
     }
 
 
