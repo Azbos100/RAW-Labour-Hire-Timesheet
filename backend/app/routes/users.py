@@ -555,12 +555,21 @@ async def save_push_token(
     user = result.scalar_one_or_none()
     
     if not user:
+        print(f"[Push Token] User {user_id} not found")
         raise HTTPException(status_code=404, detail="User not found")
     
+    old_token = user.push_token
     user.push_token = token_data.push_token
     await db.commit()
     
-    return {"message": "Push token saved"}
+    # Log for debugging
+    user_name = f"{user.first_name} {user.surname}"
+    if old_token:
+        print(f"[Push Token] Updated token for {user_name} (ID: {user_id})")
+    else:
+        print(f"[Push Token] NEW token registered for {user_name} (ID: {user_id})")
+    
+    return {"message": "Push token saved", "user": user_name}
 
 
 # ==================== JOB ASSIGNMENT ENDPOINTS ====================
