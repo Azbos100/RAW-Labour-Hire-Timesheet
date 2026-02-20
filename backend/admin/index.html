@@ -1147,6 +1147,37 @@
         let allClients = [];
         let allJobSites = [];
         let allTickets = [];
+        
+        // Helper function for authenticated API calls
+        function getAuthHeaders() {
+            const token = localStorage.getItem('adminToken');
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': token ? `Bearer ${token}` : ''
+            };
+        }
+        
+        // Wrapper for fetch that adds auth headers
+        async function authFetch(url, options = {}) {
+            const headers = {
+                ...getAuthHeaders(),
+                ...(options.headers || {})
+            };
+            
+            const response = await authFetch(url, {
+                ...options,
+                headers
+            });
+            
+            // If unauthorized, redirect to login
+            if (response.status === 401) {
+                localStorage.removeItem('adminToken');
+                window.location.href = '/admin/login.html';
+                throw new Error('Unauthorized - redirecting to login');
+            }
+            
+            return response;
+        }
         let allInductions = [];
 
         // Logout function
@@ -1212,7 +1243,7 @@
                 if (workerId) params.append('worker_id', workerId);
                 if (params.toString()) url += `?${params.toString()}`;
 
-                const response = await fetch(url);
+                const response = await authFetch(url);
                 const data = await response.json();
                 allTimesheets = data.timesheets || [];
                 renderTimesheets();
@@ -1230,7 +1261,7 @@
         
         async function loadArchivedTimesheets() {
             try {
-                const response = await fetch(`${API_BASE}/timesheets/admin/archived`);
+                const response = await authFetch(`${API_BASE}/timesheets/admin/archived`);
                 const data = await response.json();
                 archivedTimesheets = data.timesheets || [];
                 renderArchivedTimesheets();
@@ -1288,7 +1319,7 @@
             if (!confirm('Restore this timesheet to active timesheets?')) return;
             
             try {
-                const response = await fetch(`${API_BASE}/timesheets/${id}/restore`, { method: 'POST' });
+                const response = await authFetch(`${API_BASE}/timesheets/${id}/restore`, { method: 'POST' });
                 if (response.ok) {
                     await loadArchivedTimesheets();
                     await loadTimesheets();
@@ -1308,7 +1339,7 @@
             if (!confirm('Are you absolutely sure? All entries will be lost forever.')) return;
             
             try {
-                const response = await fetch(`${API_BASE}/timesheets/${id}/permanent`, { method: 'DELETE' });
+                const response = await authFetch(`${API_BASE}/timesheets/${id}/permanent`, { method: 'DELETE' });
                 if (response.ok) {
                     await loadArchivedTimesheets();
                     alert('Timesheet permanently deleted');
@@ -1378,7 +1409,7 @@
 
         async function viewTimesheet(id) {
             try {
-                const response = await fetch(`${API_BASE}/timesheets/${id}`);
+                const response = await authFetch(`${API_BASE}/timesheets/${id}`);
                 const ts = await response.json();
                 
                 document.getElementById('modal-docket').textContent = `Docket #${ts.docket_number}`;
@@ -1599,7 +1630,7 @@
             if (!confirm('Approve this timesheet?')) return;
             
             try {
-                const response = await fetch(`${API_BASE}/timesheets/${id}/approve`, {
+                const response = await authFetch(`${API_BASE}/timesheets/${id}/approve`, {
                     method: 'POST'
                 });
                 if (response.ok) {
@@ -1621,7 +1652,7 @@
             if (reason === null) return;
             
             try {
-                const response = await fetch(`${API_BASE}/timesheets/${id}/reject`, {
+                const response = await authFetch(`${API_BASE}/timesheets/${id}/reject`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ reason })
@@ -1645,7 +1676,7 @@
             if (!confirm('Approve this entry?')) return;
             
             try {
-                const response = await fetch(`${API_BASE}/timesheets/admin/entries/${entryId}/approve`, {
+                const response = await authFetch(`${API_BASE}/timesheets/admin/entries/${entryId}/approve`, {
                     method: 'POST'
                 });
                 if (response.ok) {
@@ -1666,7 +1697,7 @@
             if (!confirm('Delete this entry? This will remove it permanently and recalculate the timesheet totals.')) return;
             
             try {
-                const response = await fetch(`${API_BASE}/timesheets/admin/entries/${entryId}`, {
+                const response = await authFetch(`${API_BASE}/timesheets/admin/entries/${entryId}`, {
                     method: 'DELETE'
                 });
                 if (response.ok) {
@@ -1761,7 +1792,7 @@
             }
             
             try {
-                const response = await fetch(`${API_BASE}/timesheets/admin/entries/${entryId}`, {
+                const response = await authFetch(`${API_BASE}/timesheets/admin/entries/${entryId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -1788,7 +1819,7 @@
             if (reason === null) return;
             
             try {
-                const response = await fetch(`${API_BASE}/timesheets/admin/entries/${entryId}/reject`, {
+                const response = await authFetch(`${API_BASE}/timesheets/admin/entries/${entryId}/reject`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ reason })
@@ -1811,14 +1842,14 @@
             if (!confirm('Approve ALL submitted entries in this timesheet?')) return;
             
             try {
-                const response = await fetch(`${API_BASE}/timesheets/${timesheetId}`);
+                const response = await authFetch(`${API_BASE}/timesheets/${timesheetId}`);
                 const ts = await response.json();
                 
                 // Approve all entries that aren't already approved or rejected
                 const pendingEntries = (ts.entries || []).filter(e => e.entry_status !== 'approved' && e.entry_status !== 'rejected');
                 
                 for (const entry of pendingEntries) {
-                    await fetch(`${API_BASE}/timesheets/admin/entries/${entry.id}/approve`, {
+                    await authFetch(`${API_BASE}/timesheets/admin/entries/${entry.id}/approve`, {
                         method: 'POST'
                     });
                 }
@@ -1855,7 +1886,7 @@
                     url = `${API_BASE}/timesheets/${id}/permanent`;
                 }
                 
-                const response = await fetch(url, {
+                const response = await authFetch(url, {
                     method: 'DELETE'
                 });
                 if (response.ok) {
@@ -1879,7 +1910,7 @@
 
         async function loadWorkers() {
             try {
-                const response = await fetch(`${API_BASE}/users/admin/workers`);
+                const response = await authFetch(`${API_BASE}/users/admin/workers`);
                 const data = await response.json();
                 allWorkers = data.workers || [];
                 renderWorkers();
@@ -2032,7 +2063,7 @@
             };
             
             try {
-                const response = await fetch(`${API_BASE}/users/admin/workers/${workerId}/schedule`, {
+                const response = await authFetch(`${API_BASE}/users/admin/workers/${workerId}/schedule`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
@@ -2154,7 +2185,7 @@
             }
             
             try {
-                const response = await fetch(`${API_BASE}/users/admin/workers/${workerId}/assign`, {
+                const response = await authFetch(`${API_BASE}/users/admin/workers/${workerId}/assign`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -2187,7 +2218,7 @@
             }
             
             try {
-                const response = await fetch(`${API_BASE}/users/admin/workers/${workerId}/assign`, {
+                const response = await authFetch(`${API_BASE}/users/admin/workers/${workerId}/assign`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -2221,7 +2252,7 @@
             const data = Object.fromEntries(formData.entries());
 
             try {
-                const response = await fetch(`${API_BASE}/users/admin/workers`, {
+                const response = await authFetch(`${API_BASE}/users/admin/workers`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
@@ -2248,7 +2279,7 @@
         async function activateWorker(id) {
             if (!confirm('Activate this worker?')) return;
             try {
-                await fetch(`${API_BASE}/users/admin/workers/${id}/activate`, { method: 'PATCH' });
+                await authFetch(`${API_BASE}/users/admin/workers/${id}/activate`, { method: 'PATCH' });
                 await loadWorkers();
             } catch (error) {
                 alert('Error activating worker');
@@ -2258,7 +2289,7 @@
         async function deactivateWorker(id) {
             if (!confirm('Deactivate this worker?')) return;
             try {
-                await fetch(`${API_BASE}/users/admin/workers/${id}/deactivate`, { method: 'PATCH' });
+                await authFetch(`${API_BASE}/users/admin/workers/${id}/deactivate`, { method: 'PATCH' });
                 await loadWorkers();
             } catch (error) {
                 alert('Error deactivating worker');
@@ -2268,7 +2299,7 @@
         async function forceClockOut(workerId, workerName) {
             if (!confirm(`Force clock out ${workerName}? This will close any open clock-in entries.`)) return;
             try {
-                const response = await fetch(`${API_BASE}/users/admin/workers/${workerId}/force-clock-out`, { 
+                const response = await authFetch(`${API_BASE}/users/admin/workers/${workerId}/force-clock-out`, { 
                     method: 'POST' 
                 });
                 const result = await response.json();
@@ -2288,7 +2319,7 @@
 
         async function loadClients() {
             try {
-                const response = await fetch(`${API_BASE}/clients/`);
+                const response = await authFetch(`${API_BASE}/clients/`);
                 const data = await response.json();
                 allClients = data.clients || [];
                 renderClients();
@@ -2349,7 +2380,7 @@
             const data = Object.fromEntries(formData.entries());
 
             try {
-                const response = await fetch(`${API_BASE}/clients/admin`, {
+                const response = await authFetch(`${API_BASE}/clients/admin`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
@@ -2392,7 +2423,7 @@
             delete data.client_id;
 
             try {
-                const response = await fetch(`${API_BASE}/clients/admin/${clientId}`, {
+                const response = await authFetch(`${API_BASE}/clients/admin/${clientId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
@@ -2418,7 +2449,7 @@
             }
 
             try {
-                const response = await fetch(`${API_BASE}/clients/admin/${clientId}`, {
+                const response = await authFetch(`${API_BASE}/clients/admin/${clientId}`, {
                     method: 'DELETE'
                 });
 
@@ -2439,7 +2470,7 @@
 
         async function loadJobSites() {
             try {
-                const response = await fetch(`${API_BASE}/clients/job-sites/all`);
+                const response = await authFetch(`${API_BASE}/clients/job-sites/all`);
                 const data = await response.json();
                 allJobSites = data.job_sites || [];
                 renderJobSites();
@@ -2505,7 +2536,7 @@
             else delete data.longitude;
 
             try {
-                const response = await fetch(`${API_BASE}/jobsites/`, {
+                const response = await authFetch(`${API_BASE}/jobsites/`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
@@ -2529,7 +2560,7 @@
             if (!confirm(`Are you sure you want to DELETE job site "${name}"?\n\nThis action cannot be undone!`)) return;
             
             try {
-                const response = await fetch(`${API_BASE}/jobsites/${id}`, {
+                const response = await authFetch(`${API_BASE}/jobsites/${id}`, {
                     method: 'DELETE'
                 });
                 if (response.ok) {
@@ -2593,7 +2624,7 @@
             else data.longitude = null;
 
             try {
-                const response = await fetch(`${API_BASE}/jobsites/${jobsiteId}`, {
+                const response = await authFetch(`${API_BASE}/jobsites/${jobsiteId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
@@ -2640,7 +2671,7 @@
                 
                 // Use OpenStreetMap Nominatim API (free, no API key required)
                 const encodedAddress = encodeURIComponent(searchAddress);
-                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodedAddress}&limit=5&countrycodes=au`, {
+                const response = await authFetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodedAddress}&limit=5&countrycodes=au`, {
                     headers: {
                         'User-Agent': 'RAW-Labour-Hire-Admin/1.0'
                     }
@@ -2686,7 +2717,7 @@
                 if (workerId) params.append('worker_id', workerId);
                 if (params.toString()) url += `?${params.toString()}`;
 
-                const response = await fetch(url);
+                const response = await authFetch(url);
                 const data = await response.json();
                 allTickets = data.tickets || [];
                 renderTickets();
@@ -2836,7 +2867,7 @@
             if (!confirm('Verify this ticket?')) return;
             
             try {
-                const response = await fetch(`${API_BASE}/tickets/admin/${id}/verify`, { method: 'POST' });
+                const response = await authFetch(`${API_BASE}/tickets/admin/${id}/verify`, { method: 'POST' });
                 if (response.ok) {
                     closeModal('ticket-modal');
                     await loadTickets();
@@ -2856,7 +2887,7 @@
             if (reason === null) return;
             
             try {
-                const response = await fetch(`${API_BASE}/tickets/admin/${id}/reject`, {
+                const response = await authFetch(`${API_BASE}/tickets/admin/${id}/reject`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ reason })
@@ -2879,7 +2910,7 @@
 
         async function loadInductions() {
             try {
-                const response = await fetch(`${API_BASE}/induction/admin/all-status`);
+                const response = await authFetch(`${API_BASE}/induction/admin/all-status`);
                 const data = await response.json();
                 allInductions = data.users || [];
                 renderInductions();
@@ -2938,7 +2969,7 @@
 
         async function viewInductionDetails(userId) {
             try {
-                const response = await fetch(`${API_BASE}/induction/admin/user/${userId}/details`);
+                const response = await authFetch(`${API_BASE}/induction/admin/user/${userId}/details`);
                 const data = await response.json();
                 
                 const docsHtml = data.documents.map(doc => `
@@ -3024,7 +3055,7 @@
 
         async function loadNotificationSettings() {
             try {
-                const response = await fetch(`${API_BASE}/notifications/settings`);
+                const response = await authFetch(`${API_BASE}/notifications/settings`);
                 const data = await response.json();
                 
                 setToggle('sms-enabled', data.sms_enabled);
@@ -3042,7 +3073,7 @@
         
         async function loadSchedulerStatus() {
             try {
-                const response = await fetch(`${API_BASE}/notifications/scheduler-status`);
+                const response = await authFetch(`${API_BASE}/notifications/scheduler-status`);
                 const data = await response.json();
                 
                 const statusDiv = document.getElementById('scheduler-status');
@@ -3131,7 +3162,7 @@
             for (const cb of checkboxes) {
                 const workerId = cb.dataset.workerId;
                 try {
-                    const response = await fetch(`${API_BASE}/notifications/send-sms`, {
+                    const response = await authFetch(`${API_BASE}/notifications/send-sms`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ worker_id: parseInt(workerId), message })
@@ -3175,7 +3206,7 @@
             };
 
             try {
-                const response = await fetch(`${API_BASE}/notifications/settings`, {
+                const response = await authFetch(`${API_BASE}/notifications/settings`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
@@ -3197,7 +3228,7 @@
             if (!confirm('Send clock-in reminders to all workers who haven\'t clocked in today?')) return;
             
             try {
-                const response = await fetch(`${API_BASE}/notifications/check-clock-in-reminders`, {
+                const response = await authFetch(`${API_BASE}/notifications/check-clock-in-reminders`, {
                     method: 'POST'
                 });
                 const data = await response.json();
@@ -3213,7 +3244,7 @@
             if (!confirm('Send clock-out reminders to all workers who are still clocked in?')) return;
             
             try {
-                const response = await fetch(`${API_BASE}/notifications/check-clock-out-reminders`, {
+                const response = await authFetch(`${API_BASE}/notifications/check-clock-out-reminders`, {
                     method: 'POST'
                 });
                 const data = await response.json();

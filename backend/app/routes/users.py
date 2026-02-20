@@ -13,7 +13,7 @@ import secrets
 
 from ..database import get_db
 from ..models import User, UserRole, JobSite, TimesheetEntry
-from .auth import get_current_user
+from .auth import get_current_user, verify_admin_auth
 
 router = APIRouter()
 
@@ -154,12 +154,13 @@ async def list_users(
     }
 
 
-# ==================== ADMIN DASHBOARD ENDPOINTS (No Auth) ====================
+# ==================== ADMIN DASHBOARD ENDPOINTS (Requires Admin Auth) ====================
 
 @router.get("/admin/workers")
 async def list_all_workers(
     active_only: bool = True,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(verify_admin_auth)
 ):
     """List all workers for admin dashboard with assignment and clock-in status"""
     from sqlalchemy.orm import selectinload
@@ -335,7 +336,8 @@ async def get_worker(
 @router.post("/admin/workers")
 async def create_worker(
     worker: WorkerCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(verify_admin_auth)
 ):
     """Create a new worker"""
     # Check if email already exists
@@ -391,7 +393,8 @@ async def create_worker(
 async def update_worker(
     worker_id: int,
     worker_data: WorkerUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(verify_admin_auth)
 ):
     """Update worker details"""
     result = await db.execute(select(User).where(User.id == worker_id))
@@ -416,7 +419,8 @@ async def update_worker(
 @router.patch("/admin/workers/{worker_id}/activate")
 async def activate_worker(
     worker_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(verify_admin_auth)
 ):
     """Activate a worker"""
     result = await db.execute(select(User).where(User.id == worker_id))
@@ -434,7 +438,8 @@ async def activate_worker(
 @router.patch("/admin/workers/{worker_id}/deactivate")
 async def deactivate_worker_admin(
     worker_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(verify_admin_auth)
 ):
     """Deactivate a worker"""
     result = await db.execute(select(User).where(User.id == worker_id))
@@ -452,7 +457,8 @@ async def deactivate_worker_admin(
 @router.post("/admin/workers/{worker_id}/reset-password")
 async def reset_worker_password(
     worker_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(verify_admin_auth)
 ):
     """Reset worker password and return new temporary password"""
     result = await db.execute(select(User).where(User.id == worker_id))
@@ -586,7 +592,8 @@ async def assign_worker_to_job(
     worker_id: int,
     assignment: JobAssignment,
     db: AsyncSession = Depends(get_db),
-    background_tasks: BackgroundTasks = None
+    background_tasks: BackgroundTasks = None,
+    admin: dict = Depends(verify_admin_auth)
 ):
     """Assign a worker to a job site"""
     from ..services.push_notifications import send_push_notification

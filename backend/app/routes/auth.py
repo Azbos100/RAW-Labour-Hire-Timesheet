@@ -529,3 +529,46 @@ async def verify_admin_token(token: str):
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or expired token"
     )
+
+
+# === Admin Authentication Dependency ===
+
+from fastapi import Header
+
+async def verify_admin_auth(authorization: Optional[str] = Header(None)):
+    """
+    Dependency to verify admin authentication for protected endpoints.
+    Expects: Authorization: Bearer <token>
+    """
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Admin authentication required",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    
+    # Extract token from "Bearer <token>"
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header format. Use: Bearer <token>",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    
+    token = parts[1]
+    
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid admin token"
+            )
+        return {"username": payload.get("sub"), "type": "admin"}
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired admin token",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
