@@ -59,14 +59,15 @@ async def get_push_token_status(db: AsyncSession = Depends(get_db)):
                 worker_info = {
                     "id": w.id,
                     "name": full_name,
-                    "phone": (w.phone[:4] + "...") if w.phone and len(w.phone) >= 4 else None
+                    "email": w.email,
+                    "phone": w.phone
                 }
                 if w.push_token:
                     with_token.append({**worker_info, "token_prefix": w.push_token[:30] + "..." if len(w.push_token) >= 30 else w.push_token})
                 else:
                     without_token.append(worker_info)
             except Exception as worker_err:
-                without_token.append({"id": w.id, "name": f"Error: {str(worker_err)}", "phone": None})
+                without_token.append({"id": w.id, "name": f"Error: {str(worker_err)}", "phone": None, "email": None})
         
         return {
             "total_workers": len(workers),
