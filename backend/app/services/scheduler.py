@@ -4,13 +4,13 @@ Sends clock-in/out reminders at configured times
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, time
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
 
 # Australian Eastern timezone
-TIMEZONE = pytz.timezone('Australia/Sydney')
+TIMEZONE = pytz.timezone('Australia/Melbourne')
 
 scheduler = AsyncIOScheduler(timezone=TIMEZONE)
 
@@ -24,7 +24,6 @@ async def check_clock_in_reminders():
     
     try:
         async with AsyncSessionLocal() as db:
-            # Create a mock request-like context
             result = await send_reminders(db)
             print(f"[Scheduler] Clock-in reminders result: {result}")
     except Exception as e:
@@ -46,29 +45,66 @@ async def check_clock_out_reminders():
         print(f"[Scheduler] Error sending clock-out reminders: {e}")
 
 
+async def load_settings_from_db():
+    """Load notification settings from database and update scheduler times"""
+    from ..database import AsyncSessionLocal
+    from sqlalchemy import select
+    from ..models import NotificationSettings
+    
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(NotificationSettings).limit(1))
+            settings = result.scalar_one_or_none()
+            
+            if settings:
+                # Parse clock_in_reminder_time (stored as "HH:MM" string)
+                if settings.clock_in_reminder_time:
+                    try:
+                        parts = settings.clock_in_reminder_time.split(':')
+                        hour, minute = int(parts[0]), int(parts[1])
+                        update_clock_in_time(hour, minute)
+                        print(f"[Scheduler] Loaded clock-in time from DB: {hour:02d}:{minute:02d}")
+                    except Exception as e:
+                        print(f"[Scheduler] Error parsing clock-in time: {e}")
+                
+                # Parse clock_out_reminder_time
+                if settings.clock_out_reminder_time:
+                    try:
+                        parts = settings.clock_out_reminder_time.split(':')
+                        hour, minute = int(parts[0]), int(parts[1])
+                        update_clock_out_time(hour, minute)
+                        print(f"[Scheduler] Loaded clock-out time from DB: {hour:02d}:{minute:02d}")
+                    except Exception as e:
+                        print(f"[Scheduler] Error parsing clock-out time: {e}")
+            else:
+                print("[Scheduler] No settings in DB, using defaults")
+    except Exception as e:
+        print(f"[Scheduler] Error loading settings from DB: {e}")
+
+
 def setup_scheduler():
-    """Setup the scheduler with default jobs"""
-    # Clock-in reminder at 7:00 AM Sydney time on weekdays
+    """Setup the scheduler with default jobs (will be updated from DB later)"""
+    # Default: Clock-in reminder at 6:55 AM Melbourne time on weekdays
     scheduler.add_job(
         lambda: asyncio.create_task(check_clock_in_reminders()),
-        CronTrigger(hour=7, minute=0, day_of_week='mon-fri', timezone=TIMEZONE),
+        CronTrigger(hour=6, minute=55, day_of_week='mon-fri', timezone=TIMEZONE),
         id='clock_in_reminder',
         replace_existing=True,
         name='Clock-In Reminder'
     )
     
-    # Clock-out reminder at 5:00 PM Sydney time on weekdays
+    # Default: Clock-out reminder at 3:30 PM Melbourne time on weekdays
     scheduler.add_job(
         lambda: asyncio.create_task(check_clock_out_reminders()),
-        CronTrigger(hour=17, minute=0, day_of_week='mon-fri', timezone=TIMEZONE),
+        CronTrigger(hour=15, minute=30, day_of_week='mon-fri', timezone=TIMEZONE),
         id='clock_out_reminder',
         replace_existing=True,
         name='Clock-Out Reminder'
     )
     
-    print("[Scheduler] Automatic reminders scheduled:")
-    print("  - Clock-in reminder: 7:00 AM AEST (Mon-Fri)")
-    print("  - Clock-out reminder: 5:00 PM AEST (Mon-Fri)")
+    print("[Scheduler] Initial reminders scheduled (defaults):")
+    print("  - Clock-in reminder: 6:55 AM AEST/AEDT (Mon-Fri)")
+    print("  - Clock-out reminder: 3:30 PM AEST/AEDT (Mon-Fri)")
 
 
 def update_clock_in_time(hour: int, minute: int):
@@ -95,6 +131,8 @@ def start_scheduler():
         setup_scheduler()
         scheduler.start()
         print("[Scheduler] Started")
+        # Schedule loading settings from DB (needs to run in async context)
+        asyncio.get_event_loop().create_task(load_settings_from_db())
 
 
 def stop_scheduler():

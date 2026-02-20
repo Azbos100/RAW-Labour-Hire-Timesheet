@@ -41,6 +41,37 @@ async def test_sms(phone: str):
     }
 
 
+@router.get("/push-token-status")
+async def get_push_token_status(db: AsyncSession = Depends(get_db)):
+    """Debug endpoint to check which workers have push tokens registered"""
+    result = await db.execute(
+        select(User).where(User.is_active == True)
+    )
+    workers = result.scalars().all()
+    
+    with_token = []
+    without_token = []
+    
+    for w in workers:
+        worker_info = {
+            "id": w.id,
+            "name": w.name,
+            "phone": w.phone[:4] + "..." if w.phone else None
+        }
+        if w.push_token:
+            with_token.append({**worker_info, "token_prefix": w.push_token[:30] + "..."})
+        else:
+            without_token.append(worker_info)
+    
+    return {
+        "total_workers": len(workers),
+        "with_push_token": len(with_token),
+        "without_push_token": len(without_token),
+        "workers_with_tokens": with_token,
+        "workers_without_tokens": without_token
+    }
+
+
 @router.get("/scheduler-status")
 async def get_scheduler_status():
     """Get the status of scheduled reminder jobs"""
