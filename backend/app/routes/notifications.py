@@ -44,32 +44,38 @@ async def test_sms(phone: str):
 @router.get("/push-token-status")
 async def get_push_token_status(db: AsyncSession = Depends(get_db)):
     """Debug endpoint to check which workers have push tokens registered"""
-    result = await db.execute(
-        select(User).where(User.is_active == True)
-    )
-    workers = result.scalars().all()
-    
-    with_token = []
-    without_token = []
-    
-    for w in workers:
-        worker_info = {
-            "id": w.id,
-            "name": w.name,
-            "phone": w.phone[:4] + "..." if w.phone else None
+    try:
+        result = await db.execute(
+            select(User).where(User.is_active == True)
+        )
+        workers = result.scalars().all()
+        
+        with_token = []
+        without_token = []
+        
+        for w in workers:
+            try:
+                worker_info = {
+                    "id": w.id,
+                    "name": w.name or "Unknown",
+                    "phone": (w.phone[:4] + "...") if w.phone and len(w.phone) >= 4 else None
+                }
+                if w.push_token:
+                    with_token.append({**worker_info, "token_prefix": w.push_token[:30] + "..." if len(w.push_token) >= 30 else w.push_token})
+                else:
+                    without_token.append(worker_info)
+            except Exception as worker_err:
+                without_token.append({"id": w.id, "name": "Error reading worker", "phone": None})
+        
+        return {
+            "total_workers": len(workers),
+            "with_push_token": len(with_token),
+            "without_push_token": len(without_token),
+            "workers_with_tokens": with_token,
+            "workers_without_tokens": without_token
         }
-        if w.push_token:
-            with_token.append({**worker_info, "token_prefix": w.push_token[:30] + "..."})
-        else:
-            without_token.append(worker_info)
-    
-    return {
-        "total_workers": len(workers),
-        "with_push_token": len(with_token),
-        "without_push_token": len(without_token),
-        "workers_with_tokens": with_token,
-        "workers_without_tokens": without_token
-    }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @router.get("/scheduler-status")
