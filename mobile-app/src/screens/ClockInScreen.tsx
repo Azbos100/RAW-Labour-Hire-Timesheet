@@ -87,18 +87,35 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
   
   // Track if we've done initial detection
   const hasDetectedRef = useRef(false);
+  
+  // Track if job sites have been fetched (even if empty)
+  const [jobSitesFetched, setJobSitesFetched] = useState(false);
 
   useEffect(() => {
     loadData();
+    
+    // Failsafe: If detection is still "loading" after 10 seconds, set to no_match
+    const timeout = setTimeout(() => {
+      if (detectionStatus === 'loading' && !isLoadingLocation) {
+        console.log('[JobSite] Detection timeout - setting to no_match');
+        setDetectionStatus('no_match');
+        setJobSitesFetched(true);
+      }
+    }, 10000);
+    
+    return () => clearTimeout(timeout);
   }, []);
   
-  // Re-run detection when location changes
+  // Re-run detection when location AND job sites are ready
   useEffect(() => {
-    if (location && allJobSites.length > 0 && !hasDetectedRef.current) {
+    console.log('[JobSite] useEffect check - location:', !!location, 'jobSitesFetched:', jobSitesFetched, 'sites:', allJobSites.length, 'detected:', hasDetectedRef.current);
+    
+    if (location && jobSitesFetched && !hasDetectedRef.current) {
+      console.log('[JobSite] Running detection with', allJobSites.length, 'sites');
       detectJobSite();
       hasDetectedRef.current = true;
     }
-  }, [location, allJobSites]);
+  }, [location, jobSitesFetched, allJobSites]);
 
   const loadData = async () => {
     if (!user?.id) return;
@@ -139,8 +156,13 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
   
   const fetchAllJobSites = async (): Promise<JobSite[]> => {
     try {
+      console.log('[JobSite] Fetching all job sites...');
       const response = await api.get('/clients/job-sites/all');
+      console.log('[JobSite] API response received, parsing...');
+      
       const jobSitesData = response.data?.job_sites || response.data || [];
+      console.log('[JobSite] Raw data count:', Array.isArray(jobSitesData) ? jobSitesData.length : 'not an array');
+      
       const sites: JobSite[] = jobSitesData
         .filter((site: any) => site.is_active !== false && site.latitude && site.longitude)
         .map((site: any) => ({
@@ -151,22 +173,32 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
           latitude: site.latitude,
           longitude: site.longitude,
         }));
+      
+      console.log('[JobSite] Filtered sites with GPS:', sites.length);
       setAllJobSites(sites);
+      setJobSitesFetched(true);
       return sites;
     } catch (error: any) {
-      console.warn('Error fetching job sites:', error);
+      console.warn('[JobSite] Error fetching job sites:', error?.message || error);
+      setJobSitesFetched(true);
       return [];
     }
   };
   
   const detectJobSite = () => {
+    console.log('[JobSite] Running detection...');
+    console.log('[JobSite] Location:', location ? 'available' : 'null');
+    console.log('[JobSite] Job sites loaded:', allJobSites.length);
+    
     if (!location) {
+      console.log('[JobSite] No location, setting no_match');
       setDetectionStatus('no_match');
       return;
     }
     
     const userLat = location.coords.latitude;
     const userLon = location.coords.longitude;
+    console.log('[JobSite] User coords:', userLat, userLon);
     
     // Priority 1: Check if near assigned job site
     if (assignedJob && assignedJob.job_site_latitude && assignedJob.job_site_longitude) {
@@ -174,9 +206,10 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
         userLat, userLon,
         assignedJob.job_site_latitude, assignedJob.job_site_longitude
       );
+      console.log('[JobSite] Distance to assigned job:', distToAssigned.toFixed(2), 'km');
       
       if (distToAssigned <= GPS_MATCH_THRESHOLD_KM) {
-        // Near assigned job - use it
+        console.log('[JobSite] Detected assigned job:', assignedJob.job_site_name);
         setDetectedJobSite({
           id: assignedJob.job_site_id,
           name: assignedJob.job_site_name,
@@ -205,10 +238,11 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
     }
     
     if (nearestSite) {
+      console.log('[JobSite] Detected nearest site:', nearestSite.name, 'at', nearestDistance.toFixed(2), 'km');
       setDetectedJobSite(nearestSite);
       setDetectionStatus('detected');
     } else {
-      // No match - but still allow clock in
+      console.log('[JobSite] No site within', GPS_MATCH_THRESHOLD_KM, 'km');
       setDetectedJobSite(null);
       setDetectionStatus('no_match');
     }
@@ -502,6 +536,7 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
         <Text style={styles.footerText}>
           Your GPS location and time will be recorded for this clock-in.
         </Text>
+        <Text style={styles.versionText}>v3 - {allJobSites.length} sites loaded</Text>
       </View>
     </ScrollView>
     </KeyboardAvoidingView>
@@ -782,5 +817,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6B7280',
     textAlign: 'center',
+  },
+  versionText: {
+    fontSize: 10,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    marginTop: 8,
   },
 });

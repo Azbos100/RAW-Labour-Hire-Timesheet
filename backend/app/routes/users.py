@@ -596,12 +596,15 @@ async def assign_worker_to_job(
 ):
     """Assign a worker to a job site"""
     from ..services.push_notifications import send_push_notification
+    from ..services.sms import send_sms
     
     result = await db.execute(select(User).where(User.id == worker_id))
     worker = result.scalar_one_or_none()
     
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
+    
+    notifications_sent = []
     
     if assignment.job_site_id:
         # Verify job site exists
@@ -619,14 +622,31 @@ async def assign_worker_to_job(
         
         message = f"Worker assigned to {job_site.name}"
         
-        # Send push notification to worker
+        date_str = assignment.assignment_date.strftime("%a %d %b") if assignment.assignment_date else "TBC"
+        time_str = assignment.start_time or "TBC"
+        
+        # Send SMS notification to worker (always, if they have a phone)
+        if worker.phone:
+            sms_message = f"RAW Labour Hire: You've been assigned to {job_site.name} on {date_str} at {time_str}. Address: {job_site.address or 'TBC'}. Open the app to accept."
+            
+            async def send_assignment_sms():
+                result = await send_sms(worker.phone, sms_message)
+                if result.get("success"):
+                    print(f"[Assignment] SMS sent to {worker.first_name} {worker.surname}")
+                else:
+                    print(f"[Assignment] SMS failed for {worker.first_name}: {result.get('error')}")
+            
+            if background_tasks:
+                background_tasks.add_task(send_assignment_sms)
+            else:
+                await send_assignment_sms()
+            notifications_sent.append("SMS")
+        
+        # Send push notification to worker (if they have push enabled)
         if worker.push_token:
-            date_str = assignment.assignment_date.strftime("%a %d %b") if assignment.assignment_date else "TBC"
-            time_str = assignment.start_time or "TBC"
             notification_title = "New Job Assignment"
             notification_body = f"You've been assigned to {job_site.name} on {date_str} at {time_str}. Tap to accept or decline."
             
-            # Include full job details in the notification data
             notification_data = {
                 "type": "job_assignment",
                 "job_site_id": job_site.id,
@@ -653,6 +673,7 @@ async def assign_worker_to_job(
                     notification_body,
                     notification_data
                 )
+            notifications_sent.append("Push")
     else:
         # Clear assignment
         worker.assigned_job_site_id = None
@@ -665,7 +686,10 @@ async def assign_worker_to_job(
     
     await db.commit()
     
-    return {"message": message}
+    return {
+        "message": message,
+        "notifications_sent": notifications_sent
+    }
 
 
 @router.post("/admin/workers/assign-bulk")
@@ -673,9 +697,14 @@ async def assign_workers_bulk(
     job_site_id: int,
     worker_ids: list[int],
     assignment_date: Optional[date] = None,
-    db: AsyncSession = Depends(get_db)
+    start_time: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    background_tasks: BackgroundTasks = None
 ):
     """Assign multiple workers to a job site"""
+    from ..services.sms import send_sms
+    from ..services.push_notifications import send_push_notification
+    
     # Verify job site exists
     js_result = await db.execute(select(JobSite).where(JobSite.id == job_site_id))
     job_site = js_result.scalar_one_or_none()
@@ -687,18 +716,50 @@ async def assign_workers_bulk(
     workers = result.scalars().all()
     
     assigned_count = 0
+    sms_sent = 0
+    push_sent = 0
+    
+    date_str = assignment_date.strftime("%a %d %b") if assignment_date else "TBC"
+    time_str = start_time or "TBC"
+    
     for worker in workers:
         worker.assigned_job_site_id = job_site_id
         worker.assignment_date = assignment_date or date.today()
+        worker.assignment_start_time = start_time
         worker.assignment_accepted = None
         worker.assigned_at = datetime.utcnow()
         assigned_count += 1
+        
+        # Send SMS notification
+        if worker.phone:
+            sms_message = f"RAW Labour Hire: You've been assigned to {job_site.name} on {date_str} at {time_str}. Address: {job_site.address or 'TBC'}. Open the app to accept."
+            
+            async def send_worker_sms(phone=worker.phone, msg=sms_message):
+                await send_sms(phone, msg)
+            
+            if background_tasks:
+                background_tasks.add_task(send_worker_sms)
+            sms_sent += 1
+        
+        # Send push notification
+        if worker.push_token:
+            notification_title = "New Job Assignment"
+            notification_body = f"You've been assigned to {job_site.name} on {date_str} at {time_str}. Tap to accept or decline."
+            
+            async def send_worker_push(token=worker.push_token, title=notification_title, body=notification_body):
+                await send_push_notification(token, title, body, {"type": "job_assignment"})
+            
+            if background_tasks:
+                background_tasks.add_task(send_worker_push)
+            push_sent += 1
     
     await db.commit()
     
     return {
         "message": f"{assigned_count} workers assigned to {job_site.name}",
-        "assigned_count": assigned_count
+        "assigned_count": assigned_count,
+        "sms_sent": sms_sent,
+        "push_sent": push_sent
     }
 
 
