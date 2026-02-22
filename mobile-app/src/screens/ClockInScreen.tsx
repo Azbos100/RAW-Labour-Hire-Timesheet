@@ -140,7 +140,8 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
   const fetchAllJobSites = async (): Promise<JobSite[]> => {
     try {
       const response = await api.get('/clients/job-sites/all');
-      const sites: JobSite[] = (response.data || [])
+      const jobSitesData = response.data?.job_sites || response.data || [];
+      const sites: JobSite[] = jobSitesData
         .filter((site: any) => site.is_active !== false && site.latitude && site.longitude)
         .map((site: any) => ({
           id: site.id,

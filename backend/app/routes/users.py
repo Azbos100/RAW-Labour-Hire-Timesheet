@@ -8,12 +8,11 @@ from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional
 from datetime import date, datetime
-import hashlib
 import secrets
 
 from ..database import get_db
 from ..models import User, UserRole, JobSite, TimesheetEntry
-from .auth import get_current_user, verify_admin_auth
+from .auth import get_current_user, verify_admin_auth, get_password_hash
 
 router = APIRouter()
 
@@ -347,7 +346,7 @@ async def create_worker(
     
     # Generate a random password (worker will need to reset)
     temp_password = secrets.token_urlsafe(12)
-    hashed = hashlib.sha256(temp_password.encode()).hexdigest()
+    hashed = get_password_hash(temp_password)
     
     new_worker = User(
         email=worker.email,
@@ -469,7 +468,7 @@ async def reset_worker_password(
     
     # Generate new temporary password
     temp_password = secrets.token_urlsafe(12)
-    worker.hashed_password = hashlib.sha256(temp_password.encode()).hexdigest()
+    worker.hashed_password = get_password_hash(temp_password)
     
     await db.commit()
     
