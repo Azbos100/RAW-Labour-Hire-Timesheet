@@ -36,6 +36,7 @@ class ClockInRequest(BaseModel):
     longitude: float = 0  # Can be 0 if using manual address
     address: Optional[str] = None  # Manual address override
     job_site_id: Optional[int] = None
+    job_site_address: Optional[str] = None  # Manual job site address if no match detected
     worked_as: Optional[str] = None  # Job role
     user_id: Optional[int] = None  # Temporary until auth is fixed
 
@@ -404,6 +405,10 @@ async def clock_in(
         clock_in_address = get_address_from_coords(request.latitude, request.longitude)
     else:
         clock_in_address = "Address not provided"
+    
+    # If worker provided a manual job site address (no job site detected), append it
+    if request.job_site_address and request.job_site_address.strip():
+        clock_in_address = f"{clock_in_address} | Job Site: {request.job_site_address.strip()}"
     
     # Get assigned shift times from user assignment
     assigned_start = current_user.assignment_start_time  # e.g., "07:00"

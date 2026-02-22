@@ -91,6 +91,7 @@ export const clockAPI = {
     longitude: number;
     address?: string;
     job_site_id?: number;
+    job_site_address?: string;
     worked_as?: string;
     user_id?: number;
   }) => api.post('/clock/in', data),

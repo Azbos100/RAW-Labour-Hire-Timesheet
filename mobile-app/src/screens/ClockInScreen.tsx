@@ -77,6 +77,7 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
   const [isLoadingLocation, setIsLoadingLocation] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [workedAs, setWorkedAs] = useState('');
+  const [manualJobSiteAddress, setManualJobSiteAddress] = useState('');
   
   // Job site detection (hidden from user)
   const [allJobSites, setAllJobSites] = useState<JobSite[]>([]);
@@ -280,6 +281,11 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
   const submitClockIn = async () => {
     // Use manual address if edited, otherwise use GPS address
     const finalAddress = isEditingAddress ? manualAddress : address;
+    
+    // Use manual job site address if no job site detected and user entered one
+    const jobSiteAddress = !detectedJobSite && manualJobSiteAddress.trim() 
+      ? manualJobSiteAddress.trim() 
+      : undefined;
 
     setIsSubmitting(true);
     try {
@@ -287,12 +293,15 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
         latitude: location?.coords.latitude || 0,
         longitude: location?.coords.longitude || 0,
         address: finalAddress,
-        job_site_id: detectedJobSite?.id || undefined, // Optional - may be null
+        job_site_id: detectedJobSite?.id || undefined,
+        job_site_address: jobSiteAddress,
         worked_as: workedAs || undefined,
         user_id: user?.id,
       });
 
-      const locationName = detectedJobSite ? detectedJobSite.name : 'your current location';
+      const locationName = detectedJobSite 
+        ? detectedJobSite.name 
+        : (jobSiteAddress || 'your current location');
       Alert.alert(
         'Clocked In!',
         `You are now clocked in at ${locationName}\n\nDocket #${response.data.docket_number}`,
@@ -429,14 +438,28 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
             </View>
           ) : (
             <View style={styles.noMatchContainer}>
-              <View style={styles.noMatchIconContainer}>
-                <Ionicons name="location" size={24} color="#F59E0B" />
+              <View style={styles.noMatchRow}>
+                <View style={styles.noMatchIconContainer}>
+                  <Ionicons name="location" size={24} color="#F59E0B" />
+                </View>
+                <View style={styles.noMatchInfo}>
+                  <Text style={styles.noMatchLabel}>No Job Site Detected</Text>
+                  <Text style={styles.noMatchText}>
+                    Your GPS location will be saved.
+                  </Text>
+                </View>
               </View>
-              <View style={styles.noMatchInfo}>
-                <Text style={styles.noMatchLabel}>Location Recorded</Text>
-                <Text style={styles.noMatchText}>
-                  Your GPS location will be saved. Admin can assign the job site later.
-                </Text>
+              <View style={styles.manualJobSiteSection}>
+                <Text style={styles.manualJobSiteLabel}>Job site address (optional):</Text>
+                <TextInput
+                  style={styles.manualJobSiteInput}
+                  placeholder="Enter job site address if known..."
+                  placeholderTextColor="#9CA3AF"
+                  value={manualJobSiteAddress}
+                  onChangeText={setManualJobSiteAddress}
+                  multiline
+                  numberOfLines={2}
+                />
               </View>
             </View>
           )}
@@ -673,6 +696,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   noMatchContainer: {
+    flexDirection: 'column',
+  },
+  noMatchRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
   },
@@ -697,6 +723,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6B7280',
     marginTop: 4,
+  },
+  manualJobSiteSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  manualJobSiteLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  manualJobSiteInput: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 15,
+    color: '#1A1A1A',
+    minHeight: 50,
+    textAlignVertical: 'top',
   },
   input: {
     backgroundColor: '#FFFFFF',
