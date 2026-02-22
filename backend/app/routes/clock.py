@@ -307,6 +307,8 @@ async def clock_in(
     # Get or verify job site
     job_site = None
     client_id = None
+    
+    # Priority 1: Use provided job_site_id if valid
     if request.job_site_id:
         result = await db.execute(
             select(JobSite).where(JobSite.id == request.job_site_id)
@@ -314,16 +316,49 @@ async def clock_in(
         job_site = result.scalar_one_or_none()
         if job_site:
             client_id = job_site.client_id
-            
-            # Check if within geofence (optional warning)
-            if job_site.latitude and job_site.longitude:
-                distance = geodesic(
+    
+    # Priority 2: Auto-detect nearest job site within 1km using GPS
+    if not client_id and request.latitude and request.longitude:
+        result = await db.execute(
+            select(JobSite).where(
+                JobSite.is_active == True,
+                JobSite.latitude.isnot(None),
+                JobSite.longitude.isnot(None)
+            )
+        )
+        all_sites = result.scalars().all()
+        
+        nearest_site = None
+        nearest_distance = float('inf')
+        GPS_MATCH_THRESHOLD_KM = 1.0  # 1km threshold
+        
+        for site in all_sites:
+            try:
+                distance_km = geodesic(
                     (request.latitude, request.longitude),
-                    (job_site.latitude, job_site.longitude)
-                ).meters
-                if distance > job_site.geofence_radius:
-                    # Log warning but allow clock in
-                    pass  # TODO: Add warning to response
+                    (site.latitude, site.longitude)
+                ).kilometers
+                if distance_km <= GPS_MATCH_THRESHOLD_KM and distance_km < nearest_distance:
+                    nearest_distance = distance_km
+                    nearest_site = site
+            except:
+                continue
+        
+        if nearest_site:
+            job_site = nearest_site
+            client_id = nearest_site.client_id
+            print(f"[Clock-in] Auto-detected job site: {nearest_site.name} ({nearest_distance:.2f}km away)")
+    
+    # Priority 3: Use default "RAW General Site" (ID=1) as fallback
+    if not client_id:
+        result = await db.execute(
+            select(JobSite).where(JobSite.id == 1)
+        )
+        default_site = result.scalar_one_or_none()
+        if default_site:
+            job_site = default_site
+            client_id = default_site.client_id
+            print(f"[Clock-in] Using default job site: {default_site.name}")
     
     if not client_id:
         raise HTTPException(
