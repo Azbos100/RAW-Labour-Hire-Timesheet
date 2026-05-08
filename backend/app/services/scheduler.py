@@ -45,6 +45,24 @@ async def check_clock_out_reminders():
         print(f"[Scheduler] Error sending clock-out reminders: {e}")
 
 
+async def auto_archive_prior_pay_week():
+    """
+    Auto-archive approved timesheets from prior pay week (Fri→Thu).
+    Runs every Friday at 7am Melbourne time.
+    """
+    from ..database import AsyncSessionLocal
+    from ..routes.timesheets import archive_prior_pay_week
+
+    print(f"[Scheduler] Running weekly auto-archive at {datetime.now(TIMEZONE)}")
+
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await archive_prior_pay_week(db)
+            print(f"[Scheduler] Auto-archive result: {result}")
+    except Exception as e:
+        print(f"[Scheduler] Error during auto-archive: {e}")
+
+
 async def load_settings_from_db():
     """Load notification settings from database and update scheduler times"""
     from ..database import AsyncSessionLocal
@@ -101,10 +119,21 @@ def setup_scheduler():
         replace_existing=True,
         name='Clock-Out Reminder'
     )
-    
+
+    # Weekly auto-archive: Every Friday at 7:00 AM Melbourne time
+    # Archives approved timesheets from the prior pay week (Fri→Thu).
+    scheduler.add_job(
+        lambda: asyncio.create_task(auto_archive_prior_pay_week()),
+        CronTrigger(hour=7, minute=0, day_of_week='fri', timezone=TIMEZONE),
+        id='weekly_auto_archive',
+        replace_existing=True,
+        name='Weekly Auto-Archive (Prior Pay Week)'
+    )
+
     print("[Scheduler] Initial reminders scheduled (defaults):")
     print("  - Clock-in reminder: 6:55 AM AEST/AEDT (Mon-Fri)")
     print("  - Clock-out reminder: 3:30 PM AEST/AEDT (Mon-Fri)")
+    print("  - Weekly auto-archive: 7:00 AM AEST/AEDT (Fri)")
 
 
 def update_clock_in_time(hour: int, minute: int):

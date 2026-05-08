@@ -181,24 +181,34 @@
                 </div>
             </div>
 
-            <!-- Filter Controls -->
+            <!-- Filter Controls + Bulk Actions -->
             <div class="bg-white rounded-xl shadow p-4 mb-6">
-                <div class="flex flex-wrap gap-4 items-center">
-                    <div>
-                        <label class="block text-sm text-gray-500 mb-1">Status</label>
-                        <select id="filter-status" onchange="loadTimesheets()" class="border rounded-lg px-3 py-2">
-                            <option value="">All Statuses</option>
-                            <option value="submitted" selected>Pending Approval</option>
-                            <option value="approved">Approved</option>
-                            <option value="draft">Draft</option>
-                            <option value="rejected">Rejected</option>
-                        </select>
+                <div class="flex flex-wrap gap-4 items-center justify-between">
+                    <div class="flex flex-wrap gap-4 items-center">
+                        <div>
+                            <label class="block text-sm text-gray-500 mb-1">Status</label>
+                            <select id="filter-status" onchange="loadTimesheets()" class="border rounded-lg px-3 py-2">
+                                <option value="">All Statuses</option>
+                                <option value="submitted" selected>Pending Approval</option>
+                                <option value="approved">Approved</option>
+                                <option value="draft">Draft</option>
+                                <option value="rejected">Rejected</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-500 mb-1">Worker</label>
+                            <select id="filter-worker" onchange="loadTimesheets()" class="border rounded-lg px-3 py-2">
+                                <option value="">All Workers</option>
+                            </select>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-sm text-gray-500 mb-1">Worker</label>
-                        <select id="filter-worker" onchange="loadTimesheets()" class="border rounded-lg px-3 py-2">
-                            <option value="">All Workers</option>
-                        </select>
+                    <div class="flex flex-wrap gap-2 items-end">
+                        <button onclick="archiveLastWeek()" class="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium" title="Archive approved timesheets from prior pay week (Fri→Thu)">
+                            <i class="fas fa-archive mr-1"></i>Archive Last Week
+                        </button>
+                        <button onclick="archiveAllActive()" class="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium" title="One-time cleanup: archive every active timesheet">
+                            <i class="fas fa-trash mr-1"></i>Archive ALL Active
+                        </button>
                     </div>
                 </div>
             </div>
@@ -1479,14 +1489,68 @@
             `).join('');
         }
 
+        async function archiveLastWeek() {
+            if (!confirm('Archive all APPROVED timesheets from last pay week (Fri→Thu)?\n\nDrafts and pending stay visible. Rejected timesheets older than 14 days also get archived.\n\nThis is reversible — restore from the Archived tab anytime.')) {
+                return;
+            }
+            try {
+                const response = await authFetch(`${API_BASE}/timesheets/admin/archive-prior-week`, { method: 'POST' });
+                if (!response.ok) throw new Error('Archive failed');
+                const data = await response.json();
+                alert(`✅ ${data.message}\n\nApproved archived: ${data.approved_archived}\nRejected archived (>14 days): ${data.rejected_archived}`);
+                loadTimesheets();
+            } catch (err) {
+                alert('❌ Failed to archive: ' + err.message);
+            }
+        }
+
+        async function archiveAllActive() {
+            if (!confirm('⚠️ ARCHIVE ALL ACTIVE TIMESHEETS?\n\nThis moves EVERY active timesheet (drafts, pending, approved, rejected) to the Archived tab.\n\nUse this for the one-time cleanup before re-launch.\n\nReversible from the Archived tab — but please confirm.')) {
+                return;
+            }
+            if (!confirm('Last chance — really archive ALL active timesheets?')) {
+                return;
+            }
+            try {
+                const response = await authFetch(`${API_BASE}/timesheets/admin/archive-all-active`, { method: 'POST' });
+                if (!response.ok) throw new Error('Archive failed');
+                const data = await response.json();
+                alert(`✅ ${data.message}\n\nClean slate — active timesheets list is now empty.`);
+                loadTimesheets();
+            } catch (err) {
+                alert('❌ Failed to archive: ' + err.message);
+            }
+        }
+
         function updateStats() {
+            const now = new Date();
+            const dayOfWeek = now.getDay();
+            const daysSinceFriday = (dayOfWeek - 5 + 7) % 7;
+            const weekStart = new Date(now);
+            weekStart.setDate(now.getDate() - daysSinceFriday);
+            weekStart.setHours(0, 0, 0, 0);
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekStart.getDate() + 6);
+            weekEnd.setHours(23, 59, 59, 999);
+
+            const isInThisPayWeek = (ts) => {
+                if (!ts.week_starting && !ts.week_ending) return false;
+                const tsStart = ts.week_starting ? new Date(ts.week_starting) : null;
+                const tsEnd = ts.week_ending ? new Date(ts.week_ending) : tsStart;
+                return tsEnd >= weekStart && tsStart <= weekEnd;
+            };
+
             const pending = allTimesheets.filter(ts => ts.status === 'submitted').length;
-            const approved = allTimesheets.filter(ts => ts.status === 'approved').length;
-            const totalHours = allTimesheets.reduce((sum, ts) => sum + (ts.total_hours || 0), 0);
-            
+            const approvedThisWeek = allTimesheets.filter(ts =>
+                ts.status === 'approved' && isInThisPayWeek(ts)
+            ).length;
+            const hoursThisWeek = allTimesheets
+                .filter(ts => ts.status === 'approved' && isInThisPayWeek(ts))
+                .reduce((sum, ts) => sum + (ts.total_hours || 0), 0);
+
             document.getElementById('stat-pending').textContent = pending;
-            document.getElementById('stat-approved').textContent = approved;
-            document.getElementById('stat-hours').textContent = totalHours.toFixed(1);
+            document.getElementById('stat-approved').textContent = approvedThisWeek;
+            document.getElementById('stat-hours').textContent = hoursThisWeek.toFixed(1);
             document.getElementById('stat-workers').textContent = allWorkers.length;
         }
 

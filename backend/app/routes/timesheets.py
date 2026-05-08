@@ -201,6 +201,102 @@ async def restore_timesheet(
     return {"message": "Timesheet restored", "id": timesheet_id}
 
 
+def get_pay_week_range(reference_date: Optional[date] = None) -> tuple[date, date]:
+    """
+    RAW pay week: Friday → Thursday.
+    Returns (week_start, week_end) for the pay week containing reference_date.
+    If reference_date is None, uses today (Melbourne local).
+    """
+    if reference_date is None:
+        reference_date = get_melbourne_now().date()
+    # weekday(): Mon=0 ... Fri=4 ... Sun=6
+    # Days since most recent Friday (inclusive): Fri=0, Sat=1, Sun=2, Mon=3, Tue=4, Wed=5, Thu=6
+    days_since_friday = (reference_date.weekday() - 4) % 7
+    week_start = reference_date - timedelta(days=days_since_friday)
+    week_end = week_start + timedelta(days=6)
+    return week_start, week_end
+
+
+@router.post("/admin/archive-all-active")
+async def archive_all_active_timesheets(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    One-time cleanup: soft-archive every currently active (non-archived) timesheet.
+    Used to clear the slate before re-launch. Recoverable via the Archived tab.
+    """
+    result = await db.execute(
+        select(Timesheet).where(Timesheet.archived_at.is_(None))
+    )
+    timesheets = result.scalars().all()
+
+    now = datetime.utcnow()
+    archived_ids = []
+    for ts in timesheets:
+        ts.archived_at = now
+        archived_ids.append(ts.id)
+
+    await db.commit()
+    return {
+        "message": f"Archived {len(archived_ids)} active timesheets",
+        "archived_count": len(archived_ids),
+        "archived_ids": archived_ids,
+    }
+
+
+@router.post("/admin/archive-prior-week")
+async def archive_prior_pay_week(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Archive APPROVED timesheets from the prior RAW pay week (Friday → Thursday).
+    Drafts and pending stay visible (still need action).
+    Rejected timesheets older than 14 days also get archived.
+    Called manually via dashboard button OR weekly by the scheduler.
+    """
+    today = get_melbourne_now().date()
+    current_week_start, _ = get_pay_week_range(today)
+    prior_week_start = current_week_start - timedelta(days=7)
+    prior_week_end = current_week_start - timedelta(days=1)
+
+    archived_ids = []
+    now = datetime.utcnow()
+
+    # Approved timesheets overlapping the prior pay week
+    approved_q = select(Timesheet).where(
+        Timesheet.archived_at.is_(None),
+        Timesheet.status == TimesheetStatus.APPROVED,
+        Timesheet.week_ending >= prior_week_start,
+        Timesheet.week_starting <= prior_week_end,
+    )
+    approved = (await db.execute(approved_q)).scalars().all()
+    for ts in approved:
+        ts.archived_at = now
+        archived_ids.append(ts.id)
+
+    # Rejected timesheets older than 14 days
+    cutoff = today - timedelta(days=14)
+    rejected_q = select(Timesheet).where(
+        Timesheet.archived_at.is_(None),
+        Timesheet.status == TimesheetStatus.REJECTED,
+        Timesheet.week_ending < cutoff,
+    )
+    rejected = (await db.execute(rejected_q)).scalars().all()
+    for ts in rejected:
+        ts.archived_at = now
+        archived_ids.append(ts.id)
+
+    await db.commit()
+    return {
+        "message": f"Archived {len(archived_ids)} timesheets from pay week {prior_week_start} → {prior_week_end}",
+        "prior_week_start": prior_week_start.isoformat(),
+        "prior_week_end": prior_week_end.isoformat(),
+        "archived_count": len(archived_ids),
+        "approved_archived": len(approved),
+        "rejected_archived": len(rejected),
+    }
+
+
 @router.delete("/{timesheet_id}/permanent")
 async def permanently_delete_timesheet(
     timesheet_id: int,
