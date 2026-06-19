@@ -1339,25 +1339,21 @@
                     <label class="block text-sm font-medium mb-1">Address *</label>
                     <textarea name="address" id="add-jobsite-address" required rows="2" class="w-full border rounded-lg px-3 py-2"></textarea>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium mb-1">Foreman / Site Contact</label>
-                    <select id="add-jobsite-foreman" onchange="onJobsiteForemanSelect('add')" class="w-full border rounded-lg px-3 py-2">
-                        <option value="">Select a saved foreman…</option>
+                <div class="border rounded-lg p-3 bg-gray-50">
+                    <label class="block text-sm font-semibold mb-1"><i class="fas fa-hard-hat text-orange-500 mr-1"></i>Foreman / Supervisor</label>
+                    <select id="add-jobsite-foreman" onchange="onJobsiteForemanSelect('add')" class="w-full border rounded-lg px-3 py-2 mb-2">
+                        <option value="">Pick a saved foreman (optional)…</option>
                     </select>
-                    <p class="text-xs text-gray-400 mt-1">Pick a saved foreman to fill the fields below, or type a new one. New ones can be saved under the Clients tab.</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input type="text" name="contact_name" id="add-jobsite-contact-name" placeholder="Foreman name (type here)" class="w-full border rounded-lg px-3 py-2">
+                        <input type="tel" name="contact_phone" id="add-jobsite-contact-phone" placeholder="Mobile number (type here)" class="w-full border rounded-lg px-3 py-2">
+                    </div>
+                    <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none mt-2">
+                        <input type="checkbox" id="add-jobsite-save-foreman" checked class="rounded">
+                        <span>Also save this foreman to the client's list (for next time)</span>
+                    </label>
+                    <p class="text-xs text-gray-400 mt-1">Pick a saved foreman from the dropdown, or just type the name &amp; mobile.</p>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium mb-1">Site Contact Name</label>
-                    <input type="text" name="contact_name" id="add-jobsite-contact-name" class="w-full border rounded-lg px-3 py-2">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium mb-1">Site Contact Phone</label>
-                    <input type="tel" name="contact_phone" id="add-jobsite-contact-phone" class="w-full border rounded-lg px-3 py-2">
-                </div>
-                <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
-                    <input type="checkbox" id="add-jobsite-save-foreman" checked class="rounded">
-                    <span>Also save this foreman to the client's list (for next time)</span>
-                </label>
 
                 <!-- Required tickets for this site -->
                 <div class="border-t pt-4 mt-4">
@@ -1427,25 +1423,21 @@
                     <label class="block text-sm font-medium mb-1">Address *</label>
                     <textarea name="address" id="edit-jobsite-address" required rows="2" class="w-full border rounded-lg px-3 py-2"></textarea>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium mb-1">Foreman / Site Contact</label>
-                    <select id="edit-jobsite-foreman" onchange="onJobsiteForemanSelect('edit')" class="w-full border rounded-lg px-3 py-2">
-                        <option value="">Select a saved foreman…</option>
+                <div class="border rounded-lg p-3 bg-gray-50">
+                    <label class="block text-sm font-semibold mb-1"><i class="fas fa-hard-hat text-orange-500 mr-1"></i>Foreman / Supervisor</label>
+                    <select id="edit-jobsite-foreman" onchange="onJobsiteForemanSelect('edit')" class="w-full border rounded-lg px-3 py-2 mb-2">
+                        <option value="">Pick a saved foreman (optional)…</option>
                     </select>
-                    <p class="text-xs text-gray-400 mt-1">Pick a saved foreman to fill the fields below, or type a new one. New ones can be saved under the Clients tab.</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input type="text" name="contact_name" id="edit-jobsite-contact-name" placeholder="Foreman name (type here)" class="w-full border rounded-lg px-3 py-2">
+                        <input type="tel" name="contact_phone" id="edit-jobsite-contact-phone" placeholder="Mobile number (type here)" class="w-full border rounded-lg px-3 py-2">
+                    </div>
+                    <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none mt-2">
+                        <input type="checkbox" id="edit-jobsite-save-foreman" checked class="rounded">
+                        <span>Also save this foreman to the client's list (for next time)</span>
+                    </label>
+                    <p class="text-xs text-gray-400 mt-1">Pick a saved foreman from the dropdown, or just type the name &amp; mobile.</p>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium mb-1">Site Contact Name</label>
-                    <input type="text" name="contact_name" id="edit-jobsite-contact-name" class="w-full border rounded-lg px-3 py-2">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium mb-1">Site Contact Phone</label>
-                    <input type="tel" name="contact_phone" id="edit-jobsite-contact-phone" class="w-full border rounded-lg px-3 py-2">
-                </div>
-                <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
-                    <input type="checkbox" id="edit-jobsite-save-foreman" checked class="rounded">
-                    <span>Also save this foreman to the client's list (for next time)</span>
-                </label>
 
                 <!-- Required tickets for this site -->
                 <div class="border-t pt-4 mt-4">
@@ -3287,7 +3279,7 @@
             const sel = document.getElementById(`${mode}-jobsite-foreman`);
             if (!sel) return;
             const foremen = clientId ? allClientContacts.filter(c => c.client_id == clientId) : [];
-            sel.innerHTML = '<option value="">Select a saved foreman…</option>' +
+            sel.innerHTML = '<option value="">Pick a saved foreman (optional)…</option>' +
                 foremen.map(f => `<option value="${f.id}">${f.name}${f.role ? ' (' + f.role + ')' : ''}${f.phone ? ' — ' + f.phone : ''}</option>`).join('');
             // Try to preselect the foreman matching the current contact name (edit case)
             const currentName = document.getElementById(`${mode}-jobsite-contact-name`)?.value;
