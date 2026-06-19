@@ -98,13 +98,21 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: int = payload.get("sub")
-        if user_id is None:
-            raise credentials_exception
+        # verify_sub=False tolerates legacy tokens whose `sub` was an int.
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_sub": False})
     except JWTError:
         raise credentials_exception
-    
+
+    user_id = payload.get("sub")
+    if user_id is None:
+        raise credentials_exception
+    # `sub` must be a real integer user id. Admin tokens (sub="admin") and any
+    # malformed value are rejected cleanly with 401 instead of bubbling a 500.
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError):
+        raise credentials_exception
+
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     
@@ -185,7 +193,7 @@ async def login(
         )
     
     access_token = create_access_token(
-        data={"sub": user.id},
+        data={"sub": str(user.id)},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     
@@ -519,7 +527,7 @@ async def admin_login(data: AdminLogin):
 async def verify_admin_token(token: str):
     """Verify admin token is valid"""
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_sub": False})
         if payload.get("type") == "admin":
             return {"valid": True, "username": payload.get("sub")}
     except JWTError:
@@ -559,7 +567,7 @@ async def verify_admin_auth(authorization: Optional[str] = Header(None)):
     token = parts[1]
     
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_sub": False})
         if payload.get("type") != "admin":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

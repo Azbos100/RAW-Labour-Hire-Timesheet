@@ -2,12 +2,13 @@
 RAW Labour Hire - Timesheets API
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from datetime import datetime, date, timedelta
 from typing import Optional, List
+import asyncio
 import pytz
 
 from ..database import get_db
@@ -387,11 +388,10 @@ async def get_current_timesheet(
 @router.get("/{timesheet_id}")
 async def get_timesheet(
     timesheet_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
-    """Get a specific timesheet with all entries
-    TODO: Re-add authentication once token issue is fixed.
-    """
+    """Get a specific timesheet with all entries."""
     result = await db.execute(
         select(Timesheet).where(Timesheet.id == timesheet_id)
     )
@@ -399,6 +399,11 @@ async def get_timesheet(
     
     if not timesheet:
         raise HTTPException(status_code=404, detail="Timesheet not found")
+
+    # Ownership: a non-admin worker may only view their own timesheet.
+    if not getattr(request.state, "is_admin", False):
+        if str(timesheet.worker_id) != str(getattr(request.state, "token_sub", "")):
+            raise HTTPException(status_code=403, detail="Access denied")
     
     # Get worker info
     worker_result = await db.execute(select(User).where(User.id == timesheet.worker_id))
@@ -489,11 +494,10 @@ async def get_timesheet(
 async def submit_timesheet(
     timesheet_id: int,
     request: SubmitTimesheetRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db)
 ):
-    """Submit a timesheet for supervisor approval
-    TODO: Re-add authentication once token issue is fixed.
-    """
+    """Submit a timesheet for supervisor approval."""
     result = await db.execute(
         select(Timesheet).where(Timesheet.id == timesheet_id)
     )
@@ -501,6 +505,11 @@ async def submit_timesheet(
     
     if not timesheet:
         raise HTTPException(status_code=404, detail="Timesheet not found")
+
+    # Ownership: a non-admin worker may only submit their own timesheet.
+    if not getattr(http_request.state, "is_admin", False):
+        if str(timesheet.worker_id) != str(getattr(http_request.state, "token_sub", "")):
+            raise HTTPException(status_code=403, detail="Access denied")
     
     if timesheet.status != TimesheetStatus.DRAFT:
         raise HTTPException(status_code=400, detail="Timesheet already submitted")
@@ -520,25 +529,25 @@ async def submit_timesheet(
     timesheet.supervisor_contact = request.supervisor_contact
     timesheet.supervisor_signature = request.supervisor_signature
     timesheet.supervisor_signed_at = datetime.utcnow()
-    timesheet.injury_reported = InjuryStatus(request.injury_reported)
+    try:
+        timesheet.injury_reported = InjuryStatus(request.injury_reported)
+    except ValueError:
+        timesheet.injury_reported = InjuryStatus.NA
     
     await db.commit()
     
-    # Send email notification
-    try:
-        await send_timesheet_notification(
-            worker_name=worker_name,
-            docket_number=timesheet.docket_number,
-            company_name=request.company_name,
-            supervisor_name=request.supervisor_name,
-            supervisor_contact=request.supervisor_contact,
-            week_starting=timesheet.week_starting.isoformat(),
-            week_ending=timesheet.week_ending.isoformat(),
-            total_hours=timesheet.total_hours,
-        )
-    except Exception as e:
-        # Log error but don't fail the submission
-        print(f"Failed to send email notification: {e}")
+    # Send email notification in the background so a slow/down mail server never
+    # delays or blocks the worker's submission.
+    _fire_and_forget(send_timesheet_notification(
+        worker_name=worker_name,
+        docket_number=timesheet.docket_number,
+        company_name=request.company_name,
+        supervisor_name=request.supervisor_name,
+        supervisor_contact=request.supervisor_contact,
+        week_starting=timesheet.week_starting.isoformat(),
+        week_ending=timesheet.week_ending.isoformat(),
+        total_hours=timesheet.total_hours,
+    ))
     
     return {
         "message": "Timesheet submitted for approval",
@@ -587,20 +596,17 @@ async def submit_entry(
     worker = worker_result.scalar_one_or_none()
     worker_name = f"{worker.first_name} {worker.surname}" if worker else "Unknown"
     
-    # Send email notification
-    try:
-        await send_entry_notification(
-            worker_name=worker_name,
-            docket_number=timesheet.docket_number if timesheet else "N/A",
-            company_name=request.company_name,
-            supervisor_name=request.supervisor_name,
-            supervisor_contact=request.supervisor_contact,
-            entry_date=entry.entry_date.isoformat(),
-            total_hours=entry.total_hours or 0,
-        )
-    except Exception as e:
-        # Log error but don't fail the submission
-        print(f"Failed to send entry notification: {e}")
+    # Send email notification in the background so a slow/down mail server never
+    # delays or blocks the worker's submission.
+    _fire_and_forget(send_entry_notification(
+        worker_name=worker_name,
+        docket_number=timesheet.docket_number if timesheet else "N/A",
+        company_name=request.company_name,
+        supervisor_name=request.supervisor_name,
+        supervisor_contact=request.supervisor_contact,
+        entry_date=entry.entry_date.isoformat(),
+        total_hours=entry.total_hours or 0,
+    ))
     
     return {
         "message": "Entry submitted for approval",
@@ -609,6 +615,36 @@ async def submit_entry(
         "docket_number": timesheet.docket_number if timesheet else None,
         "status": entry.entry_status
     }
+
+
+_bg_tasks: set = set()
+
+
+async def _notify_safely(coro):
+    """Run a notification coroutine, swallowing all errors so email problems can
+    never affect (or delay) the worker's request."""
+    try:
+        await coro
+    except Exception as e:
+        print(f"Notification failed: {e}")
+
+
+def _fire_and_forget(coro):
+    """Schedule a notification in the background and return immediately."""
+    task = asyncio.create_task(_notify_safely(coro))
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+
+
+def _smtp_send_blocking(smtp_host, smtp_port, smtp_user, smtp_password, notification_email, msg):
+    """Blocking SMTP send. MUST be run in a worker thread (asyncio.to_thread) so it
+    never blocks the event loop, and uses a socket timeout so a stalled mail server
+    can never freeze the whole backend."""
+    import smtplib
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+        server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.sendmail(smtp_user, notification_email, msg.as_string())
 
 
 async def send_timesheet_notification(
@@ -690,10 +726,15 @@ async def send_timesheet_notification(
     
     msg.attach(MIMEText(html_body, "html"))
     
-    with smtplib.SMTP(smtp_host, smtp_port) as server:
-        server.starttls()
-        server.login(smtp_user, smtp_password)
-        server.sendmail(smtp_user, notification_email, msg.as_string())
+    # Run the blocking SMTP work in a thread with a hard timeout so a slow/stalled
+    # mail server can never block the event loop (which would hang the whole API).
+    await asyncio.wait_for(
+        asyncio.to_thread(
+            _smtp_send_blocking,
+            smtp_host, smtp_port, smtp_user, smtp_password, notification_email, msg,
+        ),
+        timeout=20,
+    )
 
 
 async def send_entry_notification(
@@ -761,7 +802,7 @@ async def send_entry_notification(
         </table>
         
         <p style="margin-top: 20px;">
-            <a href="https://raw-labour-hire-timesheet-production.up.railway.app/admin/" 
+            <a href="https://admin.rawlabourhire.com/admin/" 
                style="background-color: #1E3A8A; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
                 Review in Admin Dashboard
             </a>
@@ -781,10 +822,15 @@ async def send_entry_notification(
     
     msg.attach(MIMEText(html_body, "html"))
     
-    with smtplib.SMTP(smtp_host, smtp_port) as server:
-        server.starttls()
-        server.login(smtp_user, smtp_password)
-        server.sendmail(smtp_user, notification_email, msg.as_string())
+    # Run the blocking SMTP work in a thread with a hard timeout so a slow/stalled
+    # mail server can never block the event loop (which would hang the whole API).
+    await asyncio.wait_for(
+        asyncio.to_thread(
+            _smtp_send_blocking,
+            smtp_host, smtp_port, smtp_user, smtp_password, notification_email, msg,
+        ),
+        timeout=20,
+    )
 
 
 @router.get("/")

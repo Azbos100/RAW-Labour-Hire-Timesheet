@@ -63,6 +63,18 @@ async def auto_archive_prior_pay_week():
         print(f"[Scheduler] Error during auto-archive: {e}")
 
 
+def _parse_reminder_time(value):
+    """Return (hour, minute) from a reminder time value.
+
+    The DB column is a Time, so SQLAlchemy gives us a datetime.time; but tolerate
+    an "HH:MM" string too in case of legacy/manually-entered data.
+    """
+    if isinstance(value, time):
+        return value.hour, value.minute
+    parts = str(value).split(':')
+    return int(parts[0]), int(parts[1])
+
+
 async def load_settings_from_db():
     """Load notification settings from database and update scheduler times"""
     from ..database import AsyncSessionLocal
@@ -75,21 +87,20 @@ async def load_settings_from_db():
             settings = result.scalar_one_or_none()
             
             if settings:
-                # Parse clock_in_reminder_time (stored as "HH:MM" string)
+                # clock_*_reminder_time is a Time column -> datetime.time object.
+                # (Older data / manual edits may store it as an "HH:MM" string, so
+                # handle both forms.)
                 if settings.clock_in_reminder_time:
                     try:
-                        parts = settings.clock_in_reminder_time.split(':')
-                        hour, minute = int(parts[0]), int(parts[1])
+                        hour, minute = _parse_reminder_time(settings.clock_in_reminder_time)
                         update_clock_in_time(hour, minute)
                         print(f"[Scheduler] Loaded clock-in time from DB: {hour:02d}:{minute:02d}")
                     except Exception as e:
                         print(f"[Scheduler] Error parsing clock-in time: {e}")
                 
-                # Parse clock_out_reminder_time
                 if settings.clock_out_reminder_time:
                     try:
-                        parts = settings.clock_out_reminder_time.split(':')
-                        hour, minute = int(parts[0]), int(parts[1])
+                        hour, minute = _parse_reminder_time(settings.clock_out_reminder_time)
                         update_clock_out_time(hour, minute)
                         print(f"[Scheduler] Loaded clock-out time from DB: {hour:02d}:{minute:02d}")
                     except Exception as e:

@@ -25,8 +25,8 @@ const getDevBaseUrl = () => {
   return 'http://localhost:8000/api';
 };
 
-// Production URL - Railway deployment
-const PRODUCTION_URL = 'https://raw-labour-hire-timesheet-production.up.railway.app/api';
+// Production URL - DigitalOcean server (single source of truth for RAW Timesheet)
+const PRODUCTION_URL = 'https://admin.rawlabourhire.com/api';
 
 // Set to true to use production backend even in development (for testing via Expo Go over internet)
 const USE_PRODUCTION_BACKEND = true;

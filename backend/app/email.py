@@ -42,13 +42,13 @@ def send_password_reset_email(to_email: str, reset_link: str, token: str) -> Non
     )
 
     if use_ssl:
-        with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
+        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as server:
             if smtp_username and smtp_password:
                 server.login(smtp_username, smtp_password)
             server.send_message(message)
         return
 
-    with smtplib.SMTP(smtp_host, smtp_port) as server:
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
         if use_tls:
             server.starttls()
         if smtp_username and smtp_password:

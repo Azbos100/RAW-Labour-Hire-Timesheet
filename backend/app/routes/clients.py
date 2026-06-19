@@ -2,7 +2,7 @@
 RAW Labour Hire - Clients API
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -43,10 +43,14 @@ class JobSiteCreate(BaseModel):
 
 @router.get("/")
 async def list_clients(
+    request: Request,
     active_only: bool = True,
     db: AsyncSession = Depends(get_db)
 ):
-    """List all clients (no auth for admin dashboard)"""
+    """List all clients. Billing rates are only exposed to admin tokens;
+    worker tokens (which use this for the client dropdown) get the names only."""
+    is_admin = getattr(request.state, "is_admin", False)
+
     query = select(Client)
     if active_only:
         query = query.where(Client.is_active == True)
@@ -63,10 +67,10 @@ async def list_clients(
                 "contact_email": c.contact_email,
                 "contact_phone": c.contact_phone,
                 "address": c.address,
-                "hourly_billing_rate": c.hourly_billing_rate or 0,
-                "overtime_billing_rate": c.overtime_billing_rate or 0,
-                "weekend_billing_rate": c.weekend_billing_rate or 0,
-                "night_billing_rate": c.night_billing_rate or 0,
+                "hourly_billing_rate": (c.hourly_billing_rate or 0) if is_admin else None,
+                "overtime_billing_rate": (c.overtime_billing_rate or 0) if is_admin else None,
+                "weekend_billing_rate": (c.weekend_billing_rate or 0) if is_admin else None,
+                "night_billing_rate": (c.night_billing_rate or 0) if is_admin else None,
                 "is_active": c.is_active
             }
             for c in clients

@@ -510,6 +510,116 @@ app.add_middleware(
 )
 
 
+# === Global authentication gate ===
+# Ensures no /api endpoint can be reached without a valid login token.
+# Admin-only areas additionally require an admin token.
+import re as _auth_re
+from starlette.responses import JSONResponse as _AuthJSONResponse
+from jose import jwt as _auth_jwt, JWTError as _AuthJWTError
+from .routes.auth import SECRET_KEY as _AUTH_SECRET_KEY, ALGORITHM as _AUTH_ALGORITHM
+
+# Reachable WITHOUT a token
+_PUBLIC_EXACT = {"/", "/health", "/docs", "/redoc", "/openapi.json", "/favicon.ico"}
+_PUBLIC_PREFIXES = (
+    "/admin",                      # static admin html/login/logo (data lives under /api)
+    "/api/auth/login",
+    "/api/auth/admin/login",
+    "/api/auth/admin/verify",      # validates a token supplied as a query param
+    "/api/auth/register",
+    "/api/auth/password-reset",
+    "/api/induction/pdf/",         # opened by the app's PDF viewer without an auth header
+)
+# Require an ADMIN token specifically
+_ADMIN_PREFIXES = (
+    "/api/billing",
+    "/api/myob",
+    "/api/notifications",
+    "/api/jobsites",
+)
+# Admin-only actions that do NOT carry "/admin" in the path. Matched on
+# (method, path) so worker actions on the same prefixes (e.g. GET a timesheet
+# or POST .../submit) stay open to the worker who owns them.
+_ADMIN_METHOD_PATHS = (
+    ("DELETE", _auth_re.compile(r"^/api/timesheets/\d+$")),            # archive (soft delete)
+    ("DELETE", _auth_re.compile(r"^/api/timesheets/\d+/permanent$")),  # permanent delete
+    ("POST",   _auth_re.compile(r"^/api/timesheets/\d+/approve$")),
+    ("POST",   _auth_re.compile(r"^/api/timesheets/\d+/reject$")),
+    ("POST",   _auth_re.compile(r"^/api/timesheets/\d+/restore$")),
+    ("POST",   _auth_re.compile(r"^/api/clients/\d+/contacts$")),      # add foreman / site contact
+    ("DELETE", _auth_re.compile(r"^/api/clients/contacts/\d+$")),      # delete foreman / site contact
+)
+# Worker endpoints that embed a user id in the path; a non-admin token may
+# only act on its OWN id (admin endpoints live under /api/users/admin/...).
+_OWN_USER_PATH = _auth_re.compile(r"^/api/users/(\d+)(?:/.*)?$")
+
+
+def _auth_is_public(path: str) -> bool:
+    if path in _PUBLIC_EXACT:
+        return True
+    return any(path == p or path.startswith(p) for p in _PUBLIC_PREFIXES)
+
+
+def _auth_requires_admin(method: str, path: str) -> bool:
+    if any(path.startswith(p) for p in _ADMIN_PREFIXES):
+        return True
+    if path.startswith("/api/") and "/admin" in path:
+        return True
+    for m, rx in _ADMIN_METHOD_PATHS:
+        if method == m and rx.match(path):
+            return True
+    return False
+
+
+def _auth_deny(detail: str, status_code: int = 401):
+    return _AuthJSONResponse(
+        status_code=status_code,
+        content={"detail": detail},
+        headers={"WWW-Authenticate": "Bearer", "Access-Control-Allow-Origin": "*"},
+    )
+
+
+@app.middleware("http")
+async def require_authentication(request: Request, call_next):
+    path = request.url.path
+    method = request.method
+    # Let CORS preflight, static/non-API, and explicitly public paths through
+    if method == "OPTIONS" or not path.startswith("/api") or _auth_is_public(path):
+        return await call_next(request)
+
+    parts = request.headers.get("authorization", "").split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return _auth_deny("Authentication required")
+    try:
+        # verify_sub=False tolerates legacy tokens whose `sub` was an int.
+        payload = _auth_jwt.decode(
+            parts[1], _AUTH_SECRET_KEY, algorithms=[_AUTH_ALGORITHM],
+            options={"verify_sub": False},
+        )
+    except _AuthJWTError:
+        return _auth_deny("Invalid or expired token")
+
+    is_admin = payload.get("type") == "admin"
+    sub = payload.get("sub")
+
+    # Expose identity to downstream routes (rate redaction / ownership checks).
+    request.state.is_admin = is_admin
+    request.state.token_sub = sub
+
+    if _auth_requires_admin(method, path) and not is_admin:
+        return _auth_deny("Admin privileges required", status_code=403)
+
+    # IDOR guard: a non-admin may only touch its own user record / data.
+    if not is_admin:
+        m = _OWN_USER_PATH.match(path)
+        if m and str(m.group(1)) != str(sub):
+            return _auth_deny("You can only access your own data", status_code=403)
+        qs_uid = request.query_params.get("user_id")
+        if qs_uid is not None and str(qs_uid) != str(sub):
+            return _auth_deny("You can only access your own data", status_code=403)
+
+    return await call_next(request)
+
+
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
@@ -539,16 +649,6 @@ async def health_check():
         "status": "healthy",
         "service": "raw-timesheet-api",
         "version": "2.10.0"
-    }
-
-
-@app.get("/api/debug/headers")
-async def debug_headers(request: Request):
-    """Debug endpoint to see what headers are being sent"""
-    auth_header = request.headers.get("authorization", "NOT PRESENT")
-    return {
-        "authorization": auth_header,
-        "all_headers": dict(request.headers)
     }
 
 

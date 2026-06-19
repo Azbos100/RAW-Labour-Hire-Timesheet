@@ -692,7 +692,7 @@
                     </div>
                     <div class="p-6">
                         <p class="text-gray-600 mb-4">
-                            SMS notifications are powered by Twilio. To enable SMS, set these environment variables on Railway:
+                            SMS notifications are powered by Twilio. To enable SMS, set these environment variables on the server:
                         </p>
                         <div class="bg-gray-100 rounded-lg p-4 font-mono text-sm space-y-2">
                             <p><span class="text-blue-600">TWILIO_ACCOUNT_SID</span>=your_account_sid</p>
@@ -2343,7 +2343,7 @@
             // Populate job site dropdown with GPS status
             const select = document.getElementById('assign-job-select');
             select.innerHTML = '<option value="">Select a job site...</option>' +
-                allJobSites.map(js => {
+                allJobSites.filter(js => js.is_active).map(js => {
                     const gpsStatus = (js.latitude && js.longitude) ? '📍' : '⚠️ No GPS';
                     return `<option value="${js.id}">${js.name} - ${js.client_name || 'No Client'} ${gpsStatus}</option>`;
                 }).join('');
@@ -2880,7 +2880,8 @@
 
         async function loadJobSites() {
             try {
-                const response = await authFetch(`${API_BASE}/clients/job-sites/all`);
+                // Admin endpoint returns ALL sites incl. inactive (so they can be re-activated)
+                const response = await authFetch(`${API_BASE}/jobsites`);
                 const data = await response.json();
                 allJobSites = data.job_sites || [];
                 renderJobSites();
@@ -2898,10 +2899,10 @@
             }
 
             container.innerHTML = allJobSites.map(js => `
-                <div class="p-4 hover:bg-gray-50">
+                <div class="p-4 hover:bg-gray-50 ${js.is_active ? '' : 'bg-gray-50/60'}">
                     <div class="flex justify-between items-start">
                         <div class="flex-1">
-                            <div class="font-medium">${js.name}</div>
+                            <div class="font-medium ${js.is_active ? '' : 'text-gray-400'}">${js.name}</div>
                             <div class="text-sm text-blue-600">${js.client_name || '-'}</div>
                             <div class="text-sm text-gray-500">${js.address}</div>
                             <div class="mt-1">
@@ -2915,6 +2916,10 @@
                             <button onclick="editJobSite(${js.id})" class="text-blue-600 hover:text-blue-800 p-1" title="Edit">
                                 <i class="fas fa-edit text-sm"></i>
                             </button>
+                            ${js.is_active
+                                ? `<button onclick="setJobSiteActive(${js.id}, false, '${js.name.replace(/'/g, "\\'")}')" class="text-yellow-600 hover:text-yellow-800 p-1" title="Deactivate"><i class="fas fa-ban text-sm"></i></button>`
+                                : `<button onclick="setJobSiteActive(${js.id}, true, '${js.name.replace(/'/g, "\\'")}')" class="text-green-600 hover:text-green-800 p-1" title="Re-activate"><i class="fas fa-rotate-left text-sm"></i></button>`
+                            }
                             <button onclick="deleteJobSite(${js.id}, '${js.name.replace(/'/g, "\\'")}')" class="text-red-600 hover:text-red-800 p-1" title="Delete">
                                 <i class="fas fa-trash text-sm"></i>
                             </button>
@@ -2925,6 +2930,22 @@
                     </div>
                 </div>
             `).join('');
+        }
+
+        async function setJobSiteActive(id, makeActive, name) {
+            const action = makeActive ? 're-activate' : 'deactivate';
+            if (!confirm(`Are you sure you want to ${action} "${name}"?`)) return;
+            try {
+                const response = await authFetch(`${API_BASE}/jobsites/${id}/${makeActive ? 'activate' : 'deactivate'}`, { method: 'PATCH' });
+                if (response.ok) {
+                    await loadJobSites();
+                } else {
+                    alert(`Failed to ${action} job site`);
+                }
+            } catch (error) {
+                console.error(`Error trying to ${action} job site:`, error);
+                alert(`Failed to ${action} job site`);
+            }
         }
 
         function openAddJobSiteModal() {

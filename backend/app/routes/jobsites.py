@@ -29,11 +29,13 @@ class JobSiteCreate(BaseModel):
 async def list_all_job_sites(
     db: AsyncSession = Depends(get_db)
 ):
-    """List all job sites for admin dashboard"""
+    """List all job sites (incl. inactive) for the admin dashboard."""
     result = await db.execute(
-        select(JobSite).order_by(JobSite.name)
+        select(JobSite, Client)
+        .outerjoin(Client, JobSite.client_id == Client.id)
+        .order_by(JobSite.name)
     )
-    sites = result.scalars().all()
+    rows = result.all()
     
     return {
         "job_sites": [
@@ -42,6 +44,7 @@ async def list_all_job_sites(
                 "name": s.name,
                 "address": s.address,
                 "client_id": s.client_id,
+                "client_name": c.name if c else None,
                 "contact_name": s.contact_name,
                 "contact_phone": s.contact_phone,
                 "latitude": s.latitude,
@@ -49,7 +52,7 @@ async def list_all_job_sites(
                 "geofence_radius": s.geofence_radius,
                 "is_active": s.is_active
             }
-            for s in sites
+            for s, c in rows
         ]
     }
 

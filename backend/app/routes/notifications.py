@@ -11,7 +11,7 @@ from datetime import datetime, date, time, timedelta
 from typing import Optional, List
 
 from ..database import get_db
-from ..models import User, TimesheetEntry, NotificationSettings
+from ..models import User, Timesheet, TimesheetEntry, NotificationSettings
 from ..services.sms import (
     send_sms,
     clock_in_reminder_message,
@@ -301,9 +301,11 @@ async def check_clock_in_reminders(
         
         # Check if worker has clocked in today
         entry_result = await db.execute(
-            select(TimesheetEntry).where(
+            select(TimesheetEntry)
+            .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+            .where(
                 and_(
-                    TimesheetEntry.user_id == worker.id,
+                    Timesheet.worker_id == worker.id,
                     TimesheetEntry.entry_date == today,
                     TimesheetEntry.clock_in_time != None
                 )
@@ -362,7 +364,8 @@ async def check_clock_out_reminders(
     # Get all timesheet entries for today that have clock-in but no clock-out
     entries_result = await db.execute(
         select(TimesheetEntry, User)
-        .join(User, TimesheetEntry.user_id == User.id)
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        .join(User, Timesheet.worker_id == User.id)
         .where(
             and_(
                 TimesheetEntry.entry_date == today,
