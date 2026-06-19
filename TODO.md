@@ -27,7 +27,10 @@
 - [ ] 3a. **New calendar tab** — month grid; click a day → see how many and which workers were out, and their sites.
 
 ### 4. Allocation
-- [ ] 4a. **Site-contacts dropdown** — foreman names + phone numbers saved per company, reusable so they don't get re-typed every job.
+- [x] 4a. **Site-contacts dropdown** — foreman names + phone numbers saved per company, reusable.
+  BUILT & LIVE: manage foremen under the Clients tab (new `client_contacts` table);
+  Assign Job modal has a Foreman dropdown filtered to the job site's client; selected
+  contact is stored on the assignment, shown in the worker list, and added to the assignment SMS.
 - [ ] 4b. **Separate "next-day jobs" allocation section** (not jumbled into Workers); shows each day's dockets with clocked/accepted status; lets you clear stale old pending assignments.
 - [ ] 4c. **End-of-week dockets auto-grouped Client → Address**, ready for invoicing.
 
