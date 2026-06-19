@@ -1606,6 +1606,13 @@
             }
         }
         
+        let archiveOpenWeeks = {};
+
+        function toggleArchiveWeek(key) {
+            archiveOpenWeeks[key] = !archiveOpenWeeks[key];
+            renderArchivedTimesheets();
+        }
+
         function renderArchivedTimesheets() {
             const tbody = document.getElementById('archived-timesheets-table');
             
@@ -1616,10 +1623,10 @@
                 </td></tr>`;
                 return;
             }
-            
-            tbody.innerHTML = archivedTimesheets.map(ts => `
+
+            const archiveRow = (ts) => `
                 <tr class="hover:bg-gray-50">
-                    <td class="px-4 py-3">
+                    <td class="px-4 py-3 pl-8">
                         <span class="font-medium text-blue-600">#${ts.docket_number}</span>
                     </td>
                     <td class="px-4 py-3 font-medium">${ts.worker_name}</td>
@@ -1645,8 +1652,43 @@
                             <i class="fas fa-trash"></i>
                         </button>
                     </td>
-                </tr>
-            `).join('');
+                </tr>`;
+
+            // Group by pay week (week_starting), most-recent first
+            const groups = new Map();
+            archivedTimesheets.forEach(ts => {
+                const key = ts.week_starting || 'unknown';
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key).push(ts);
+            });
+            const orderedKeys = [...groups.keys()].sort((a, b) => new Date(b) - new Date(a));
+
+            tbody.innerHTML = orderedKeys.map(key => {
+                const list = groups.get(key);
+                const we = list[0].week_ending;
+                const totalHours = list.reduce((s, t) => s + (t.total_hours || 0), 0);
+                const totalOt = list.reduce((s, t) => s + (t.total_overtime_hours || 0), 0);
+                const open = !!archiveOpenWeeks[key];
+                const safeKey = String(key).replace(/'/g, "\\'");
+                const header = `
+                    <tr class="bg-gray-100 border-t-2 border-gray-200 cursor-pointer hover:bg-gray-200" onclick="toggleArchiveWeek('${safeKey}')">
+                        <td colspan="7" class="px-4 py-2">
+                            <div class="flex items-center justify-between">
+                                <span class="font-semibold text-gray-700">
+                                    <i class="fas fa-chevron-${open ? 'down' : 'right'} mr-2 text-gray-400"></i>
+                                    <i class="fas fa-calendar-week mr-2"></i>${weekLabel(key === 'unknown' ? null : key, we)}
+                                </span>
+                                <span class="text-sm text-gray-600">
+                                    ${list.length} timesheet${list.length === 1 ? '' : 's'} ·
+                                    <span class="font-semibold">${totalHours.toFixed(1)}h</span>
+                                    <span class="text-gray-400">(${totalOt.toFixed(1)}h OT)</span>
+                                </span>
+                            </div>
+                        </td>
+                    </tr>`;
+                const body = open ? list.map(archiveRow).join('') : '';
+                return header + body;
+            }).join('');
         }
         
         async function restoreTimesheet(id) {
