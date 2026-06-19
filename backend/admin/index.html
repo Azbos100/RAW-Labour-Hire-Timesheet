@@ -1171,7 +1171,7 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1">Client *</label>
-                    <select name="client_id" id="jobsite-client-select" required class="w-full border rounded-lg px-3 py-2">
+                    <select name="client_id" id="jobsite-client-select" onchange="onJobsiteClientChange('add')" required class="w-full border rounded-lg px-3 py-2">
                         <option value="">Select Client</option>
                     </select>
                 </div>
@@ -1180,12 +1180,19 @@
                     <textarea name="address" id="add-jobsite-address" required rows="2" class="w-full border rounded-lg px-3 py-2"></textarea>
                 </div>
                 <div>
+                    <label class="block text-sm font-medium mb-1">Foreman / Site Contact</label>
+                    <select id="add-jobsite-foreman" onchange="onJobsiteForemanSelect('add')" class="w-full border rounded-lg px-3 py-2">
+                        <option value="">Select a saved foreman…</option>
+                    </select>
+                    <p class="text-xs text-gray-400 mt-1">Pick a saved foreman to fill the fields below, or type a new one. New ones can be saved under the Clients tab.</p>
+                </div>
+                <div>
                     <label class="block text-sm font-medium mb-1">Site Contact Name</label>
-                    <input type="text" name="contact_name" class="w-full border rounded-lg px-3 py-2">
+                    <input type="text" name="contact_name" id="add-jobsite-contact-name" class="w-full border rounded-lg px-3 py-2">
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1">Site Contact Phone</label>
-                    <input type="tel" name="contact_phone" class="w-full border rounded-lg px-3 py-2">
+                    <input type="tel" name="contact_phone" id="add-jobsite-contact-phone" class="w-full border rounded-lg px-3 py-2">
                 </div>
                 
                 <!-- GPS Coordinates Section -->
@@ -1238,13 +1245,20 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1">Client *</label>
-                    <select name="client_id" id="edit-jobsite-client" required class="w-full border rounded-lg px-3 py-2">
+                    <select name="client_id" id="edit-jobsite-client" onchange="onJobsiteClientChange('edit')" required class="w-full border rounded-lg px-3 py-2">
                         <option value="">Select Client</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1">Address *</label>
                     <textarea name="address" id="edit-jobsite-address" required rows="2" class="w-full border rounded-lg px-3 py-2"></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Foreman / Site Contact</label>
+                    <select id="edit-jobsite-foreman" onchange="onJobsiteForemanSelect('edit')" class="w-full border rounded-lg px-3 py-2">
+                        <option value="">Select a saved foreman…</option>
+                    </select>
+                    <p class="text-xs text-gray-400 mt-1">Pick a saved foreman to fill the fields below, or type a new one. New ones can be saved under the Clients tab.</p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1">Site Contact Name</label>
@@ -2915,7 +2929,36 @@
 
         function openAddJobSiteModal() {
             document.getElementById('add-jobsite-form').reset();
+            populateJobsiteForemen('add', null);
             openModal('add-jobsite-modal');
+        }
+
+        function populateJobsiteForemen(mode, clientId) {
+            const sel = document.getElementById(`${mode}-jobsite-foreman`);
+            if (!sel) return;
+            const foremen = clientId ? allClientContacts.filter(c => c.client_id == clientId) : [];
+            sel.innerHTML = '<option value="">Select a saved foreman…</option>' +
+                foremen.map(f => `<option value="${f.id}">${f.name}${f.role ? ' (' + f.role + ')' : ''}${f.phone ? ' — ' + f.phone : ''}</option>`).join('');
+            // Try to preselect the foreman matching the current contact name (edit case)
+            const currentName = document.getElementById(`${mode}-jobsite-contact-name`)?.value;
+            if (currentName) {
+                const match = foremen.find(f => f.name === currentName);
+                if (match) sel.value = match.id;
+            }
+        }
+
+        function onJobsiteClientChange(mode) {
+            const clientId = document.getElementById(mode === 'add' ? 'jobsite-client-select' : 'edit-jobsite-client')?.value;
+            populateJobsiteForemen(mode, clientId);
+        }
+
+        function onJobsiteForemanSelect(mode) {
+            const sel = document.getElementById(`${mode}-jobsite-foreman`);
+            const foreman = allClientContacts.find(c => c.id == sel.value);
+            if (foreman) {
+                document.getElementById(`${mode}-jobsite-contact-name`).value = foreman.name || '';
+                document.getElementById(`${mode}-jobsite-contact-phone`).value = foreman.phone || '';
+            }
         }
 
         async function submitAddJobSite(event) {
@@ -2986,6 +3029,7 @@
             document.getElementById('edit-jobsite-address').value = js.address || '';
             document.getElementById('edit-jobsite-contact-name').value = js.contact_name || '';
             document.getElementById('edit-jobsite-contact-phone').value = js.contact_phone || '';
+            populateJobsiteForemen('edit', js.client_id);
             
             // GPS coordinates
             document.getElementById('edit-jobsite-lat').value = js.latitude || '';
