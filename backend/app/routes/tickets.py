@@ -24,6 +24,12 @@ class TicketTypeResponse(BaseModel):
     has_expiry: bool
 
 
+class CreateTicketTypeRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    has_expiry: bool = True
+
+
 class UploadTicketRequest(BaseModel):
     ticket_type_id: int
     ticket_number: Optional[str] = None
@@ -253,16 +259,53 @@ async def delete_ticket(
 
 # ============ ADMIN ENDPOINTS ============
 
+@router.post("/admin/types")
+async def create_ticket_type(
+    request: CreateTicketTypeRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a new ticket type (admin). Reactivates an existing one if the name matches."""
+    name = (request.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Ticket type name is required")
+
+    # Case-insensitive duplicate check
+    existing_result = await db.execute(select(TicketType))
+    for tt in existing_result.scalars().all():
+        if tt.name.strip().lower() == name.lower():
+            if not tt.is_active:
+                tt.is_active = True
+                await db.commit()
+                return {"message": "Ticket type re-activated", "id": tt.id, "name": tt.name}
+            raise HTTPException(status_code=409, detail="A ticket type with that name already exists")
+
+    new_type = TicketType(
+        name=name,
+        description=(request.description or "").strip() or None,
+        has_expiry=request.has_expiry,
+    )
+    db.add(new_type)
+    await db.commit()
+    await db.refresh(new_type)
+    return {"message": "Ticket type created", "id": new_type.id, "name": new_type.name}
+
+
 @router.get("/admin/all")
 async def get_all_tickets(
     status: Optional[str] = None,
+    worker_id: Optional[int] = None,
+    ticket_type_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db)
 ):
-    """Get all user tickets (admin view)"""
+    """Get all user tickets (admin view), optionally filtered by status, worker or ticket type"""
     query = select(UserTicket).order_by(UserTicket.created_at.desc())
     
     if status:
         query = query.where(UserTicket.status == status)
+    if worker_id:
+        query = query.where(UserTicket.user_id == worker_id)
+    if ticket_type_id:
+        query = query.where(UserTicket.ticket_type_id == ticket_type_id)
     
     result = await db.execute(query)
     tickets = result.scalars().all()

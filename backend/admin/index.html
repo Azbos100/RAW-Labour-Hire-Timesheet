@@ -122,6 +122,9 @@
                 <button onclick="switchTab('clients')" id="tab-clients" class="py-4 px-2 font-medium text-gray-500 hover:text-gray-700 whitespace-nowrap">
                     <i class="fas fa-building mr-2"></i>Clients & Job Sites
                 </button>
+                <button onclick="switchTab('invoicing')" id="tab-invoicing" class="py-4 px-2 font-medium text-gray-500 hover:text-gray-700 whitespace-nowrap">
+                    <i class="fas fa-file-invoice-dollar mr-2"></i>Invoicing
+                </button>
                 <button onclick="switchTab('notifications')" id="tab-notifications" class="py-4 px-2 font-medium text-gray-500 hover:text-gray-700 whitespace-nowrap">
                     <i class="fas fa-bell mr-2"></i>Notifications
                 </button>
@@ -339,6 +342,20 @@
                             <option value="">All Workers</option>
                         </select>
                     </div>
+                    <div>
+                        <label class="block text-sm text-gray-500 mb-1">Ticket Type</label>
+                        <select id="filter-ticket-type" onchange="loadTickets()" class="border rounded-lg px-3 py-2">
+                            <option value="">All Types</option>
+                        </select>
+                    </div>
+                    <div class="ml-auto flex items-end gap-2">
+                        <button onclick="downloadAllTicketImages()" class="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-200 text-sm">
+                            <i class="fas fa-download mr-1"></i>Download images
+                        </button>
+                        <button onclick="addTicketType()" class="bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 text-sm">
+                            <i class="fas fa-plus mr-1"></i>Add type
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -478,6 +495,56 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Invoicing Tab -->
+        <div id="content-invoicing" class="hidden">
+            <!-- Controls -->
+            <div class="bg-white rounded-xl shadow p-4 mb-4">
+                <div class="flex flex-wrap gap-4 items-end">
+                    <div>
+                        <label class="block text-sm text-gray-500 mb-1">Week ending (Fri)</label>
+                        <select id="inv-week" onchange="loadInvoicing()" class="border rounded-lg px-3 py-2 min-w-[150px]">
+                            <option value="">Loading…</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-500 mb-1">Client</label>
+                        <select id="inv-client" onchange="loadInvoicing()" class="border rounded-lg px-3 py-2 min-w-[150px]">
+                            <option value="">All Clients</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-500 mb-1">Include</label>
+                        <select id="inv-approved" onchange="loadInvoicing()" class="border rounded-lg px-3 py-2">
+                            <option value="false">All entries</option>
+                            <option value="true">Approved only</option>
+                        </select>
+                    </div>
+                    <div class="ml-auto flex items-center gap-2">
+                        <button onclick="exportInvoicingCsv()" class="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 text-sm">
+                            <i class="fas fa-file-csv mr-1"></i>Export CSV
+                        </button>
+                        <button onclick="loadInvoicing()" class="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-200 text-sm">
+                            <i class="fas fa-rotate mr-1"></i>Refresh
+                        </button>
+                    </div>
+                </div>
+                <!-- View sub-tabs -->
+                <div class="flex gap-2 mt-4 border-t pt-3">
+                    <button onclick="setInvoicingView('client')" id="inv-view-client" class="px-3 py-1.5 rounded-lg text-sm bg-blue-600 text-white">Client Billing</button>
+                    <button onclick="setInvoicingView('worker')" id="inv-view-worker" class="px-3 py-1.5 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200">Worker Totals</button>
+                    <button onclick="setInvoicingView('payroll')" id="inv-view-payroll" class="px-3 py-1.5 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200">MYOB Payroll</button>
+                </div>
+            </div>
+
+            <!-- Cross-check banner -->
+            <div id="inv-crosscheck" class="hidden mb-4"></div>
+
+            <!-- Report area -->
+            <div id="inv-report" class="bg-white rounded-xl shadow p-4 overflow-x-auto">
+                <div class="text-center text-gray-500 py-8">Select a week to view billing.</div>
             </div>
         </div>
 
@@ -1320,6 +1387,8 @@
             // Load data for specific tabs
             if (tab === 'archived') {
                 loadArchivedTimesheets();
+            } else if (tab === 'invoicing') {
+                initInvoicing();
             }
         }
 
@@ -2916,15 +2985,19 @@
 
         // ==================== TICKETS ====================
 
+        let allTicketTypes = [];
+
         async function loadTickets() {
             const status = document.getElementById('filter-ticket-status')?.value || '';
             const workerId = document.getElementById('filter-ticket-worker')?.value || '';
+            const ticketTypeId = document.getElementById('filter-ticket-type')?.value || '';
             
             try {
                 let url = `${API_BASE}/tickets/admin/all`;
                 const params = new URLSearchParams();
                 if (status) params.append('status', status);
                 if (workerId) params.append('worker_id', workerId);
+                if (ticketTypeId) params.append('ticket_type_id', ticketTypeId);
                 if (params.toString()) url += `?${params.toString()}`;
 
                 const response = await authFetch(url);
@@ -2933,6 +3006,7 @@
                 renderTickets();
                 updateTicketStats();
                 populateTicketWorkerFilter();
+                populateTicketTypeFilter();
             } catch (error) {
                 console.error('Error loading tickets:', error);
                 document.getElementById('tickets-grid').innerHTML = 
@@ -2995,8 +3069,110 @@
         function populateTicketWorkerFilter() {
             const select = document.getElementById('filter-ticket-worker');
             if (select && allWorkers.length > 0) {
+                const current = select.value;
                 select.innerHTML = '<option value="">All Workers</option>' +
                     allWorkers.map(w => `<option value="${w.id}">${w.first_name} ${w.surname}</option>`).join('');
+                select.value = current;
+            }
+        }
+
+        async function populateTicketTypeFilter() {
+            const select = document.getElementById('filter-ticket-type');
+            if (!select) return;
+            try {
+                if (allTicketTypes.length === 0) {
+                    const res = await authFetch(`${API_BASE}/tickets/types`);
+                    const data = await res.json();
+                    allTicketTypes = data.ticket_types || [];
+                }
+                const current = select.value;
+                select.innerHTML = '<option value="">All Types</option>' +
+                    allTicketTypes.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+                select.value = current;
+            } catch (e) {
+                console.error('Error loading ticket types:', e);
+            }
+        }
+
+        async function addTicketType() {
+            const name = prompt('New ticket type name (e.g. Crane, Dogging):');
+            if (!name || !name.trim()) return;
+            const hasExpiry = confirm('Does this ticket expire?\n\nOK = Yes (has expiry date)\nCancel = No');
+            try {
+                const res = await authFetch(`${API_BASE}/tickets/admin/types`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name.trim(), has_expiry: hasExpiry })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    allTicketTypes = [];
+                    await populateTicketTypeFilter();
+                    alert(data.message || 'Ticket type added');
+                } else {
+                    alert(data.detail || 'Error adding ticket type');
+                }
+            } catch (e) {
+                alert('Error adding ticket type');
+            }
+        }
+
+        function ticketImageExt(dataUri) {
+            const m = /^data:image\/([a-zA-Z0-9.+-]+)/.exec(dataUri || '');
+            const ext = m ? m[1].toLowerCase() : 'jpg';
+            return ext === 'jpeg' ? 'jpg' : ext;
+        }
+
+        function ticketImageFilename(ticket, side) {
+            const safe = (s) => (s || 'unknown').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
+            const img = side === 'back' ? ticket.back_image : ticket.front_image;
+            return `${safe(ticket.user_name)}_${safe(ticket.ticket_type_name)}_${side}.${ticketImageExt(img)}`;
+        }
+
+        async function downloadDataUri(dataUri, filename) {
+            try {
+                const res = await fetch(dataUri);
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1500);
+            } catch (e) {
+                const a = document.createElement('a');
+                a.href = dataUri;
+                a.download = filename;
+                a.click();
+            }
+        }
+
+        async function downloadTicketImage(id, side) {
+            const ticket = allTickets.find(t => t.id === id);
+            if (!ticket) return;
+            const img = side === 'back' ? ticket.back_image : ticket.front_image;
+            if (!img) return;
+            await downloadDataUri(img, ticketImageFilename(ticket, side));
+        }
+
+        async function downloadAllTicketImages() {
+            const withImages = allTickets.filter(t => t.front_image || t.back_image);
+            if (withImages.length === 0) {
+                alert('No ticket images to download for the current filter.');
+                return;
+            }
+            if (!confirm(`Download images for ${withImages.length} ticket(s)? Your browser may ask to allow multiple downloads.`)) return;
+            for (const t of withImages) {
+                if (t.front_image) {
+                    await downloadDataUri(t.front_image, ticketImageFilename(t, 'front'));
+                    await new Promise(r => setTimeout(r, 250));
+                }
+                if (t.back_image) {
+                    await downloadDataUri(t.back_image, ticketImageFilename(t, 'back'));
+                    await new Promise(r => setTimeout(r, 250));
+                }
             }
         }
 
@@ -3038,12 +3214,18 @@
                                     <div>
                                         <p class="text-xs text-gray-400 mb-2">Front</p>
                                         <img src="${ticket.front_image}" alt="Front" class="w-full rounded-lg border cursor-pointer" onclick="window.open('${ticket.front_image}', '_blank')">
+                                        <button onclick="downloadTicketImage(${ticket.id}, 'front')" class="mt-2 w-full bg-gray-100 text-gray-700 py-2 rounded-lg hover:bg-gray-200 text-sm">
+                                            <i class="fas fa-download mr-1"></i>Download front
+                                        </button>
                                     </div>
                                 ` : ''}
                                 ${ticket.back_image ? `
                                     <div>
                                         <p class="text-xs text-gray-400 mb-2">Back</p>
                                         <img src="${ticket.back_image}" alt="Back" class="w-full rounded-lg border cursor-pointer" onclick="window.open('${ticket.back_image}', '_blank')">
+                                        <button onclick="downloadTicketImage(${ticket.id}, 'back')" class="mt-2 w-full bg-gray-100 text-gray-700 py-2 rounded-lg hover:bg-gray-200 text-sm">
+                                            <i class="fas fa-download mr-1"></i>Download back
+                                        </button>
                                     </div>
                                 ` : ''}
                             </div>
@@ -3497,6 +3679,236 @@
             }
         }
 
+
+        // ==================== INVOICING ====================
+
+        let invoicingView = 'client';
+        let invoicingData = { client: null, worker: null, payroll: null };
+        let invoicingInitialised = false;
+
+        async function initInvoicing() {
+            // Populate client filter from already-loaded clients
+            const clientSel = document.getElementById('inv-client');
+            if (clientSel && allClients.length > 0 && clientSel.options.length <= 1) {
+                clientSel.innerHTML = '<option value="">All Clients</option>' +
+                    [...allClients].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                        .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+            }
+            if (!invoicingInitialised) {
+                invoicingInitialised = true;
+                try {
+                    const res = await authFetch(`${API_BASE}/billing/weeks`);
+                    const data = await res.json();
+                    const weeks = data.weeks || [];
+                    const weekSel = document.getElementById('inv-week');
+                    weekSel.innerHTML = weeks.map(w => `<option value="${w}">${formatDate(w)}</option>`).join('')
+                        || `<option value="${data.default}">${formatDate(data.default)}</option>`;
+                    if (data.default && weeks.includes(data.default)) weekSel.value = data.default;
+                } catch (e) {
+                    console.error('Error loading billing weeks:', e);
+                }
+            }
+            loadInvoicing();
+        }
+
+        function invParams() {
+            const week = document.getElementById('inv-week')?.value || '';
+            const clientId = document.getElementById('inv-client')?.value || '';
+            const approved = document.getElementById('inv-approved')?.value || 'false';
+            const p = new URLSearchParams();
+            if (week) p.append('week_ending', week);
+            if (clientId) p.append('client_id', clientId);
+            if (approved === 'true') p.append('approved_only', 'true');
+            return p.toString();
+        }
+
+        function setInvoicingView(view) {
+            invoicingView = view;
+            ['client', 'worker', 'payroll'].forEach(v => {
+                const btn = document.getElementById(`inv-view-${v}`);
+                if (!btn) return;
+                if (v === view) {
+                    btn.className = 'px-3 py-1.5 rounded-lg text-sm bg-blue-600 text-white';
+                } else {
+                    btn.className = 'px-3 py-1.5 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200';
+                }
+            });
+            renderInvoicing();
+        }
+
+        async function loadInvoicing() {
+            const report = document.getElementById('inv-report');
+            report.innerHTML = `<div class="text-center text-gray-500 py-8"><div class="loader mx-auto mb-2"></div>Loading…</div>`;
+            const qs = invParams();
+            try {
+                const [c, w, p] = await Promise.all([
+                    authFetch(`${API_BASE}/billing/client-billing?${qs}`).then(r => r.json()),
+                    authFetch(`${API_BASE}/billing/worker-totals?${qs}`).then(r => r.json()),
+                    authFetch(`${API_BASE}/billing/myob-payroll?${qs}`).then(r => r.json()),
+                ]);
+                invoicingData = { client: c, worker: w, payroll: p };
+                renderCrosscheck();
+                renderInvoicing();
+            } catch (e) {
+                console.error('Error loading invoicing:', e);
+                report.innerHTML = `<div class="text-center text-red-500 py-8">Error loading billing data</div>`;
+            }
+        }
+
+        function h(n) { return (n === null || n === undefined || n === 0) ? '' : (Math.round(n * 100) / 100); }
+
+        function renderCrosscheck() {
+            const banner = document.getElementById('inv-crosscheck');
+            const c = invoicingData.client, w = invoicingData.worker;
+            if (!c || !w) { banner.classList.add('hidden'); return; }
+            const billTotal = Math.round((c.grand_total?.total || 0) * 100) / 100;
+            const workerTotal = Math.round((w.grand_total?.total || 0) * 100) / 100;
+            banner.classList.remove('hidden');
+            if (Math.abs(billTotal - workerTotal) < 0.01) {
+                banner.innerHTML = `<div class="bg-green-50 border border-green-200 text-green-800 rounded-lg px-4 py-3 text-sm">
+                    <i class="fas fa-check-circle mr-1"></i> Billing total <b>${billTotal}h</b> matches worker total <b>${workerTotal}h</b>.</div>`;
+            } else {
+                banner.innerHTML = `<div class="bg-red-50 border border-red-200 text-red-800 rounded-lg px-4 py-3 text-sm">
+                    <i class="fas fa-triangle-exclamation mr-1"></i> Mismatch: billing total <b>${billTotal}h</b> vs worker total <b>${workerTotal}h</b> — something is missing.</div>`;
+            }
+        }
+
+        function renderInvoicing() {
+            const report = document.getElementById('inv-report');
+            if (invoicingView === 'client') report.innerHTML = renderClientBilling();
+            else if (invoicingView === 'worker') report.innerHTML = renderWorkerTotals();
+            else report.innerHTML = renderPayroll();
+        }
+
+        function renderClientBilling() {
+            const data = invoicingData.client;
+            if (!data || !data.clients || data.clients.length === 0) {
+                return `<div class="text-center text-gray-500 py-8">No billing data for this week.</div>`;
+            }
+            const hdr = ['Client', 'Job Address', 'Day', 'Date', 'Worker', 'Shift', 'Role', 'Ord', 'OT', 'OT Sat', 'OT Sun', 'Total'];
+            let rows = '';
+            const totalCells = (t) => `<td class="px-2 py-1 text-right">${h(t.ordinary)}</td><td class="px-2 py-1 text-right">${h(t.ot)}</td><td class="px-2 py-1 text-right">${h(t.ot_sat)}</td><td class="px-2 py-1 text-right">${h(t.ot_sun)}</td><td class="px-2 py-1 text-right font-semibold">${h(t.total)}</td>`;
+            data.clients.forEach(c => {
+                c.addresses.forEach(a => {
+                    a.dates.forEach(d => {
+                        d.rows.forEach(r => {
+                            rows += `<tr class="border-b border-gray-100">
+                                <td class="px-2 py-1 text-gray-400">${c.client}</td>
+                                <td class="px-2 py-1 text-gray-500">${a.address}</td>
+                                <td class="px-2 py-1">${d.day}</td>
+                                <td class="px-2 py-1 whitespace-nowrap">${formatDate(d.date)}</td>
+                                <td class="px-2 py-1">${r.worker}</td>
+                                <td class="px-2 py-1">${r.shift_type || ''}</td>
+                                <td class="px-2 py-1">${r.role || ''}</td>
+                                <td class="px-2 py-1 text-right">${h(r.ordinary)}</td>
+                                <td class="px-2 py-1 text-right">${h(r.ot)}</td>
+                                <td class="px-2 py-1 text-right">${h(r.ot_sat)}</td>
+                                <td class="px-2 py-1 text-right">${h(r.ot_sun)}</td>
+                                <td class="px-2 py-1 text-right font-medium">${h(r.total)}</td>
+                            </tr>`;
+                        });
+                        rows += `<tr class="bg-gray-50 text-gray-600"><td></td><td></td><td></td><td class="px-2 py-1 text-right italic">${formatDate(d.date)} Total</td><td></td><td></td><td></td>${totalCells(d.totals)}</tr>`;
+                    });
+                    rows += `<tr class="bg-blue-50 text-blue-900"><td></td><td class="px-2 py-1 font-semibold">${a.address} Total</td><td></td><td></td><td></td><td></td><td></td>${totalCells(a.totals)}</tr>`;
+                });
+                rows += `<tr class="bg-blue-100 text-blue-900 font-bold"><td class="px-2 py-1">${c.client} Total</td><td></td><td></td><td></td><td></td><td></td><td></td>${totalCells(c.totals)}</tr>`;
+            });
+            rows += `<tr class="bg-gray-800 text-white font-bold"><td class="px-2 py-1">GRAND TOTAL</td><td></td><td></td><td></td><td></td><td></td><td></td>${totalCells(data.grand_total)}</tr>`;
+            return `<div class="text-sm text-gray-500 mb-2">Week ${formatDate(data.week_start)} → ${formatDate(data.week_ending)}</div>
+                <table class="w-full text-sm"><thead><tr class="text-left text-gray-500 border-b-2">${hdr.map(x => `<th class="px-2 py-2">${x}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+        }
+
+        function renderWorkerTotals() {
+            const data = invoicingData.worker;
+            if (!data || !data.workers || data.workers.length === 0) {
+                return `<div class="text-center text-gray-500 py-8">No worker hours for this week.</div>`;
+            }
+            let rows = data.workers.map(w => `<tr class="border-b border-gray-100">
+                <td class="px-2 py-1">${w.worker}</td>
+                <td class="px-2 py-1 text-right">${h(w.ordinary)}</td>
+                <td class="px-2 py-1 text-right">${h(w.ot)}</td>
+                <td class="px-2 py-1 text-right">${h(w.ot_sat)}</td>
+                <td class="px-2 py-1 text-right">${h(w.ot_sun)}</td>
+                <td class="px-2 py-1 text-right font-medium">${h(w.total)}</td></tr>`).join('');
+            const g = data.grand_total;
+            rows += `<tr class="bg-gray-800 text-white font-bold"><td class="px-2 py-1">GRAND TOTAL</td><td class="px-2 py-1 text-right">${h(g.ordinary)}</td><td class="px-2 py-1 text-right">${h(g.ot)}</td><td class="px-2 py-1 text-right">${h(g.ot_sat)}</td><td class="px-2 py-1 text-right">${h(g.ot_sun)}</td><td class="px-2 py-1 text-right">${h(g.total)}</td></tr>`;
+            return `<div class="text-sm text-gray-500 mb-2">Week ${formatDate(data.week_start)} → ${formatDate(data.week_ending)}</div>
+                <table class="w-full text-sm"><thead><tr class="text-left text-gray-500 border-b-2"><th class="px-2 py-2">Worker</th><th class="px-2 py-2 text-right">Ord</th><th class="px-2 py-2 text-right">OT</th><th class="px-2 py-2 text-right">OT Sat</th><th class="px-2 py-2 text-right">OT Sun</th><th class="px-2 py-2 text-right">Total</th></tr></thead><tbody>${rows}</tbody></table>`;
+        }
+
+        function renderPayroll() {
+            const data = invoicingData.payroll;
+            if (!data || !data.rows || data.rows.length === 0) {
+                return `<div class="text-center text-gray-500 py-8">No payroll data for this week.</div>`;
+            }
+            let rows = data.rows.map(r => `<tr class="border-b border-gray-100">
+                <td class="px-2 py-1">${r.worker}</td>
+                <td class="px-2 py-1">${r.shift_type || ''}</td>
+                <td class="px-2 py-1">${r.role || ''}</td>
+                <td class="px-2 py-1 text-right">${h(r.ordinary)}</td>
+                <td class="px-2 py-1 text-right">${h(r.ot)}</td>
+                <td class="px-2 py-1 text-right">${h(r.ot_sat)}</td>
+                <td class="px-2 py-1 text-right">${h(r.ot_sun)}</td>
+                <td class="px-2 py-1 text-right font-medium">${h(r.total)}</td></tr>`).join('');
+            const g = data.grand_total;
+            rows += `<tr class="bg-gray-800 text-white font-bold"><td class="px-2 py-1">GRAND TOTAL</td><td></td><td></td><td class="px-2 py-1 text-right">${h(g.ordinary)}</td><td class="px-2 py-1 text-right">${h(g.ot)}</td><td class="px-2 py-1 text-right">${h(g.ot_sat)}</td><td class="px-2 py-1 text-right">${h(g.ot_sun)}</td><td class="px-2 py-1 text-right">${h(g.total)}</td></tr>`;
+            return `<div class="text-sm text-gray-500 mb-2">Week ${formatDate(data.week_start)} → ${formatDate(data.week_ending)}</div>
+                <table class="w-full text-sm"><thead><tr class="text-left text-gray-500 border-b-2"><th class="px-2 py-2">Worker</th><th class="px-2 py-2">Shift</th><th class="px-2 py-2">Role</th><th class="px-2 py-2 text-right">Ord</th><th class="px-2 py-2 text-right">OT</th><th class="px-2 py-2 text-right">OT Sat</th><th class="px-2 py-2 text-right">OT Sun</th><th class="px-2 py-2 text-right">Total</th></tr></thead><tbody>${rows}</tbody></table>`;
+        }
+
+        function csvCell(v) {
+            if (v === null || v === undefined) return '';
+            const s = String(v);
+            return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        }
+
+        function exportInvoicingCsv() {
+            let lines = [];
+            let filename = 'billing.csv';
+            const n = (x) => (x === null || x === undefined || x === 0) ? '' : (Math.round(x * 100) / 100);
+            if (invoicingView === 'client') {
+                const data = invoicingData.client;
+                if (!data) return;
+                filename = `client_billing_${data.week_ending}.csv`;
+                lines.push(['Client', 'Job_Address', 'Day', 'Date', 'Worker', 'Shift_Type', 'Role', 'Ordinary_Hours', 'OT_Hours', 'OT_Sat', 'OT_Sun', 'Total'].join(','));
+                (data.clients || []).forEach(c => {
+                    c.addresses.forEach(a => {
+                        a.dates.forEach(d => {
+                            d.rows.forEach(r => {
+                                lines.push([c.client, a.address, d.day, d.date, r.worker, r.shift_type, r.role, n(r.ordinary), n(r.ot), n(r.ot_sat), n(r.ot_sun), n(r.total)].map(csvCell).join(','));
+                            });
+                            lines.push(['', '', '', d.date + ' Total', '', '', '', n(d.totals.ordinary), n(d.totals.ot), n(d.totals.ot_sat), n(d.totals.ot_sun), n(d.totals.total)].map(csvCell).join(','));
+                        });
+                        lines.push(['', a.address + ' Total', '', '', '', '', '', n(a.totals.ordinary), n(a.totals.ot), n(a.totals.ot_sat), n(a.totals.ot_sun), n(a.totals.total)].map(csvCell).join(','));
+                    });
+                    lines.push([c.client + ' Total', '', '', '', '', '', '', n(c.totals.ordinary), n(c.totals.ot), n(c.totals.ot_sat), n(c.totals.ot_sun), n(c.totals.total)].map(csvCell).join(','));
+                });
+                const g = data.grand_total;
+                lines.push(['GRAND TOTAL', '', '', '', '', '', '', n(g.ordinary), n(g.ot), n(g.ot_sat), n(g.ot_sun), n(g.total)].map(csvCell).join(','));
+            } else if (invoicingView === 'worker') {
+                const data = invoicingData.worker;
+                if (!data) return;
+                filename = `worker_totals_${data.week_ending}.csv`;
+                lines.push(['Worker', 'Ordinary_Hours', 'OT_Hours', 'OT_Sat', 'OT_Sun', 'Total'].join(','));
+                (data.workers || []).forEach(w => lines.push([w.worker, n(w.ordinary), n(w.ot), n(w.ot_sat), n(w.ot_sun), n(w.total)].map(csvCell).join(',')));
+                const g = data.grand_total;
+                lines.push(['GRAND TOTAL', n(g.ordinary), n(g.ot), n(g.ot_sat), n(g.ot_sun), n(g.total)].map(csvCell).join(','));
+            } else {
+                const data = invoicingData.payroll;
+                if (!data) return;
+                filename = `myob_payroll_${data.week_ending}.csv`;
+                lines.push(['Worker', 'Shift_Type', 'Role', 'Ordinary_Hours', 'OT_Hours', 'OT_Sat', 'OT_Sun', 'Total'].join(','));
+                (data.rows || []).forEach(r => lines.push([r.worker, r.shift_type, r.role, n(r.ordinary), n(r.ot), n(r.ot_sat), n(r.ot_sun), n(r.total)].map(csvCell).join(',')));
+                const g = data.grand_total;
+                lines.push(['GRAND TOTAL', '', '', n(g.ordinary), n(g.ot), n(g.ot_sat), n(g.ot_sun), n(g.total)].map(csvCell).join(','));
+            }
+            const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1500);
+        }
 
         // ==================== UTILITIES ====================
 

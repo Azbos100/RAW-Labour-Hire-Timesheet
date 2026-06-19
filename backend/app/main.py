@@ -29,7 +29,7 @@ class HTTPSRedirectMiddleware(BaseHTTPMiddleware):
 
 from sqlalchemy import text, select, func
 
-from .routes import auth, timesheets, users, clients, clock, myob, tickets, induction, jobsites, notifications
+from .routes import auth, timesheets, users, clients, clock, myob, tickets, induction, jobsites, notifications, billing
 from .database import engine, Base, AsyncSessionLocal
 from .models import Client, JobSite, TicketType, InductionDocument
 
@@ -178,28 +178,33 @@ async def lifespan(app: FastAPI):
             session.add(job_site)
             await session.commit()
     
-    # Seed default ticket types if none exist
+    # Seed / top-up default ticket types.
+    # Runs on every startup and adds any missing types by name, so new types
+    # (e.g. Excavator, Bobcat) appear on the live DB without wiping existing data.
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(func.count()).select_from(TicketType)
-        )
-        ticket_type_count = result.scalar() or 0
-        if ticket_type_count == 0:
-            default_ticket_types = [
-                TicketType(name="White Card", description="Construction Induction Card", has_expiry=False),
-                TicketType(name="Working with Children Check", description="WWC Check", has_expiry=True),
-                TicketType(name="Scissor Lift", description="Elevating Work Platform - Scissor Lift", has_expiry=True),
-                TicketType(name="Boom Lift", description="Elevating Work Platform - Boom Lift", has_expiry=True),
-                TicketType(name="Forklift", description="Forklift License", has_expiry=True),
-                TicketType(name="First Aid", description="First Aid Certificate", has_expiry=True),
-                TicketType(name="Traffic Control", description="Traffic Control Certification", has_expiry=True),
-                TicketType(name="Confined Space", description="Confined Space Entry", has_expiry=True),
-                TicketType(name="Working at Heights", description="Working at Heights Certification", has_expiry=True),
-                TicketType(name="Driver's License", description="Driver's License", has_expiry=True),
-                TicketType(name="Other", description="Other certification or ticket", has_expiry=True),
-            ]
-            for tt in default_ticket_types:
-                session.add(tt)
+        default_ticket_types = [
+            ("White Card", "Construction Induction Card", False),
+            ("Working with Children Check", "WWC Check", True),
+            ("Scissor Lift", "Elevating Work Platform - Scissor Lift", True),
+            ("Boom Lift", "Elevating Work Platform - Boom Lift", True),
+            ("Forklift", "Forklift License", True),
+            ("Excavator", "Excavator Ticket", True),
+            ("Bobcat", "Bobcat / Skid Steer Ticket", True),
+            ("First Aid", "First Aid Certificate", True),
+            ("Traffic Control", "Traffic Control Certification", True),
+            ("Confined Space", "Confined Space Entry", True),
+            ("Working at Heights", "Working at Heights Certification", True),
+            ("Driver's License", "Driver's License", True),
+            ("Other", "Other certification or ticket", True),
+        ]
+        existing_result = await session.execute(select(TicketType.name))
+        existing_names = {n for (n,) in existing_result.all()}
+        added = False
+        for name, description, has_expiry in default_ticket_types:
+            if name not in existing_names:
+                session.add(TicketType(name=name, description=description, has_expiry=has_expiry))
+                added = True
+        if added:
             await session.commit()
     
     # Seed default induction/SWMS documents if none exist
@@ -505,6 +510,7 @@ app.include_router(tickets.router, prefix="/api/tickets", tags=["Tickets/Certifi
 app.include_router(induction.router, prefix="/api/induction", tags=["Induction/SWMS"])
 app.include_router(jobsites.router, prefix="/api/jobsites", tags=["Job Sites"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["Notifications"])
+app.include_router(billing.router, prefix="/api/billing", tags=["Billing/Invoicing"])
 
 
 @app.get("/")
