@@ -114,10 +114,15 @@ def get_day_of_week(d: date) -> str:
 
 
 def get_week_dates(d: date) -> tuple[date, date]:
-    """Get Monday and Sunday of the week containing date d"""
-    monday = d - timedelta(days=d.weekday())
-    sunday = monday + timedelta(days=6)
-    return monday, sunday
+    """Get the RAW pay week (Saturday -> Friday) containing date d.
+
+    weekday(): Mon=0 .. Fri=4 .. Sat=5 .. Sun=6
+    Days since most recent Saturday: Sat=0, Sun=1, Mon=2 ... Fri=6
+    """
+    days_since_saturday = (d.weekday() - 5) % 7
+    week_start = d - timedelta(days=days_since_saturday)  # Saturday
+    week_end = week_start + timedelta(days=6)             # Friday
+    return week_start, week_end
 
 
 @router.get("/status", response_model=ClockStatusResponse)

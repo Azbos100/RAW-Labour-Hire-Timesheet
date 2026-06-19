@@ -203,17 +203,17 @@ async def restore_timesheet(
 
 def get_pay_week_range(reference_date: Optional[date] = None) -> tuple[date, date]:
     """
-    RAW pay week: Friday → Thursday.
+    RAW pay week: Saturday → Friday.
     Returns (week_start, week_end) for the pay week containing reference_date.
     If reference_date is None, uses today (Melbourne local).
     """
     if reference_date is None:
         reference_date = get_melbourne_now().date()
-    # weekday(): Mon=0 ... Fri=4 ... Sun=6
-    # Days since most recent Friday (inclusive): Fri=0, Sat=1, Sun=2, Mon=3, Tue=4, Wed=5, Thu=6
-    days_since_friday = (reference_date.weekday() - 4) % 7
-    week_start = reference_date - timedelta(days=days_since_friday)
-    week_end = week_start + timedelta(days=6)
+    # weekday(): Mon=0 ... Fri=4 ... Sat=5 ... Sun=6
+    # Days since most recent Saturday: Sat=0, Sun=1, Mon=2, Tue=3, Wed=4, Thu=5, Fri=6
+    days_since_saturday = (reference_date.weekday() - 5) % 7
+    week_start = reference_date - timedelta(days=days_since_saturday)  # Saturday
+    week_end = week_start + timedelta(days=6)                          # Friday
     return week_start, week_end
 
 
@@ -357,14 +357,14 @@ async def get_current_timesheet(
     """Get the current week's timesheet for the logged in worker"""
     # Use Australian Eastern Time
     today = get_melbourne_now().date()
-    # Get Monday of current week
-    monday = today - timedelta(days=today.weekday())
+    # Get the start (Saturday) of the current RAW pay week (Sat -> Fri)
+    week_start = today - timedelta(days=(today.weekday() - 5) % 7)
     
     result = await db.execute(
         select(Timesheet)
         .where(
             Timesheet.worker_id == current_user.id,
-            Timesheet.week_starting == monday
+            Timesheet.week_starting == week_start
         )
     )
     timesheets = result.scalars().all()
