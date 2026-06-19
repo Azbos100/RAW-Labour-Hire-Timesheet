@@ -153,6 +153,17 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Migration note (assigned shift times): {e}")
 
+        # Foreman / site contact stored on the worker's assignment
+        try:
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS assignment_contact_name VARCHAR(100);
+            """))
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS assignment_contact_phone VARCHAR(30);
+            """))
+        except Exception as e:
+            print(f"Migration note (assignment contact): {e}")
+
     # Seed a default client/job site if none exist
     async with AsyncSessionLocal() as session:
         result = await session.execute(

@@ -827,6 +827,15 @@
                     <div id="job-site-details" class="hidden mt-2 p-3 bg-gray-50 rounded-lg"></div>
                 </div>
                 <div>
+                    <label class="block text-sm font-medium mb-1">Foreman / Site Contact</label>
+                    <select id="assign-foreman-select" onchange="onForemanSelect()" class="w-full border rounded-lg px-3 py-2">
+                        <option value="">Select a foreman…</option>
+                    </select>
+                    <div id="assign-foreman-detail" class="text-xs text-gray-500 mt-1"></div>
+                    <input type="hidden" id="assign-contact-name">
+                    <input type="hidden" id="assign-contact-phone">
+                </div>
+                <div>
                     <label class="block text-sm font-medium mb-1">Assignment Date *</label>
                     <input type="date" name="assignment_date" id="assign-job-date" required class="w-full border rounded-lg px-3 py-2">
                 </div>
@@ -2160,11 +2169,13 @@
                     const timeDisplay = w.assigned_job.start_time ? ` at ${w.assigned_job.start_time}` : '';
                     const clientDisplay = w.assigned_job.client_name ? `<div class="text-xs text-blue-600 font-medium">${w.assigned_job.client_name}</div>` : '';
                     const addressDisplay = w.assigned_job.job_site_address ? `<div class="text-xs text-gray-400 truncate max-w-[200px]" title="${w.assigned_job.job_site_address}">${w.assigned_job.job_site_address}</div>` : '';
+                    const foremanDisplay = w.assigned_job.contact_name ? `<div class="text-xs text-gray-500"><i class="fas fa-hard-hat text-orange-500 mr-1"></i>${w.assigned_job.contact_name}${w.assigned_job.contact_phone ? ' — ' + w.assigned_job.contact_phone : ''}</div>` : '';
                     assignedJobHtml = `
                         <div class="text-sm font-medium">${w.assigned_job.job_site_name}</div>
                         ${clientDisplay}
                         ${addressDisplay}
                         <div class="text-xs text-gray-500">${w.assigned_job.assignment_date || ''}${timeDisplay}</div>
+                        ${foremanDisplay}
                     `;
                 }
                 
@@ -2323,8 +2334,9 @@
                     return `<option value="${js.id}">${js.name} - ${js.client_name || 'No Client'} ${gpsStatus}</option>`;
                 }).join('');
             
-            // Show selected job site details
-            select.addEventListener('change', function() {
+            // Show selected job site details + load that client's foremen
+            // (use onchange, not addEventListener, so handlers don't stack on re-open)
+            select.onchange = function() {
                 const selectedSite = allJobSites.find(js => js.id == this.value);
                 const detailsDiv = document.getElementById('job-site-details');
                 
@@ -2343,7 +2355,11 @@
                 } else if (detailsDiv) {
                     detailsDiv.classList.add('hidden');
                 }
-            });
+                populateForemanSelect(selectedSite ? selectedSite.client_id : null);
+            };
+            
+            // Reset foreman dropdown for this open
+            populateForemanSelect(null);
             
             // Check if worker has current assignment
             const worker = allWorkers.find(w => w.id === workerId);
@@ -2359,6 +2375,9 @@
                 
                 // Pre-select current job
                 select.value = worker.assigned_job.job_site_id;
+                const preSite = allJobSites.find(js => js.id == worker.assigned_job.job_site_id);
+                populateForemanSelect(preSite ? preSite.client_id : null,
+                    worker.assigned_job.contact_name, worker.assigned_job.contact_phone);
                 if (worker.assigned_job.assignment_date) {
                     document.getElementById('assign-job-date').value = worker.assigned_job.assignment_date;
                 }
@@ -2372,6 +2391,40 @@
             }
             
             openModal('assign-job-modal');
+        }
+
+        function populateForemanSelect(clientId, preName, prePhone) {
+            const sel = document.getElementById('assign-foreman-select');
+            const detail = document.getElementById('assign-foreman-detail');
+            if (!sel) return;
+            const foremen = clientId ? allClientContacts.filter(c => c.client_id == clientId) : [];
+            sel.innerHTML = '<option value="">Select a foreman…</option>' +
+                foremen.map(f => `<option value="${f.id}">${f.name}${f.role ? ' (' + f.role + ')' : ''}${f.phone ? ' — ' + f.phone : ''}</option>`).join('');
+            // default cleared
+            document.getElementById('assign-contact-name').value = '';
+            document.getElementById('assign-contact-phone').value = '';
+            if (detail) detail.textContent = clientId && foremen.length === 0 ? 'No saved foremen for this client — add them under the Clients tab.' : '';
+            // Pre-select existing assignment contact if it matches a saved foreman
+            if (preName) {
+                const match = foremen.find(f => f.name === preName);
+                if (match) {
+                    sel.value = match.id;
+                    onForemanSelect();
+                } else {
+                    document.getElementById('assign-contact-name').value = preName;
+                    document.getElementById('assign-contact-phone').value = prePhone || '';
+                    if (detail) detail.textContent = `Current: ${preName}${prePhone ? ' — ' + prePhone : ''}`;
+                }
+            }
+        }
+
+        function onForemanSelect() {
+            const sel = document.getElementById('assign-foreman-select');
+            const detail = document.getElementById('assign-foreman-detail');
+            const foreman = allClientContacts.find(c => c.id == sel.value);
+            document.getElementById('assign-contact-name').value = foreman ? foreman.name : '';
+            document.getElementById('assign-contact-phone').value = foreman ? (foreman.phone || '') : '';
+            if (detail) detail.textContent = foreman ? `${foreman.name}${foreman.phone ? ' — ' + foreman.phone : ''}` : '';
         }
 
         async function submitAssignJob(event) {
@@ -2411,7 +2464,9 @@
                         job_site_id: parseInt(jobSiteId),
                         assignment_date: assignmentDate,
                         start_time: startTime,
-                        end_time: endTime
+                        end_time: endTime,
+                        contact_name: document.getElementById('assign-contact-name').value || null,
+                        contact_phone: document.getElementById('assign-contact-phone').value || null
                     })
                 });
                 
@@ -2596,11 +2651,20 @@
 
         // ==================== CLIENTS ====================
 
+        let allClientContacts = [];
+
         async function loadClients() {
             try {
-                const response = await authFetch(`${API_BASE}/clients/`);
-                const data = await response.json();
+                const [clientsRes, contactsRes] = await Promise.all([
+                    authFetch(`${API_BASE}/clients/`),
+                    authFetch(`${API_BASE}/clients/contacts/all`).catch(() => null)
+                ]);
+                const data = await clientsRes.json();
                 allClients = data.clients || [];
+                if (contactsRes && contactsRes.ok) {
+                    const cdata = await contactsRes.json();
+                    allClientContacts = cdata.contacts || [];
+                }
                 renderClients();
                 populateClientSelect();
             } catch (error) {
@@ -2616,7 +2680,16 @@
                 return;
             }
 
-            container.innerHTML = allClients.map(c => `
+            container.innerHTML = allClients.map(c => {
+                const foremen = allClientContacts.filter(ct => ct.client_id === c.id);
+                const foremenHtml = foremen.length
+                    ? foremen.map(f => `
+                        <div class="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-1.5 text-sm">
+                            <span><i class="fas fa-hard-hat text-orange-500 mr-1"></i><b>${f.name}</b>${f.role ? ` <span class="text-gray-400">(${f.role})</span>` : ''}${f.phone ? ` — ${f.phone}` : ''}</span>
+                            <button onclick="deleteClientContact(${f.id})" class="text-red-500 hover:text-red-700 ml-2" title="Remove foreman"><i class="fas fa-times"></i></button>
+                        </div>`).join('')
+                    : `<div class="text-xs text-gray-400">No foremen / site contacts yet.</div>`;
+                return `
                 <div class="p-4 hover:bg-gray-50">
                     <div class="flex justify-between items-start">
                         <div class="flex-1">
@@ -2637,8 +2710,52 @@
                             </span>
                         </div>
                     </div>
-                </div>
-            `).join('');
+                    <div class="mt-3 pl-1">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Foremen / Site Contacts</span>
+                            <button onclick="addClientContact(${c.id}, '${c.name.replace(/'/g, "\\'")}')" class="text-xs text-blue-600 hover:text-blue-800"><i class="fas fa-plus mr-1"></i>Add foreman</button>
+                        </div>
+                        <div class="space-y-1">${foremenHtml}</div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        async function addClientContact(clientId, clientName) {
+            const name = prompt(`Foreman / site contact name for ${clientName}:`);
+            if (!name || !name.trim()) return;
+            const phone = prompt(`Phone number for ${name.trim()}:`) || '';
+            const role = prompt('Role/title (optional, e.g. Foreman, Site Manager):') || '';
+            try {
+                const res = await authFetch(`${API_BASE}/clients/${clientId}/contacts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name.trim(), phone: phone.trim(), role: role.trim() })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    await loadClients();
+                } else {
+                    alert(data.detail || 'Error adding contact');
+                }
+            } catch (e) {
+                alert('Error adding contact');
+            }
+        }
+
+        async function deleteClientContact(contactId) {
+            if (!confirm('Remove this foreman / site contact?')) return;
+            try {
+                const res = await authFetch(`${API_BASE}/clients/contacts/${contactId}`, { method: 'DELETE' });
+                if (res.ok) {
+                    await loadClients();
+                } else {
+                    const data = await res.json();
+                    alert(data.detail || 'Error removing contact');
+                }
+            } catch (e) {
+                alert('Error removing contact');
+            }
         }
 
         function populateClientSelect() {

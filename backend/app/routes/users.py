@@ -236,6 +236,8 @@ async def list_all_workers(
                 "assignment_date": u.assignment_date.isoformat() if hasattr(u, 'assignment_date') and u.assignment_date else None,
                 "start_time": getattr(u, 'assignment_start_time', None),
                 "end_time": getattr(u, 'assignment_end_time', None),
+                "contact_name": getattr(u, 'assignment_contact_name', None),
+                "contact_phone": getattr(u, 'assignment_contact_phone', None),
                 "assigned_at": u.assigned_at.isoformat() if hasattr(u, 'assigned_at') and u.assigned_at else None
             }
         
@@ -584,6 +586,8 @@ class JobAssignment(BaseModel):
     assignment_date: Optional[date] = None  # Date the job is for
     start_time: Optional[str] = None  # Start time for the shift (e.g., "07:00")
     end_time: Optional[str] = None  # End time for the shift (e.g., "15:30")
+    contact_name: Optional[str] = None  # Foreman / site contact name
+    contact_phone: Optional[str] = None  # Foreman / site contact phone
 
 
 @router.post("/admin/workers/{worker_id}/assign")
@@ -617,6 +621,8 @@ async def assign_worker_to_job(
         worker.assignment_date = assignment.assignment_date or date.today()
         worker.assignment_start_time = assignment.start_time
         worker.assignment_end_time = assignment.end_time
+        worker.assignment_contact_name = (assignment.contact_name or "").strip() or None
+        worker.assignment_contact_phone = (assignment.contact_phone or "").strip() or None
         worker.assignment_accepted = None  # Reset acceptance status
         worker.assigned_at = datetime.utcnow()
         
@@ -624,10 +630,16 @@ async def assign_worker_to_job(
         
         date_str = assignment.assignment_date.strftime("%a %d %b") if assignment.assignment_date else "TBC"
         time_str = assignment.start_time or "TBC"
+        contact_str = ""
+        if worker.assignment_contact_name:
+            contact_str = f" Foreman: {worker.assignment_contact_name}"
+            if worker.assignment_contact_phone:
+                contact_str += f" {worker.assignment_contact_phone}"
+            contact_str += "."
         
         # Send SMS notification to worker (always, if they have a phone)
         if worker.phone:
-            sms_message = f"RAW Labour Hire: You've been assigned to {job_site.name} on {date_str} at {time_str}. Address: {job_site.address or 'TBC'}. Open the app to accept."
+            sms_message = f"RAW Labour Hire: You've been assigned to {job_site.name} on {date_str} at {time_str}. Address: {job_site.address or 'TBC'}.{contact_str} Open the app to accept."
             
             async def send_assignment_sms():
                 result = await send_sms(worker.phone, sms_message)
@@ -680,6 +692,8 @@ async def assign_worker_to_job(
         worker.assignment_date = None
         worker.assignment_start_time = None
         worker.assignment_end_time = None
+        worker.assignment_contact_name = None
+        worker.assignment_contact_phone = None
         worker.assignment_accepted = None
         worker.assigned_at = None
         message = "Assignment cleared"

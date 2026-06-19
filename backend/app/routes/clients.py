@@ -9,10 +9,16 @@ from pydantic import BaseModel
 from typing import Optional, List
 
 from ..database import get_db
-from ..models import User, Client, JobSite, UserRole
+from ..models import User, Client, JobSite, UserRole, ClientContact
 from .auth import get_current_user
 
 router = APIRouter()
+
+
+class ClientContactCreate(BaseModel):
+    name: str
+    phone: Optional[str] = None
+    role: Optional[str] = None
 
 
 class ClientCreate(BaseModel):
@@ -146,6 +152,82 @@ async def delete_client_admin(
     await db.commit()
     
     return {"message": "Client deleted successfully"}
+
+
+# ==================== CLIENT CONTACTS (FOREMEN) ====================
+
+@router.get("/contacts/all")
+async def list_all_client_contacts(
+    db: AsyncSession = Depends(get_db)
+):
+    """List every active client contact (foreman). Used by the admin dashboard."""
+    result = await db.execute(
+        select(ClientContact)
+        .where(ClientContact.is_active == True)
+        .order_by(ClientContact.name)
+    )
+    contacts = result.scalars().all()
+    return {
+        "contacts": [
+            {
+                "id": c.id,
+                "client_id": c.client_id,
+                "name": c.name,
+                "phone": c.phone,
+                "role": c.role,
+            }
+            for c in contacts
+        ]
+    }
+
+
+@router.post("/{client_id}/contacts")
+async def create_client_contact(
+    client_id: int,
+    contact: ClientContactCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Add a site contact / foreman to a client (admin dashboard - no auth)."""
+    name = (contact.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Contact name is required")
+
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    new_contact = ClientContact(
+        client_id=client_id,
+        name=name,
+        phone=(contact.phone or "").strip() or None,
+        role=(contact.role or "").strip() or None,
+    )
+    db.add(new_contact)
+    await db.commit()
+    await db.refresh(new_contact)
+    return {
+        "id": new_contact.id,
+        "client_id": new_contact.client_id,
+        "name": new_contact.name,
+        "phone": new_contact.phone,
+        "role": new_contact.role,
+        "message": "Contact added",
+    }
+
+
+@router.delete("/contacts/{contact_id}")
+async def delete_client_contact(
+    contact_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Remove a client contact / foreman (admin dashboard - no auth)."""
+    result = await db.execute(select(ClientContact).where(ClientContact.id == contact_id))
+    contact = result.scalar_one_or_none()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    contact.is_active = False
+    await db.commit()
+    return {"message": "Contact removed", "id": contact_id}
 
 
 @router.get("/{client_id}/job-sites")

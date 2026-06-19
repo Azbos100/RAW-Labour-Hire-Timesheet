@@ -113,6 +113,8 @@ class User(Base):
     assignment_start_time = Column(String(10))  # Start time for the shift (e.g., "07:00")
     assignment_end_time = Column(String(10))  # End time for the shift (e.g., "15:30")
     assigned_at = Column(DateTime)  # When the assignment was made
+    assignment_contact_name = Column(String(100))  # Foreman/site contact for this job
+    assignment_contact_phone = Column(String(30))  # Foreman/site contact phone
     
     # Push Notifications
     push_token = Column(String(255))  # Expo push token for notifications
@@ -156,6 +158,25 @@ class Client(Base):
     # Relationships
     job_sites = relationship("JobSite", back_populates="client")
     timesheets = relationship("Timesheet", back_populates="client")
+
+
+# ==================== CLIENT CONTACTS (FOREMEN) ====================
+
+class ClientContact(Base):
+    """A reusable site contact / foreman for a client (name + phone)."""
+    __tablename__ = "client_contacts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
+
+    name = Column(String(100), nullable=False)
+    phone = Column(String(30))
+    role = Column(String(100))  # e.g. "Foreman", "Site Manager"
+
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    client = relationship("Client")
 
 
 # ==================== JOB SITES ====================
