@@ -107,6 +107,12 @@
                 <button onclick="switchTab('timesheets')" id="tab-timesheets" class="py-4 px-2 font-medium tab-active whitespace-nowrap">
                     <i class="fas fa-clock mr-2"></i>Timesheets
                 </button>
+                <button onclick="switchTab('calendar')" id="tab-calendar" class="py-4 px-2 font-medium text-gray-500 hover:text-gray-700 whitespace-nowrap">
+                    <i class="fas fa-calendar-alt mr-2"></i>Calendar
+                </button>
+                <button onclick="switchTab('allocation')" id="tab-allocation" class="py-4 px-2 font-medium text-gray-500 hover:text-gray-700 whitespace-nowrap">
+                    <i class="fas fa-people-carry mr-2"></i>Allocation
+                </button>
                 <button onclick="switchTab('archived')" id="tab-archived" class="py-4 px-2 font-medium text-gray-500 hover:text-gray-700 whitespace-nowrap">
                     <i class="fas fa-archive mr-2"></i>Archived
                 </button>
@@ -204,9 +210,25 @@
                                 <option value="">All Workers</option>
                             </select>
                         </div>
+                        <div>
+                            <label class="block text-sm text-gray-500 mb-1">Pay Week (Sat→Fri)</label>
+                            <select id="filter-week" onchange="renderTimesheets()" class="border rounded-lg px-3 py-2">
+                                <option value="">All Weeks</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-500 mb-1">View</label>
+                            <label class="flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer select-none">
+                                <input type="checkbox" id="group-by-week" checked onchange="renderTimesheets()" class="rounded">
+                                <span class="text-sm">Group by week</span>
+                            </label>
+                        </div>
                     </div>
                     <div class="flex flex-wrap gap-2 items-end">
-                        <button onclick="archiveLastWeek()" class="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium" title="Archive approved timesheets from prior pay week (Fri→Thu)">
+                        <button onclick="openActiveShifts()" class="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium" title="See who is clocked in now and manually clock them out">
+                            <i class="fas fa-user-clock mr-1"></i>On Site<span id="active-shifts-badge"></span>
+                        </button>
+                        <button onclick="archiveLastWeek()" class="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium" title="Archive approved timesheets from prior pay week (Sat→Fri)">
                             <i class="fas fa-archive mr-1"></i>Archive Last Week
                         </button>
                         <button onclick="archiveAllActive()" class="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium" title="One-time cleanup: archive every active timesheet">
@@ -237,6 +259,100 @@
                             </td></tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Calendar Tab -->
+        <div id="content-calendar" class="hidden">
+            <div class="bg-white rounded-xl shadow p-4 mb-6">
+                <div class="flex items-center justify-between">
+                    <button onclick="calendarPrevMonth()" class="px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm font-medium">
+                        <i class="fas fa-chevron-left mr-1"></i>Prev
+                    </button>
+                    <div class="text-center">
+                        <h2 id="calendar-title" class="text-xl font-bold text-gray-800">—</h2>
+                        <p class="text-xs text-gray-500">Click a day to see who worked</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="calendarToday()" class="px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm font-medium">Today</button>
+                        <button onclick="calendarNextMonth()" class="px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm font-medium">
+                            Next<i class="fas fa-chevron-right ml-1"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow p-4">
+                <div class="grid grid-cols-7 gap-1 mb-1 text-center text-xs font-semibold text-gray-500">
+                    <div>Sat</div><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div>
+                </div>
+                <div id="calendar-grid" class="grid grid-cols-7 gap-1">
+                    <div class="col-span-7 py-12 text-center text-gray-500"><div class="loader mx-auto mb-2"></div>Loading calendar...</div>
+                </div>
+            </div>
+
+            <!-- Selected day detail -->
+            <div id="calendar-day-detail" class="bg-white rounded-xl shadow p-4 mt-6 hidden">
+                <h3 id="calendar-day-title" class="text-lg font-bold text-gray-800 mb-3"></h3>
+                <div id="calendar-day-list"></div>
+            </div>
+        </div>
+
+        <!-- Allocation Tab -->
+        <div id="content-allocation" class="hidden">
+            <!-- Date controls -->
+            <div class="bg-white rounded-xl shadow p-4 mb-4">
+                <div class="flex flex-wrap gap-4 items-end justify-between">
+                    <div class="flex flex-wrap gap-3 items-end">
+                        <div>
+                            <label class="block text-sm text-gray-500 mb-1">Allocate for day</label>
+                            <input type="date" id="alloc-date" onchange="renderAllocation()" class="border rounded-lg px-3 py-2">
+                        </div>
+                        <button onclick="allocSetDay(0)" class="px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm font-medium">Today</button>
+                        <button onclick="allocSetDay(1)" class="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">Next Day</button>
+                    </div>
+                    <button onclick="loadWorkers()" class="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">
+                        <i class="fas fa-rotate mr-1"></i>Refresh
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stale assignments warning -->
+            <div id="alloc-stale" class="hidden bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4"></div>
+
+            <!-- Allocated for the day -->
+            <div class="bg-white rounded-xl shadow overflow-hidden mb-4">
+                <div class="p-4 border-b">
+                    <h2 class="text-lg font-semibold"><i class="fas fa-clipboard-list text-blue-600 mr-2"></i><span id="alloc-day-label">Allocated jobs</span></h2>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Worker</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Client / Job Site</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Address</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Start</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Foreman</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Accepted</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Clocked</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="alloc-table" class="divide-y divide-gray-100">
+                            <tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">Loading…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Unallocated workers -->
+            <div class="bg-white rounded-xl shadow overflow-hidden">
+                <div class="p-4 border-b">
+                    <h2 class="text-lg font-semibold"><i class="fas fa-user-plus text-green-600 mr-2"></i>Not allocated for this day <span id="alloc-unassigned-count" class="text-sm font-normal text-gray-500"></span></h2>
+                </div>
+                <div id="alloc-unassigned" class="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 </div>
             </div>
         </div>
@@ -522,7 +638,11 @@
                             <option value="true">Approved only</option>
                         </select>
                     </div>
-                    <div class="ml-auto flex items-center gap-2">
+                    <div class="ml-auto flex items-center gap-3">
+                        <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none" title="Removes subtotal/total rows and uses DD/MM/YYYY dates so the file imports cleanly into MYOB">
+                            <input type="checkbox" id="inv-import-ready" class="rounded">
+                            <span>Import-ready (MYOB)</span>
+                        </label>
                         <button onclick="exportInvoicingCsv()" class="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 text-sm">
                             <i class="fas fa-file-csv mr-1"></i>Export CSV
                         </button>
@@ -709,6 +829,22 @@
         </div>
     </main>
 
+    <!-- On Site / Manual Clock-Out Modal -->
+    <div id="active-shifts-modal" class="modal">
+        <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-auto my-4">
+            <div class="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center rounded-t-2xl">
+                <div>
+                    <h2 class="text-xl font-bold"><i class="fas fa-user-clock text-green-600 mr-2"></i>Workers On Site</h2>
+                    <p class="text-gray-500 text-sm">Currently clocked in — clock anyone out manually if they forgot</p>
+                </div>
+                <button onclick="closeModal('active-shifts-modal')" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+            </div>
+            <div id="active-shifts-list" class="p-6 space-y-3">
+                <div class="py-8 text-center text-gray-500"><div class="loader mx-auto mb-2"></div>Loading…</div>
+            </div>
+        </div>
+    </div>
+
     <!-- Timesheet Detail Modal -->
     <div id="timesheet-modal" class="modal">
         <div class="bg-white rounded-2xl shadow-xl max-w-4xl w-full mx-auto my-4">
@@ -828,12 +964,19 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1">Foreman / Site Contact</label>
-                    <select id="assign-foreman-select" onchange="onForemanSelect()" class="w-full border rounded-lg px-3 py-2">
-                        <option value="">Select a foreman…</option>
+                    <select id="assign-foreman-select" onchange="onForemanSelect()" class="w-full border rounded-lg px-3 py-2 mb-2">
+                        <option value="">Pick a saved foreman… or type below</option>
                     </select>
-                    <div id="assign-foreman-detail" class="text-xs text-gray-500 mt-1"></div>
-                    <input type="hidden" id="assign-contact-name">
-                    <input type="hidden" id="assign-contact-phone">
+                    <div id="assign-foreman-detail" class="text-xs text-gray-500 mb-2"></div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <input type="text" id="assign-contact-name" placeholder="Foreman name" oninput="onForemanManualEdit()" class="w-full border rounded-lg px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <input type="tel" id="assign-contact-phone" placeholder="Mobile" oninput="onForemanManualEdit()" class="w-full border rounded-lg px-3 py-2 text-sm">
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Pick from the list to auto-fill, or type a name &amp; mobile manually.</p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1">Assignment Date *</label>
@@ -1387,7 +1530,8 @@
                 loadJobSites(),
                 loadTickets(),
                 loadInductions(),
-                loadNotificationSettings()
+                loadNotificationSettings(),
+                refreshActiveShiftsBadge()
             ]);
             document.getElementById('lastUpdated').textContent = `Updated ${new Date().toLocaleTimeString()}`;
         }
@@ -1412,6 +1556,10 @@
                 loadArchivedTimesheets();
             } else if (tab === 'invoicing') {
                 initInvoicing();
+            } else if (tab === 'calendar') {
+                initCalendar();
+            } else if (tab === 'allocation') {
+                initAllocation();
             }
         }
 
@@ -1431,6 +1579,7 @@
                 const response = await authFetch(url);
                 const data = await response.json();
                 allTimesheets = data.timesheets || [];
+                populateWeekFilter();
                 renderTimesheets();
                 updateStats();
             } catch (error) {
@@ -1538,15 +1687,48 @@
             }
         }
 
+        function weekLabel(ws, we) {
+            // e.g. "Fri 13 Jun – Thu 19 Jun 2026"
+            const opts = { weekday: 'short', day: 'numeric', month: 'short' };
+            const start = ws ? new Date(ws) : null;
+            const end = we ? new Date(we) : null;
+            const startStr = start ? start.toLocaleDateString('en-AU', opts) : '?';
+            const endStr = end ? end.toLocaleDateString('en-AU', { ...opts, year: 'numeric' }) : '?';
+            return `${startStr} – ${endStr}`;
+        }
+
+        function populateWeekFilter() {
+            const sel = document.getElementById('filter-week');
+            if (!sel) return;
+            const prev = sel.value;
+            // Distinct weeks keyed by week_starting, sorted most-recent first
+            const seen = new Map();
+            allTimesheets.forEach(ts => {
+                if (ts.week_starting && !seen.has(ts.week_starting)) {
+                    seen.set(ts.week_starting, ts.week_ending);
+                }
+            });
+            const weeks = [...seen.entries()].sort((a, b) => new Date(b[0]) - new Date(a[0]));
+            sel.innerHTML = '<option value="">All Weeks</option>' +
+                weeks.map(([ws, we]) => `<option value="${ws}">${weekLabel(ws, we)}</option>`).join('');
+            // Restore previous selection if still present
+            if (prev && seen.has(prev)) sel.value = prev;
+        }
+
         function renderTimesheets() {
             const tbody = document.getElementById('timesheets-table');
-            
-            if (allTimesheets.length === 0) {
+            const weekFilter = (document.getElementById('filter-week') || {}).value || '';
+            const groupByWeek = (document.getElementById('group-by-week') || {}).checked;
+
+            let rows = allTimesheets;
+            if (weekFilter) rows = rows.filter(ts => ts.week_starting === weekFilter);
+
+            if (rows.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">No timesheets found</td></tr>`;
                 return;
             }
 
-            tbody.innerHTML = allTimesheets.map(ts => `
+            const timesheetRow = (ts) => `
                 <tr class="hover:bg-gray-50">
                     <td class="px-4 py-3">
                         <span class="font-mono text-sm font-medium">#${ts.docket_number}</span>
@@ -1578,11 +1760,48 @@
                         </button>
                     </td>
                 </tr>
-            `).join('');
+            `;
+
+            if (!groupByWeek) {
+                tbody.innerHTML = rows.map(timesheetRow).join('');
+                return;
+            }
+
+            // Group rows by pay week (week_starting), most-recent week first
+            const groups = new Map();
+            rows.forEach(ts => {
+                const key = ts.week_starting || 'unknown';
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key).push(ts);
+            });
+            const orderedKeys = [...groups.keys()].sort((a, b) => new Date(b) - new Date(a));
+
+            tbody.innerHTML = orderedKeys.map(key => {
+                const list = groups.get(key);
+                const we = list[0].week_ending;
+                const totalHours = list.reduce((s, t) => s + (t.total_hours || 0), 0);
+                const totalOt = list.reduce((s, t) => s + (t.total_overtime_hours || 0), 0);
+                const header = `
+                    <tr class="bg-blue-50 border-t-2 border-blue-200">
+                        <td colspan="7" class="px-4 py-2">
+                            <div class="flex items-center justify-between">
+                                <span class="font-semibold text-blue-800">
+                                    <i class="fas fa-calendar-week mr-2"></i>${weekLabel(key === 'unknown' ? null : key, we)}
+                                </span>
+                                <span class="text-sm text-blue-700">
+                                    ${list.length} timesheet${list.length === 1 ? '' : 's'} ·
+                                    <span class="font-semibold">${totalHours.toFixed(1)}h</span>
+                                    <span class="text-blue-500">(${totalOt.toFixed(1)}h OT)</span>
+                                </span>
+                            </div>
+                        </td>
+                    </tr>`;
+                return header + list.map(timesheetRow).join('');
+            }).join('');
         }
 
         async function archiveLastWeek() {
-            if (!confirm('Archive all APPROVED timesheets from last pay week (Fri→Thu)?\n\nDrafts and pending stay visible. Rejected timesheets older than 14 days also get archived.\n\nThis is reversible — restore from the Archived tab anytime.')) {
+            if (!confirm('Archive all APPROVED timesheets from last pay week (Sat→Fri)?\n\nDrafts and pending stay visible. Rejected timesheets older than 14 days also get archived.\n\nThis is reversible — restore from the Archived tab anytime.')) {
                 return;
             }
             try {
@@ -2156,6 +2375,10 @@
                 populateWorkerFilter();
                 // Also populate SMS worker checkboxes
                 populateSMSWorkerSelect();
+                // Keep the Allocation view in sync if it's been initialised
+                if (document.getElementById('alloc-date') && document.getElementById('alloc-date').value) {
+                    renderAllocation();
+                }
             } catch (error) {
                 console.error('Error loading workers:', error);
             }
@@ -2331,14 +2554,14 @@
 
         let currentAssignWorkerId = null;
 
-        function assignJob(workerId, workerName) {
+        function assignJob(workerId, workerName, presetDate) {
             currentAssignWorkerId = workerId;
             document.getElementById('assign-worker-id').value = workerId;
             document.getElementById('assign-worker-name').textContent = workerName;
             
-            // Set default date to today
+            // Set default date to the preset (e.g. next day from Allocation) or today
             const today = new Date().toISOString().split('T')[0];
-            document.getElementById('assign-job-date').value = today;
+            document.getElementById('assign-job-date').value = presetDate || today;
             
             // Populate job site dropdown with GPS status
             const select = document.getElementById('assign-job-select');
@@ -2412,7 +2635,7 @@
             const detail = document.getElementById('assign-foreman-detail');
             if (!sel) return;
             const foremen = clientId ? allClientContacts.filter(c => c.client_id == clientId) : [];
-            sel.innerHTML = '<option value="">Select a foreman…</option>' +
+            sel.innerHTML = '<option value="">Pick a saved foreman… or type below</option>' +
                 foremen.map(f => `<option value="${f.id}">${f.name}${f.role ? ' (' + f.role + ')' : ''}${f.phone ? ' — ' + f.phone : ''}</option>`).join('');
             // default cleared
             document.getElementById('assign-contact-name').value = '';
@@ -2436,9 +2659,24 @@
             const sel = document.getElementById('assign-foreman-select');
             const detail = document.getElementById('assign-foreman-detail');
             const foreman = allClientContacts.find(c => c.id == sel.value);
-            document.getElementById('assign-contact-name').value = foreman ? foreman.name : '';
-            document.getElementById('assign-contact-phone').value = foreman ? (foreman.phone || '') : '';
-            if (detail) detail.textContent = foreman ? `${foreman.name}${foreman.phone ? ' — ' + foreman.phone : ''}` : '';
+            // Only overwrite the manual fields when an actual foreman is picked,
+            // so choosing the blank placeholder doesn't wipe a typed-in contact.
+            if (foreman) {
+                document.getElementById('assign-contact-name').value = foreman.name;
+                document.getElementById('assign-contact-phone').value = foreman.phone || '';
+                if (detail) detail.textContent = `${foreman.name}${foreman.phone ? ' — ' + foreman.phone : ''}`;
+            } else if (detail) {
+                detail.textContent = '';
+            }
+        }
+
+        function onForemanManualEdit() {
+            // Typing a custom contact clears the dropdown selection so it's clear
+            // the entered name/mobile is being used (not a saved foreman).
+            const sel = document.getElementById('assign-foreman-select');
+            if (sel) sel.value = '';
+            const detail = document.getElementById('assign-foreman-detail');
+            if (detail) detail.textContent = '';
         }
 
         async function submitAssignJob(event) {
@@ -4048,41 +4286,56 @@
             let lines = [];
             let filename = 'billing.csv';
             const n = (x) => (x === null || x === undefined || x === 0) ? '' : (Math.round(x * 100) / 100);
+            // Import-ready mode: data rows only (no subtotals/grand total) + DD/MM/YYYY dates
+            const importReady = document.getElementById('inv-import-ready')?.checked;
+            const auDate = (iso) => {
+                if (!iso) return '';
+                const d = new Date(iso + 'T00:00:00');
+                if (isNaN(d)) return iso;
+                return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+            };
+            const dateOut = (iso) => importReady ? auDate(iso) : iso;
             if (invoicingView === 'client') {
                 const data = invoicingData.client;
                 if (!data) return;
-                filename = `client_billing_${data.week_ending}.csv`;
+                filename = `${importReady ? 'client_billing_import' : 'client_billing'}_${data.week_ending}.csv`;
                 lines.push(['Client', 'Job_Address', 'Day', 'Date', 'Worker', 'Shift_Type', 'Role', 'Ordinary_Hours', 'OT_Hours', 'OT_Sat', 'OT_Sun', 'Total'].join(','));
                 (data.clients || []).forEach(c => {
                     c.addresses.forEach(a => {
                         a.dates.forEach(d => {
                             d.rows.forEach(r => {
-                                lines.push([c.client, a.address, d.day, d.date, r.worker, r.shift_type, r.role, n(r.ordinary), n(r.ot), n(r.ot_sat), n(r.ot_sun), n(r.total)].map(csvCell).join(','));
+                                lines.push([c.client, a.address, d.day, dateOut(d.date), r.worker, r.shift_type, r.role, n(r.ordinary), n(r.ot), n(r.ot_sat), n(r.ot_sun), n(r.total)].map(csvCell).join(','));
                             });
-                            lines.push(['', '', '', d.date + ' Total', '', '', '', n(d.totals.ordinary), n(d.totals.ot), n(d.totals.ot_sat), n(d.totals.ot_sun), n(d.totals.total)].map(csvCell).join(','));
+                            if (!importReady) lines.push(['', '', '', d.date + ' Total', '', '', '', n(d.totals.ordinary), n(d.totals.ot), n(d.totals.ot_sat), n(d.totals.ot_sun), n(d.totals.total)].map(csvCell).join(','));
                         });
-                        lines.push(['', a.address + ' Total', '', '', '', '', '', n(a.totals.ordinary), n(a.totals.ot), n(a.totals.ot_sat), n(a.totals.ot_sun), n(a.totals.total)].map(csvCell).join(','));
+                        if (!importReady) lines.push(['', a.address + ' Total', '', '', '', '', '', n(a.totals.ordinary), n(a.totals.ot), n(a.totals.ot_sat), n(a.totals.ot_sun), n(a.totals.total)].map(csvCell).join(','));
                     });
-                    lines.push([c.client + ' Total', '', '', '', '', '', '', n(c.totals.ordinary), n(c.totals.ot), n(c.totals.ot_sat), n(c.totals.ot_sun), n(c.totals.total)].map(csvCell).join(','));
+                    if (!importReady) lines.push([c.client + ' Total', '', '', '', '', '', '', n(c.totals.ordinary), n(c.totals.ot), n(c.totals.ot_sat), n(c.totals.ot_sun), n(c.totals.total)].map(csvCell).join(','));
                 });
-                const g = data.grand_total;
-                lines.push(['GRAND TOTAL', '', '', '', '', '', '', n(g.ordinary), n(g.ot), n(g.ot_sat), n(g.ot_sun), n(g.total)].map(csvCell).join(','));
+                if (!importReady) {
+                    const g = data.grand_total;
+                    lines.push(['GRAND TOTAL', '', '', '', '', '', '', n(g.ordinary), n(g.ot), n(g.ot_sat), n(g.ot_sun), n(g.total)].map(csvCell).join(','));
+                }
             } else if (invoicingView === 'worker') {
                 const data = invoicingData.worker;
                 if (!data) return;
-                filename = `worker_totals_${data.week_ending}.csv`;
+                filename = `${importReady ? 'worker_totals_import' : 'worker_totals'}_${data.week_ending}.csv`;
                 lines.push(['Worker', 'Ordinary_Hours', 'OT_Hours', 'OT_Sat', 'OT_Sun', 'Total'].join(','));
                 (data.workers || []).forEach(w => lines.push([w.worker, n(w.ordinary), n(w.ot), n(w.ot_sat), n(w.ot_sun), n(w.total)].map(csvCell).join(',')));
-                const g = data.grand_total;
-                lines.push(['GRAND TOTAL', n(g.ordinary), n(g.ot), n(g.ot_sat), n(g.ot_sun), n(g.total)].map(csvCell).join(','));
+                if (!importReady) {
+                    const g = data.grand_total;
+                    lines.push(['GRAND TOTAL', n(g.ordinary), n(g.ot), n(g.ot_sat), n(g.ot_sun), n(g.total)].map(csvCell).join(','));
+                }
             } else {
                 const data = invoicingData.payroll;
                 if (!data) return;
-                filename = `myob_payroll_${data.week_ending}.csv`;
+                filename = `${importReady ? 'myob_payroll_import' : 'myob_payroll'}_${data.week_ending}.csv`;
                 lines.push(['Worker', 'Shift_Type', 'Role', 'Ordinary_Hours', 'OT_Hours', 'OT_Sat', 'OT_Sun', 'Total'].join(','));
                 (data.rows || []).forEach(r => lines.push([r.worker, r.shift_type, r.role, n(r.ordinary), n(r.ot), n(r.ot_sat), n(r.ot_sun), n(r.total)].map(csvCell).join(',')));
-                const g = data.grand_total;
-                lines.push(['GRAND TOTAL', '', '', n(g.ordinary), n(g.ot), n(g.ot_sat), n(g.ot_sun), n(g.total)].map(csvCell).join(','));
+                if (!importReady) {
+                    const g = data.grand_total;
+                    lines.push(['GRAND TOTAL', '', '', n(g.ordinary), n(g.ot), n(g.ot_sat), n(g.ot_sun), n(g.total)].map(csvCell).join(','));
+                }
             }
             const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
@@ -4090,6 +4343,401 @@
             a.href = url; a.download = filename;
             document.body.appendChild(a); a.click(); a.remove();
             setTimeout(() => URL.revokeObjectURL(url), 1500);
+        }
+
+        // ==================== CALENDAR ====================
+
+        let calYear = null, calMonth = null; // month is 1-12
+        let calendarData = {};
+
+        function initCalendar() {
+            if (calYear === null) {
+                const now = new Date();
+                calYear = now.getFullYear();
+                calMonth = now.getMonth() + 1;
+            }
+            loadCalendar();
+        }
+
+        function calendarToday() {
+            const now = new Date();
+            calYear = now.getFullYear();
+            calMonth = now.getMonth() + 1;
+            loadCalendar();
+        }
+
+        function calendarPrevMonth() {
+            calMonth -= 1;
+            if (calMonth < 1) { calMonth = 12; calYear -= 1; }
+            loadCalendar();
+        }
+
+        function calendarNextMonth() {
+            calMonth += 1;
+            if (calMonth > 12) { calMonth = 1; calYear += 1; }
+            loadCalendar();
+        }
+
+        async function loadCalendar() {
+            const titleEl = document.getElementById('calendar-title');
+            const monthName = new Date(calYear, calMonth - 1, 1).toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
+            titleEl.textContent = monthName;
+            document.getElementById('calendar-day-detail').classList.add('hidden');
+            document.getElementById('calendar-grid').innerHTML =
+                `<div class="col-span-7 py-12 text-center text-gray-500"><div class="loader mx-auto mb-2"></div>Loading…</div>`;
+            try {
+                const response = await authFetch(`${API_BASE}/clock/admin/calendar?year=${calYear}&month=${calMonth}`);
+                const data = await response.json();
+                calendarData = data.days || {};
+                renderCalendar();
+            } catch (error) {
+                console.error('Error loading calendar:', error);
+                document.getElementById('calendar-grid').innerHTML =
+                    `<div class="col-span-7 py-12 text-center text-red-500">Error loading calendar</div>`;
+            }
+        }
+
+        function renderCalendar() {
+            const grid = document.getElementById('calendar-grid');
+            const firstOfMonth = new Date(calYear, calMonth - 1, 1);
+            const daysInMonth = new Date(calYear, calMonth, 0).getDate();
+            // Pay week starts Saturday. JS getDay(): Sun=0..Sat=6. Column index where Sat=0.
+            const colOf = (jsDay) => (jsDay + 1) % 7; // Sat->0, Sun->1, ... Fri->6
+            const leadBlanks = colOf(firstOfMonth.getDay());
+            const todayStr = new Date().toISOString().slice(0, 10);
+
+            let cells = '';
+            for (let i = 0; i < leadBlanks; i++) {
+                cells += `<div class="min-h-[84px] rounded-lg bg-gray-50"></div>`;
+            }
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${calYear}-${String(calMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                const workers = calendarData[dateStr] || [];
+                const uniqueWorkers = new Set(workers.map(w => w.worker_id)).size;
+                const openCount = workers.filter(w => w.is_open).length;
+                const isToday = dateStr === todayStr;
+                const countBadge = uniqueWorkers > 0
+                    ? `<span class="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-semibold ${openCount > 0 ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}">${uniqueWorkers} <i class="fas fa-user"></i>${openCount > 0 ? ' · ' + openCount + ' on site' : ''}</span>`
+                    : '';
+                cells += `
+                    <div onclick="showCalendarDay('${dateStr}')" class="min-h-[84px] rounded-lg border ${isToday ? 'border-blue-500 border-2' : 'border-gray-100'} p-2 cursor-pointer hover:bg-blue-50 transition ${uniqueWorkers > 0 ? '' : 'bg-white'}">
+                        <div class="text-sm font-semibold text-gray-700">${d}</div>
+                        ${countBadge}
+                    </div>`;
+            }
+            grid.innerHTML = cells;
+        }
+
+        function showCalendarDay(dateStr) {
+            const workers = calendarData[dateStr] || [];
+            const detail = document.getElementById('calendar-day-detail');
+            const title = document.getElementById('calendar-day-title');
+            const list = document.getElementById('calendar-day-list');
+            const niceDate = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+            const uniqueWorkers = new Set(workers.map(w => w.worker_id)).size;
+            title.textContent = `${niceDate} — ${uniqueWorkers} worker${uniqueWorkers === 1 ? '' : 's'}`;
+
+            if (workers.length === 0) {
+                list.innerHTML = `<p class="text-gray-500">No workers were out on this day.</p>`;
+            } else {
+                list.innerHTML = `
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase">
+                                <tr>
+                                    <th class="px-3 py-2">Worker</th>
+                                    <th class="px-3 py-2">Client</th>
+                                    <th class="px-3 py-2">Job Site</th>
+                                    <th class="px-3 py-2">In</th>
+                                    <th class="px-3 py-2">Out</th>
+                                    <th class="px-3 py-2">Hours</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                ${workers.map(w => `
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-3 py-2 font-medium">${w.worker_name}</td>
+                                        <td class="px-3 py-2">${w.client_name || '-'}</td>
+                                        <td class="px-3 py-2">${w.job_site || '-'}</td>
+                                        <td class="px-3 py-2">${formatTime(w.clock_in_time)}</td>
+                                        <td class="px-3 py-2">${w.is_open ? '<span class="text-green-600 font-medium">On site</span>' : formatTime(w.clock_out_time)}</td>
+                                        <td class="px-3 py-2">${(w.total_hours || 0).toFixed(1)}h</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>`;
+            }
+            detail.classList.remove('hidden');
+            detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        // ==================== ON SITE / MANUAL CLOCK-OUT ====================
+
+        let activeShifts = [];
+
+        async function refreshActiveShiftsBadge() {
+            try {
+                const response = await authFetch(`${API_BASE}/clock/admin/active`);
+                const data = await response.json();
+                const badge = document.getElementById('active-shifts-badge');
+                if (badge) badge.textContent = (data.count > 0) ? ` (${data.count})` : '';
+            } catch (e) { /* non-critical */ }
+        }
+
+        async function openActiveShifts() {
+            openModal('active-shifts-modal');
+            const list = document.getElementById('active-shifts-list');
+            list.innerHTML = `<div class="py-8 text-center text-gray-500"><div class="loader mx-auto mb-2"></div>Loading…</div>`;
+            try {
+                const response = await authFetch(`${API_BASE}/clock/admin/active`);
+                const data = await response.json();
+                activeShifts = data.active_shifts || [];
+                renderActiveShifts();
+                const badge = document.getElementById('active-shifts-badge');
+                if (badge) badge.textContent = (data.count > 0) ? ` (${data.count})` : '';
+            } catch (error) {
+                console.error('Error loading active shifts:', error);
+                list.innerHTML = `<p class="text-red-500 text-center py-6">Error loading active shifts</p>`;
+            }
+        }
+
+        function renderActiveShifts() {
+            const list = document.getElementById('active-shifts-list');
+            if (activeShifts.length === 0) {
+                list.innerHTML = `<div class="py-8 text-center text-gray-500">
+                    <i class="fas fa-check-circle text-3xl text-green-400 mb-2"></i>
+                    <p>No one is clocked in right now.</p>
+                </div>`;
+                return;
+            }
+            list.innerHTML = activeShifts.map(s => `
+                <div class="border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <div class="font-semibold text-gray-800">${s.worker_name}</div>
+                        <div class="text-sm text-gray-500">
+                            ${s.client_name || 'No client'}${s.job_site ? ' · ' + s.job_site : ''}
+                        </div>
+                        <div class="text-sm text-gray-500">
+                            In: ${formatTime(s.clock_in_time)} (${s.entry_date})
+                            ${s.hours_elapsed != null ? ' · <span class="font-medium">' + s.hours_elapsed + 'h elapsed</span>' : ''}
+                            ${s.assigned_end_time ? ' · ends ' + s.assigned_end_time : ''}
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="time" id="clockout-time-${s.entry_id}" class="border rounded-lg px-2 py-1.5 text-sm" title="Leave blank for now">
+                        <button onclick="adminClockOut(${s.entry_id}, '${s.worker_name.replace(/'/g, "\\'")}')" class="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium whitespace-nowrap">
+                            <i class="fas fa-sign-out-alt mr-1"></i>Clock Out
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function adminClockOut(entryId, workerName) {
+            const timeInput = document.getElementById(`clockout-time-${entryId}`);
+            const timeVal = timeInput ? timeInput.value : '';
+            const when = timeVal ? `at ${timeVal}` : 'now';
+            if (!confirm(`Clock out ${workerName} ${when}?\n\nHours will be calculated automatically (incl. 30 min unpaid break for shifts 4h+).`)) return;
+            try {
+                const response = await authFetch(`${API_BASE}/clock/admin/clock-out/${entryId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ clock_out_time: timeVal || null })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    alert(`✅ ${workerName} clocked out.\nTotal: ${data.total_hours}h (${data.overtime_hours}h OT)`);
+                    await openActiveShifts();
+                    loadTimesheets();
+                } else {
+                    alert(data.detail || 'Error clocking out');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error clocking out');
+            }
+        }
+
+        // ==================== ALLOCATION ====================
+
+        function localDateStr(offsetDays) {
+            const d = new Date();
+            d.setDate(d.getDate() + (offsetDays || 0));
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        }
+
+        function initAllocation() {
+            const dateInput = document.getElementById('alloc-date');
+            if (!dateInput.value) {
+                // Default to the next day — that's the main allocation use-case
+                dateInput.value = localDateStr(1);
+            }
+            if (allWorkers.length === 0) {
+                loadWorkers().then(renderAllocation);
+            } else {
+                renderAllocation();
+            }
+        }
+
+        function allocSetDay(offset) {
+            document.getElementById('alloc-date').value = localDateStr(offset);
+            renderAllocation();
+        }
+
+        function renderAllocation() {
+            const selDate = document.getElementById('alloc-date').value;
+            if (!selDate) return;
+            const today = localDateStr(0);
+            const niceDate = new Date(selDate + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' });
+            document.getElementById('alloc-day-label').textContent = `Allocated jobs — ${niceDate}`;
+
+            const activeWorkers = allWorkers.filter(w => w.is_active);
+            const allocated = [];
+            const unallocated = [];
+            const stale = [];
+
+            activeWorkers.forEach(w => {
+                const job = w.assigned_job;
+                if (job && job.assignment_date === selDate) {
+                    allocated.push(w);
+                } else {
+                    unallocated.push(w);
+                }
+                // Stale = a pending/declined assignment dated before today that was never clocked
+                if (job && job.assignment_date && job.assignment_date < today &&
+                    job.accepted !== true && !w.is_clocked_in) {
+                    stale.push(w);
+                }
+            });
+
+            // --- Allocated table ---
+            const tbody = document.getElementById('alloc-table');
+            if (allocated.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">No jobs allocated for this day yet. Assign workers from the list below.</td></tr>`;
+            } else {
+                allocated.sort((a, b) => {
+                    const ca = (a.assigned_job.client_name || '').toLowerCase();
+                    const cb = (b.assigned_job.client_name || '').toLowerCase();
+                    if (ca !== cb) return ca.localeCompare(cb);
+                    return `${a.first_name} ${a.surname}`.toLowerCase().localeCompare(`${b.first_name} ${b.surname}`.toLowerCase());
+                });
+                tbody.innerHTML = allocated.map(w => {
+                    const j = w.assigned_job;
+                    const accepted = j.accepted === true
+                        ? '<span class="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700"><i class="fas fa-check mr-1"></i>Yes</span>'
+                        : j.accepted === false
+                        ? '<span class="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700"><i class="fas fa-times mr-1"></i>Declined</span>'
+                        : '<span class="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700"><i class="fas fa-clock mr-1"></i>Pending</span>';
+                    const clocked = w.is_clocked_in
+                        ? '<span class="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700"><i class="fas fa-sign-in-alt mr-1"></i>In</span>'
+                        : '<span class="text-gray-400 text-xs">—</span>';
+                    const foreman = j.contact_name
+                        ? `${j.contact_name}${j.contact_phone ? '<div class="text-xs text-gray-400">' + j.contact_phone + '</div>' : ''}`
+                        : '<span class="text-gray-400">—</span>';
+                    const wname = `${w.first_name} ${w.surname}`.replace(/'/g, "\\'");
+                    return `
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-3 font-medium">${w.first_name} ${w.surname}</td>
+                            <td class="px-4 py-3">
+                                <div class="text-sm font-medium text-blue-700">${j.client_name || '-'}</div>
+                                <div class="text-xs text-gray-600">${j.job_site_name || ''}</div>
+                            </td>
+                            <td class="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate" title="${j.job_site_address || ''}">${j.job_site_address || '-'}</td>
+                            <td class="px-4 py-3 text-sm">${j.start_time || '-'}</td>
+                            <td class="px-4 py-3 text-sm">${foreman}</td>
+                            <td class="px-4 py-3">${accepted}</td>
+                            <td class="px-4 py-3">${clocked}</td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <button onclick="assignJob(${w.id}, '${wname}', '${selDate}')" class="text-orange-600 hover:text-orange-800 mr-3" title="Reassign / edit"><i class="fas fa-briefcase"></i></button>
+                                <button onclick="clearAssignmentFor(${w.id}, '${wname}')" class="text-red-600 hover:text-red-800" title="Clear assignment"><i class="fas fa-trash"></i></button>
+                            </td>
+                        </tr>`;
+                }).join('');
+            }
+
+            // --- Unallocated workers ---
+            const unEl = document.getElementById('alloc-unassigned');
+            document.getElementById('alloc-unassigned-count').textContent = `(${unallocated.length})`;
+            unallocated.sort((a, b) => `${a.first_name} ${a.surname}`.toLowerCase().localeCompare(`${b.first_name} ${b.surname}`.toLowerCase()));
+            unEl.innerHTML = unallocated.map(w => {
+                const wname = `${w.first_name} ${w.surname}`.replace(/'/g, "\\'");
+                const otherDay = (w.assigned_job && w.assigned_job.assignment_date)
+                    ? `<div class="text-xs text-gray-400">on ${w.assigned_job.assignment_date}: ${w.assigned_job.client_name || w.assigned_job.job_site_name || 'assigned'}</div>`
+                    : '';
+                return `
+                    <div class="flex items-center justify-between border rounded-lg px-3 py-2">
+                        <div>
+                            <div class="text-sm font-medium">${w.first_name} ${w.surname}</div>
+                            ${otherDay}
+                        </div>
+                        <button onclick="assignJob(${w.id}, '${wname}', '${selDate}')" class="px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 whitespace-nowrap">
+                            <i class="fas fa-plus mr-1"></i>Assign
+                        </button>
+                    </div>`;
+            }).join('') || '<p class="text-gray-500 text-sm col-span-full">All active workers are allocated for this day.</p>';
+
+            // --- Stale assignments banner ---
+            const staleEl = document.getElementById('alloc-stale');
+            if (stale.length > 0) {
+                staleEl.classList.remove('hidden');
+                staleEl.innerHTML = `
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-triangle-exclamation text-amber-500 mt-1"></i>
+                        <div class="flex-1">
+                            <p class="font-semibold text-amber-800">${stale.length} old assignment${stale.length === 1 ? '' : 's'} never accepted or clocked in</p>
+                            <p class="text-sm text-amber-700 mb-2">These are from past days and are cluttering the worker list. Edit to reschedule, or delete once handled.</p>
+                            <div class="space-y-2">
+                                ${stale.map(w => {
+                                    const wname = `${w.first_name} ${w.surname}`.replace(/'/g, "\\'");
+                                    const j = w.assigned_job;
+                                    const jobInfo = `${j.client_name || j.job_site_name || 'Assigned'}${j.start_time ? ' @ ' + j.start_time : ''}`;
+                                    return `<div class="flex items-center justify-between bg-white border border-amber-300 rounded-lg px-3 py-2">
+                                        <div>
+                                            <div class="text-sm font-medium text-gray-800">${w.first_name} ${w.surname}</div>
+                                            <div class="text-xs text-gray-500">${jobInfo} <span class="text-gray-400">(${j.assignment_date})</span></div>
+                                        </div>
+                                        <div class="flex items-center gap-2 whitespace-nowrap">
+                                            <button onclick="assignJob(${w.id}, '${wname}')" class="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-medium hover:bg-orange-200">
+                                                <i class="fas fa-pen mr-1"></i>Edit
+                                            </button>
+                                            <button onclick="clearAssignmentFor(${w.id}, '${wname}')" class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium hover:bg-red-200">
+                                                <i class="fas fa-trash mr-1"></i>Delete
+                                            </button>
+                                        </div>
+                                    </div>`;
+                                }).join('')}
+                            </div>
+                        </div>
+                    </div>`;
+            } else {
+                staleEl.classList.add('hidden');
+                staleEl.innerHTML = '';
+            }
+        }
+
+        async function clearAssignmentFor(workerId, workerName) {
+            if (!confirm(`Clear ${workerName}'s job assignment?`)) return;
+            try {
+                const response = await authFetch(`${API_BASE}/users/admin/workers/${workerId}/assign`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ job_site_id: null })
+                });
+                if (response.ok) {
+                    await loadWorkers();
+                    renderAllocation();
+                } else {
+                    const result = await response.json();
+                    alert(result.detail || 'Error clearing assignment');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error clearing assignment');
+            }
         }
 
         // ==================== UTILITIES ====================

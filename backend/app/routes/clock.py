@@ -21,7 +21,7 @@ MELBOURNE_TZ = pytz.timezone('Australia/Melbourne')
 def get_melbourne_now():
     """Get current time in Melbourne, Australia (AEST/AEDT)"""
     return datetime.now(MELBOURNE_TZ)
-from ..models import User, TimesheetEntry, Timesheet, JobSite, TimesheetStatus
+from ..models import User, TimesheetEntry, Timesheet, JobSite, Client, TimesheetStatus
 from .auth import get_current_user
 
 router = APIRouter()
@@ -746,4 +746,192 @@ async def get_clock_history(
             for e in entries
         ],
         "total_entries": len(entries)
+    }
+
+
+# ==================== ADMIN: MANUAL CLOCK-OUT ====================
+
+class AdminClockOutRequest(BaseModel):
+    """Admin manual clock-out. Time may be 'HH:MM' (applied to the entry's
+    date) or a full ISO datetime. Defaults to 'now' (Melbourne)."""
+    clock_out_time: Optional[str] = None
+    comments: Optional[str] = None
+
+
+@router.get("/admin/active")
+async def admin_list_active_shifts(db: AsyncSession = Depends(get_db)):
+    """List every worker currently clocked in (no clock-out recorded)."""
+    q = (
+        select(TimesheetEntry, Timesheet, User, JobSite, Client)
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        .join(User, Timesheet.worker_id == User.id)
+        .outerjoin(JobSite, TimesheetEntry.job_site_id == JobSite.id)
+        .outerjoin(Client, Timesheet.client_id == Client.id)
+        .where(
+            TimesheetEntry.clock_in_time.isnot(None),
+            TimesheetEntry.clock_out_time.is_(None),
+        )
+        .order_by(TimesheetEntry.clock_in_time.asc())
+    )
+    rows = (await db.execute(q)).all()
+
+    now_melb = get_melbourne_now().replace(tzinfo=None)
+    shifts = []
+    for entry, ts, user, jobsite, client in rows:
+        hours_elapsed = None
+        if entry.clock_in_time:
+            hours_elapsed = round((now_melb - entry.clock_in_time).total_seconds() / 3600, 1)
+        shifts.append({
+            "entry_id": entry.id,
+            "worker_id": user.id,
+            "worker_name": f"{user.first_name} {user.surname}",
+            "entry_date": entry.entry_date.isoformat() if entry.entry_date else None,
+            "clock_in_time": entry.clock_in_time.isoformat() if entry.clock_in_time else None,
+            "clock_in_address": entry.clock_in_address,
+            "assigned_end_time": entry.assigned_end_time,
+            "job_site": jobsite.name if jobsite else None,
+            "client_name": client.name if client else None,
+            "docket_number": ts.docket_number,
+            "hours_elapsed": hours_elapsed,
+        })
+    return {"active_shifts": shifts, "count": len(shifts)}
+
+
+@router.post("/admin/clock-out/{entry_id}")
+async def admin_clock_out(
+    entry_id: int,
+    request: AdminClockOutRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually clock a worker out (admin). Calculates hours and updates totals."""
+    result = await db.execute(select(TimesheetEntry).where(TimesheetEntry.id == entry_id))
+    entry = result.scalar_one_or_none()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Timesheet entry not found")
+    if entry.clock_in_time is None:
+        raise HTTPException(status_code=400, detail="This entry has no clock-in time")
+    if entry.clock_out_time is not None:
+        raise HTTPException(status_code=400, detail="This worker is already clocked out")
+
+    # Resolve the clock-out datetime (naive, Melbourne local)
+    if request.clock_out_time and request.clock_out_time.strip():
+        raw = request.clock_out_time.strip()
+        try:
+            if "T" in raw:
+                parsed = datetime.fromisoformat(raw.replace("Z", ""))
+                end_dt = parsed.replace(tzinfo=None)
+            else:
+                hh, mm = map(int, raw.split(":"))
+                base_date = entry.entry_date or get_melbourne_now().date()
+                end_dt = datetime.combine(base_date, datetime.min.time()).replace(hour=hh, minute=mm)
+        except (ValueError, AttributeError):
+            raise HTTPException(status_code=400, detail="Invalid clock_out_time. Use 'HH:MM' or an ISO datetime.")
+    else:
+        end_dt = get_melbourne_now().replace(tzinfo=None)
+
+    # Effective start: prefer the (possibly rounded) shift start time
+    if entry.time_start:
+        start_dt = datetime.combine(entry.entry_date, entry.time_start)
+    else:
+        start_dt = entry.clock_in_time
+
+    # Overnight guard
+    if end_dt < start_dt:
+        end_dt = end_dt + timedelta(days=1)
+
+    unpaid_break = entry.unpaid_break_minutes if entry.unpaid_break_minutes is not None else 30
+    ordinary_hours, overtime_hours, gross_hours = calculate_hours(start_dt, end_dt, unpaid_break)
+    total_hours = ordinary_hours + overtime_hours
+
+    entry.time_finish = end_dt.time()
+    entry.clock_out_time = end_dt
+    entry.clock_out_address = "Manually clocked out (admin)"
+    entry.gross_hours = gross_hours
+    entry.ordinary_hours = ordinary_hours
+    entry.overtime_hours = overtime_hours
+    entry.total_hours = total_hours
+    admin_note = "[Admin manual clock-out]"
+    if request.comments and request.comments.strip():
+        admin_note += " " + request.comments.strip()
+    entry.comments = (entry.comments + " " + admin_note).strip() if entry.comments else admin_note
+
+    # Recompute timesheet totals
+    ts_result = await db.execute(select(Timesheet).where(Timesheet.id == entry.timesheet_id))
+    timesheet = ts_result.scalar_one()
+    entries_result = await db.execute(
+        select(TimesheetEntry).where(TimesheetEntry.timesheet_id == timesheet.id)
+    )
+    all_entries = entries_result.scalars().all()
+    timesheet.total_ordinary_hours = sum(e.ordinary_hours or 0 for e in all_entries)
+    timesheet.total_overtime_hours = sum(e.overtime_hours or 0 for e in all_entries)
+    timesheet.total_hours = timesheet.total_ordinary_hours + timesheet.total_overtime_hours
+
+    await db.commit()
+
+    return {
+        "message": "Worker manually clocked out",
+        "entry_id": entry.id,
+        "docket_number": timesheet.docket_number,
+        "clock_out_time": end_dt.isoformat(),
+        "gross_hours": gross_hours,
+        "ordinary_hours": ordinary_hours,
+        "overtime_hours": overtime_hours,
+        "total_hours": total_hours,
+        "weekly_total": timesheet.total_hours,
+    }
+
+
+# ==================== ADMIN: CALENDAR ====================
+
+@router.get("/admin/calendar")
+async def admin_calendar(
+    year: int,
+    month: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return, for each day in the month, the workers who had shifts that day."""
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="month must be 1-12")
+    start = date(year, month, 1)
+    if month == 12:
+        end = date(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        end = date(year, month + 1, 1) - timedelta(days=1)
+
+    q = (
+        select(TimesheetEntry, Timesheet, User, JobSite, Client)
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        .join(User, Timesheet.worker_id == User.id)
+        .outerjoin(JobSite, TimesheetEntry.job_site_id == JobSite.id)
+        .outerjoin(Client, Timesheet.client_id == Client.id)
+        .where(
+            TimesheetEntry.entry_date >= start,
+            TimesheetEntry.entry_date <= end,
+        )
+        .order_by(TimesheetEntry.entry_date.asc(), User.first_name.asc())
+    )
+    rows = (await db.execute(q)).all()
+
+    days: dict[str, list] = {}
+    for entry, ts, user, jobsite, client in rows:
+        key = entry.entry_date.isoformat()
+        days.setdefault(key, []).append({
+            "entry_id": entry.id,
+            "worker_id": user.id,
+            "worker_name": f"{user.first_name} {user.surname}",
+            "job_site": jobsite.name if jobsite else None,
+            "client_name": client.name if client else None,
+            "clock_in_time": entry.clock_in_time.isoformat() if entry.clock_in_time else None,
+            "clock_out_time": entry.clock_out_time.isoformat() if entry.clock_out_time else None,
+            "total_hours": entry.total_hours or 0,
+            "status": ts.status.value if hasattr(ts.status, "value") else str(ts.status),
+            "is_open": entry.clock_in_time is not None and entry.clock_out_time is None,
+        })
+
+    return {
+        "year": year,
+        "month": month,
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "days": days,
     }

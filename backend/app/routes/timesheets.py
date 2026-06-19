@@ -250,7 +250,7 @@ async def archive_prior_pay_week(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Archive APPROVED timesheets from the prior RAW pay week (Friday → Thursday).
+    Archive APPROVED timesheets from the prior RAW pay week (Saturday → Friday).
     Drafts and pending stay visible (still need action).
     Rejected timesheets older than 14 days also get archived.
     Called manually via dashboard button OR weekly by the scheduler.

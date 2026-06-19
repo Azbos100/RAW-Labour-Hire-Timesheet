@@ -32,24 +32,34 @@
 > - MYOB plumbing partly scaffolded already: `MYOBSettings`, `MYOBExport`,
 >   `Client.myob_customer_id`, and billing-rate fields exist.
 
-### 1. Tickets tab
-- [ ] 1a. **Ticket-type search dropdown** — filter workers by a ticket type (e.g. Forklift) so phone enquiries are instant, instead of scrolling all tickets.
-- [ ] 1b. **Add Excavator + Bobcat** ticket types (today only "Other" covers them). Make the seeder top-up missing types on the live DB + add a "manage ticket types" control to add more later.
-- [ ] 1c. **Save/download ticket images** to computer/hard drive (front/back, plus "download all for a worker").
+### 1. Tickets tab  — DONE & LIVE (verified 19 Jun 2026)
+- [x] 1a. **Ticket-type search dropdown** — "Ticket Type" filter on the Tickets tab (uses `/api/tickets/admin/all?ticket_type_id=`).
+- [x] 1b. **Add Excavator + Bobcat** ticket types — both seeded live (ids 12 & 13); "Add type" button adds more (`/api/tickets/admin/types`, reactivates an inactive match).
+- [x] 1c. **Save/download ticket images** — per-image "Download front/back" in the ticket modal + "Download images" (all in current filter), sensible filenames `Worker_Type_side.ext`.
 
-### 2. Timesheets
-- [ ] 2a. **Sort/group timesheets by week** so weekly invoicing isn't a mess.
+### 2. Timesheets — DONE & LIVE (19 Jun 2026)
+- [x] 2a. **Sort/group timesheets by week** — Timesheets tab now has a "Pay Week (Sat→Fri)"
+  dropdown + "Group by week" toggle with per-week hour/OT subtotals. Works alongside the
+  Status/Worker filters.
 
-### 3. Calendar
-- [ ] 3a. **New calendar tab** — month grid; click a day → see how many and which workers were out, and their sites.
+### 3. Calendar — DONE & LIVE (19 Jun 2026)
+- [x] 3a. **New calendar tab** — month grid laid out Sat→Fri; each day shows worker count
+  (green if anyone still on site); click a day → table of worker/client/site/in-out/hours.
+  Backed by `GET /api/clock/admin/calendar?year&month`.
 
 ### 4. Allocation
 - [x] 4a. **Site-contacts dropdown** — foreman names + phone numbers saved per company, reusable.
   BUILT & LIVE: manage foremen under the Clients tab (new `client_contacts` table);
   Assign Job modal has a Foreman dropdown filtered to the job site's client; selected
   contact is stored on the assignment, shown in the worker list, and added to the assignment SMS.
-- [ ] 4b. **Separate "next-day jobs" allocation section** (not jumbled into Workers); shows each day's dockets with clocked/accepted status; lets you clear stale old pending assignments.
-- [ ] 4c. **End-of-week dockets auto-grouped Client → Address**, ready for invoicing.
+- [x] 4b. **Separate "next-day jobs" allocation section** — new **Allocation tab** (defaults to
+  Next Day). Shows only that day's allocated jobs (worker/client/site/address/start/foreman/
+  accepted/clocked), an "Assign" list of unallocated workers, and an amber banner of stale old
+  assignments (pending, past-dated, never clocked) each with **Edit** + **Delete** buttons.
+  Built client-side off `/api/users/admin/workers`. DONE & LIVE 19 Jun 2026.
+- [x] 4c. **End-of-week dockets auto-grouped Client → Address** — already delivered by the
+  Invoicing tab's Client Billing view (`/api/billing/client-billing`, Client → Address → Date →
+  Worker with subtotals + CSV).
 
 ### 5. Invoicing / Excel-database replication → MYOB (headline)
 
@@ -67,9 +77,23 @@ ending in a MYOB push. Sheets to reproduce as admin views (all filtered by Week_
 - [x] 5c. **MYOB_Payroll view** — Worker → Shift_Type → Role → summed hours.
   (BUILT — `/api/billing/myob-payroll`.)
 - [x] 5d. **Weekly CSV export** of each view in the spreadsheet column layout (opens in Excel).
-  (BUILT — "Export CSV" button.)
-- [ ] 5e. **MYOB API integration** — generate invoices (Client_Billing) and optionally payroll
-  from this data. `MYOBSettings`/`MYOBExport`/`Client.myob_customer_id` already scaffolded. (PENDING — MYOB not connected yet.)
+  (BUILT — "Export CSV" button.) Plus an **"Import-ready (MYOB)"** checkbox that strips
+  subtotal/total rows and uses DD/MM/YYYY dates so the file imports cleanly into MYOB.
+- [ ] 5e. **MYOB live API push** — PARKED by owner decision 19 Jun 2026. Owner uses
+  **MYOB Business** (not AccountRight) and is happy with CSV import for now. When ready to go live:
+  1. Register an app at **developer.myob.com** → get Client ID & Secret (owner action).
+  2. **Rework `myob.py` for MYOB Business** — current scaffold targets AccountRight
+     (`api.myob.com/accountright`); MYOB Business uses a different API base + invoice/payroll
+     resource structure.
+  3. **Fix OAuth callback auth gate:** `/api/myob` is in `_ADMIN_PREFIXES` in `main.py`, but the
+     `GET /api/myob/callback` redirect from MYOB carries no token → must be made public
+     (add to `_PUBLIC_PREFIXES`, keep the rest admin-only).
+  4. Set `MYOB_REDIRECT_URI=https://admin.rawlabourhire.com/api/myob/callback` in the server `.env`
+     and register the same URI in the MYOB app.
+  5. Enter **worker pay rates** + **client billing rates** (admin UI for this still TODO) so $ amounts compute.
+  6. **Link** each worker → MYOB employee UID and each client → MYOB customer UID.
+  7. Build the **admin "Connect to MYOB" screen** (drives `/api/myob/credentials`, `/auth-url`,
+     `/company-files`, `/select-company-file`, `/export`).
 - [ ] 5f. Invoice-number field per client block (entry + save) once MYOB flow is decided.
 - [ ] 5g. Verify on live deploy with real data; confirm Job_Address mapping (job_site vs clock-in address) reads well.
 
@@ -85,8 +109,14 @@ ending in a MYOB push. Sheets to reproduce as admin views (all filtered by Week_
 whether to add the missing columns (needs a one-off Postgres migration) or derive on the fly,
 and MYOB connection status (credentials set up yet?).
 
-### 6. Clock management
-- [ ] 6a. **Manual clock-out from admin** — one-click "Clock out now" for a worker still on the clock (sets clock-out time, recalculates hours, optional note). Note: admins can already fix a forgotten clock-out by editing the entry's Clock-Out Date/Time in the timesheet edit modal — this adds the quick live button.
+### 6. Clock management — DONE & LIVE (19 Jun 2026)
+- [x] 6a. **Manual clock-out from admin** — green **"On Site"** button on the Timesheets tab
+  (with live count badge) opens a panel of everyone currently clocked in; clock any of them out
+  now or at a typed HH:MM. Recalculates hours (incl. 30-min unpaid break for 4h+ shifts) and
+  updates timesheet totals. Backed by `GET /api/clock/admin/active` +
+  `POST /api/clock/admin/clock-out/{entry_id}`.
+  > Cleanup note: 15 workers were found stuck "clocked in" from as far back as January — use the
+  > On Site panel to clock them out with the correct finish time.
 
 ### Open decisions before building invoicing
 - **OT split rule**: how Sat/Sun and over-8h hours fill `OT_Sat / OT_Sun / OT`, and what defines `Shift_Type` (Day/Night). Affects billing accuracy.
