@@ -1,5 +1,22 @@
 # RAW Timesheet — To Do
 
+## Operational notes (read first)
+
+> Updated 19 Jun 2026.
+
+- **Where it runs:** everything (admin site + API + Postgres) is on the
+  **DigitalOcean** server at `admin.rawlabourhire.com`. The old **Railway**
+  deployment is retired — do not point anything at it. (Keep Railway running
+  only until all staff have moved to the new app builds, then it can be shut down.)
+- **⚠️ Staff must log out & log back in after updating the app.** When staff
+  update to iOS build 21+ (or the latest Android APK), their old saved login
+  (from the previous server) is rejected and they'll see *"Invalid or expired
+  token"* / can't clock in. Fix: **Profile → Log Out → log back in**. Add this
+  line to the TestFlight "What to Test" notes and any staff message.
+- **Login is rate-limited:** 10 failed attempts from one IP within 10 min →
+  that IP is locked out for 10 min (429). Per-IP, so one bad actor can't lock
+  out real staff. In-memory (resets on backend restart).
+
 ## Admin page — feature backlog (staff requests + MYOB invoicing)
 
 > Captured 19 Jun 2026 from staff recommendations. Headline goal: replicate the
@@ -8,7 +25,7 @@
 > to **MYOB** to auto-generate the weekly invoices.
 >
 > Tech constraints found in the codebase:
-> - Prod = **Postgres on Railway**, tables auto-create via `Base.metadata.create_all`
+> - Prod = **Postgres on the DigitalOcean server**, tables auto-create via `Base.metadata.create_all`
 >   (no Alembic). New *tables* appear automatically on deploy; new *columns* on
 >   existing tables need a one-off migration script. Ticket-type seeding only runs
 >   on an empty DB — must top-up missing types so they show on the live DB.

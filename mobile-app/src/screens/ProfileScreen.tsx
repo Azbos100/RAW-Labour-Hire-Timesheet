@@ -19,9 +19,15 @@ import {
   Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Application from 'expo-application';
 import { COLORS } from '../constants/colors';
 import { useAuth } from '../context/AuthContext';
 import { profileAPI } from '../services/api';
+
+// Real app version + build number read from the installed binary, e.g. "Version 1.0.0 (21)".
+const APP_VERSION = `Version ${Application.nativeApplicationVersion ?? '1.0.0'}${
+  Application.nativeBuildVersion ? ` (${Application.nativeBuildVersion})` : ''
+}`;
 
 interface ExtendedUser {
   id: number;
@@ -504,7 +510,7 @@ export default function ProfileScreen() {
           <MenuItem
             icon="information-circle-outline"
             title="About"
-            subtitle="Version 1.0.0"
+            subtitle={APP_VERSION}
             showArrow={false}
           />
         </View>

@@ -2,7 +2,7 @@
 RAW Labour Hire - Authentication API
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -69,6 +69,55 @@ class UserResponse(BaseModel):
     phone: Optional[str]
     role: str
     is_active: bool
+
+
+# === Login throttling (anti brute-force / credential stuffing) ===
+# Simple in-memory per-IP throttle. Per-process and resets on restart, which is
+# fine for a single-worker deployment: enough to stop bots hammering /login
+# without locking out legitimate staff (incl. several behind one office NAT).
+import time as _time
+
+_LOGIN_MAX_FAILS = 10      # failures allowed within the window before lockout
+_LOGIN_WINDOW = 600        # rolling window in seconds (10 min)
+_LOGIN_LOCKOUT = 600       # lockout duration once exceeded (10 min)
+_login_fails: dict = {}
+_login_locked: dict = {}
+
+
+def _client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _check_login_throttle(request: Request) -> str:
+    """Raise 429 if this IP is currently locked out; otherwise return the IP."""
+    ip = _client_ip(request)
+    locked_until = _login_locked.get(ip)
+    if locked_until and _time.time() < locked_until:
+        retry = int(locked_until - _time.time())
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Please wait a few minutes and try again.",
+            headers={"Retry-After": str(max(retry, 1))},
+        )
+    return ip
+
+
+def _record_login_failure(ip: str) -> None:
+    now = _time.time()
+    fails = [t for t in _login_fails.get(ip, []) if now - t < _LOGIN_WINDOW]
+    fails.append(now)
+    _login_fails[ip] = fails
+    if len(fails) >= _LOGIN_MAX_FAILS:
+        _login_locked[ip] = now + _LOGIN_LOCKOUT
+        _login_fails[ip] = []
+
+
+def _record_login_success(ip: str) -> None:
+    _login_fails.pop(ip, None)
+    _login_locked.pop(ip, None)
 
 
 # === Helper Functions ===
@@ -172,14 +221,17 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
 
 @router.post("/login", response_model=Token)
 async def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db)
 ):
     """Login and get access token"""
+    ip = _check_login_throttle(request)
     result = await db.execute(select(User).where(User.email == form_data.username))
     user = result.scalar_one_or_none()
     
     if not user or not verify_password(form_data.password, user.hashed_password):
+        _record_login_failure(ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -192,6 +244,7 @@ async def login(
             detail="Account is disabled"
         )
     
+    _record_login_success(ip)
     access_token = create_access_token(
         data={"sub": str(user.id)},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -493,14 +546,16 @@ class AdminLogin(BaseModel):
 
 
 @router.post("/admin/login")
-async def admin_login(data: AdminLogin):
+async def admin_login(data: AdminLogin, request: Request):
     """Login endpoint for admin dashboard"""
+    ip = _check_login_throttle(request)
     # Get admin credentials from environment variables
     # Default credentials for development - CHANGE IN PRODUCTION
     admin_username = os.getenv("ADMIN_USERNAME", "admin")
     admin_password = os.getenv("ADMIN_PASSWORD", "RAWadmin2024!")
     
     if data.username == admin_username and data.password == admin_password:
+        _record_login_success(ip)
         # Generate a simple token
         token = jwt.encode(
             {
@@ -517,6 +572,7 @@ async def admin_login(data: AdminLogin):
             "username": admin_username
         }
     
+    _record_login_failure(ip)
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid username or password"
