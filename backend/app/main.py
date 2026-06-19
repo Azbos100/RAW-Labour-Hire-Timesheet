@@ -164,6 +164,14 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Migration note (assignment contact): {e}")
 
+        # Required tickets/certifications per job site (JSON list of ticket_type ids)
+        try:
+            await conn.execute(text("""
+                ALTER TABLE job_sites ADD COLUMN IF NOT EXISTS required_ticket_type_ids TEXT;
+            """))
+        except Exception as e:
+            print(f"Migration note (job site required tickets): {e}")
+
     # Seed a default client/job site if none exist
     async with AsyncSessionLocal() as session:
         result = await session.execute(

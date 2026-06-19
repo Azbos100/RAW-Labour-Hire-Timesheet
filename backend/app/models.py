@@ -199,7 +199,10 @@ class JobSite(Base):
     latitude = Column(Float)
     longitude = Column(Float)
     geofence_radius = Column(Integer, default=100)  # meters
-    
+
+    # Tickets/certifications required to work this site (JSON list of ticket_type ids)
+    required_ticket_type_ids = Column(Text)  # e.g. "[3, 7]"
+
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     

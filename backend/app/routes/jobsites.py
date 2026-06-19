@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
+import json
 
 from ..database import get_db
 from ..models import Client, JobSite
@@ -23,6 +24,18 @@ class JobSiteCreate(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     geofence_radius: int = 100
+    required_ticket_type_ids: Optional[List[int]] = None
+
+
+def _parse_required_tickets(raw) -> list:
+    """Parse the stored JSON list of required ticket type ids."""
+    if not raw:
+        return []
+    try:
+        val = json.loads(raw)
+        return [int(x) for x in val] if isinstance(val, list) else []
+    except (ValueError, TypeError):
+        return []
 
 
 @router.get("")
@@ -50,6 +63,7 @@ async def list_all_job_sites(
                 "latitude": s.latitude,
                 "longitude": s.longitude,
                 "geofence_radius": s.geofence_radius,
+                "required_ticket_type_ids": _parse_required_tickets(s.required_ticket_type_ids),
                 "is_active": s.is_active
             }
             for s, c in rows
@@ -77,7 +91,8 @@ async def create_job_site(
         contact_phone=site_data.contact_phone,
         latitude=site_data.latitude,
         longitude=site_data.longitude,
-        geofence_radius=site_data.geofence_radius
+        geofence_radius=site_data.geofence_radius,
+        required_ticket_type_ids=json.dumps(site_data.required_ticket_type_ids or [])
     )
     db.add(site)
     await db.commit()
@@ -150,6 +165,8 @@ async def update_job_site(
     site.latitude = site_data.latitude
     site.longitude = site_data.longitude
     site.geofence_radius = site_data.geofence_radius
+    if site_data.required_ticket_type_ids is not None:
+        site.required_ticket_type_ids = json.dumps(site_data.required_ticket_type_ids)
     
     await db.commit()
     

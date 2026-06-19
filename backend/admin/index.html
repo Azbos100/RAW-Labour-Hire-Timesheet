@@ -316,6 +316,23 @@
                         <i class="fas fa-rotate mr-1"></i>Refresh
                     </button>
                 </div>
+                <!-- Required tickets filter -->
+                <div class="border-t mt-4 pt-3">
+                    <div class="flex flex-wrap items-center gap-3">
+                        <label class="text-sm text-gray-500">Job site:</label>
+                        <select id="alloc-site-select" onchange="allocApplySiteTickets(this.value)" class="border rounded-lg px-3 py-2 text-sm min-w-[200px]">
+                            <option value="">— Pick a site to load its tickets —</option>
+                        </select>
+                        <span class="text-gray-300">|</span>
+                        <label class="text-sm text-gray-500">Required tickets:</label>
+                        <select id="alloc-req-ticket-add" onchange="allocAddRequiredTicket(this.value)" class="border rounded-lg px-3 py-2 text-sm">
+                            <option value="">+ Add manually…</option>
+                        </select>
+                        <div id="alloc-req-chips" class="flex flex-wrap gap-2"></div>
+                        <span id="alloc-qualified-note" class="text-xs text-gray-400"></span>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Pick a job site to auto-load the tickets it requires (set on the site under Clients &amp; Job Sites), or add tickets manually. Only staff holding all listed tickets show in "Not allocated".</p>
+                </div>
             </div>
 
             <!-- Stale assignments warning -->
@@ -1337,6 +1354,20 @@
                     <label class="block text-sm font-medium mb-1">Site Contact Phone</label>
                     <input type="tel" name="contact_phone" id="add-jobsite-contact-phone" class="w-full border rounded-lg px-3 py-2">
                 </div>
+                <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                    <input type="checkbox" id="add-jobsite-save-foreman" checked class="rounded">
+                    <span>Also save this foreman to the client's list (for next time)</span>
+                </label>
+
+                <!-- Required tickets for this site -->
+                <div class="border-t pt-4 mt-4">
+                    <label class="block text-sm font-medium mb-1"><i class="fas fa-id-card text-blue-600 mr-1"></i>Required tickets for this site</label>
+                    <select id="add-jobsite-req-ticket-add" onchange="jobsiteAddRequiredTicket('add', this.value)" class="w-full border rounded-lg px-3 py-2 text-sm">
+                        <option value="">+ Add a required ticket…</option>
+                    </select>
+                    <div id="add-jobsite-req-chips" class="flex flex-wrap gap-2 mt-2"></div>
+                    <p class="text-xs text-gray-400 mt-1">Staff allocated to this site will be filtered to those holding these tickets.</p>
+                </div>
                 
                 <!-- GPS Coordinates Section -->
                 <div class="border-t pt-4 mt-4">
@@ -1410,6 +1441,20 @@
                 <div>
                     <label class="block text-sm font-medium mb-1">Site Contact Phone</label>
                     <input type="tel" name="contact_phone" id="edit-jobsite-contact-phone" class="w-full border rounded-lg px-3 py-2">
+                </div>
+                <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                    <input type="checkbox" id="edit-jobsite-save-foreman" checked class="rounded">
+                    <span>Also save this foreman to the client's list (for next time)</span>
+                </label>
+
+                <!-- Required tickets for this site -->
+                <div class="border-t pt-4 mt-4">
+                    <label class="block text-sm font-medium mb-1"><i class="fas fa-id-card text-blue-600 mr-1"></i>Required tickets for this site</label>
+                    <select id="edit-jobsite-req-ticket-add" onchange="jobsiteAddRequiredTicket('edit', this.value)" class="w-full border rounded-lg px-3 py-2 text-sm">
+                        <option value="">+ Add a required ticket…</option>
+                    </select>
+                    <div id="edit-jobsite-req-chips" class="flex flex-wrap gap-2 mt-2"></div>
+                    <p class="text-xs text-gray-400 mt-1">Staff allocated to this site will be filtered to those holding these tickets.</p>
                 </div>
                 
                 <!-- GPS Coordinates Section -->
@@ -3228,9 +3273,13 @@
             }
         }
 
-        function openAddJobSiteModal() {
+        async function openAddJobSiteModal() {
             document.getElementById('add-jobsite-form').reset();
             populateJobsiteForemen('add', null);
+            await ensureTicketTypesLoaded();
+            jobsiteReqTickets.add = [];
+            populateJobsiteTicketDropdown('add');
+            renderJobsiteReqChips('add');
             openModal('add-jobsite-modal');
         }
 
@@ -3262,18 +3311,100 @@
             }
         }
 
+        // ---- Job site required tickets (chips) ----
+        let jobsiteReqTickets = { add: [], edit: [] };
+
+        async function ensureTicketTypesLoaded() {
+            if (allTicketTypes.length === 0) {
+                try {
+                    const res = await authFetch(`${API_BASE}/tickets/types`);
+                    const data = await res.json();
+                    allTicketTypes = data.ticket_types || [];
+                } catch (e) { /* non-critical */ }
+            }
+        }
+
+        function populateJobsiteTicketDropdown(mode) {
+            const sel = document.getElementById(`${mode}-jobsite-req-ticket-add`);
+            if (!sel) return;
+            const selected = jobsiteReqTickets[mode] || [];
+            const available = [...allTicketTypes].sort((a, b) => a.name.localeCompare(b.name));
+            sel.innerHTML = '<option value="">+ Add a required ticket…</option>' +
+                available.filter(t => !selected.includes(t.id))
+                    .map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+        }
+
+        function renderJobsiteReqChips(mode) {
+            const el = document.getElementById(`${mode}-jobsite-req-chips`);
+            if (!el) return;
+            el.innerHTML = (jobsiteReqTickets[mode] || []).map(id => {
+                const t = allTicketTypes.find(x => x.id === id);
+                const name = t ? t.name : ('#' + id);
+                return `<span class="inline-flex items-center gap-1 bg-blue-100 text-blue-800 rounded-full px-3 py-1 text-xs font-medium">
+                    ${name}
+                    <button type="button" onclick="jobsiteRemoveRequiredTicket('${mode}', ${id})" class="text-blue-500 hover:text-blue-700"><i class="fas fa-times"></i></button>
+                </span>`;
+            }).join('');
+        }
+
+        function jobsiteAddRequiredTicket(mode, value) {
+            const id = parseInt(value);
+            if (id && !jobsiteReqTickets[mode].includes(id)) {
+                jobsiteReqTickets[mode].push(id);
+            }
+            populateJobsiteTicketDropdown(mode);
+            renderJobsiteReqChips(mode);
+        }
+
+        function jobsiteRemoveRequiredTicket(mode, id) {
+            jobsiteReqTickets[mode] = jobsiteReqTickets[mode].filter(t => t !== id);
+            populateJobsiteTicketDropdown(mode);
+            renderJobsiteReqChips(mode);
+        }
+
+        // If the "save foreman to client's list" box is ticked and the typed
+        // contact isn't already saved for this client, create it so it can be
+        // pulled from the dropdown next time.
+        async function maybeSaveForemanToClient(mode, clientId) {
+            const checkbox = document.getElementById(`${mode}-jobsite-save-foreman`);
+            if (!checkbox || !checkbox.checked || !clientId) return;
+            const name = (document.getElementById(`${mode}-jobsite-contact-name`)?.value || '').trim();
+            const phone = (document.getElementById(`${mode}-jobsite-contact-phone`)?.value || '').trim();
+            if (!name) return;
+            const exists = allClientContacts.some(c =>
+                c.client_id == clientId && (c.name || '').trim().toLowerCase() === name.toLowerCase());
+            if (exists) return;
+            try {
+                await authFetch(`${API_BASE}/clients/${clientId}/contacts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, phone, role: 'Foreman' })
+                });
+                // Refresh the in-memory contacts so the new foreman is available immediately
+                const cres = await authFetch(`${API_BASE}/clients/contacts/all`).catch(() => null);
+                if (cres) {
+                    const cdata = await cres.json();
+                    allClientContacts = cdata.contacts || [];
+                }
+            } catch (e) { /* non-blocking — site still saves */ }
+        }
+
         async function submitAddJobSite(event) {
             event.preventDefault();
             const form = event.target;
             const formData = new FormData(form);
             const data = Object.fromEntries(formData.entries());
             data.client_id = parseInt(data.client_id);
+            data.required_ticket_type_ids = jobsiteReqTickets.add;
             
             // Handle GPS coordinates
             if (data.latitude) data.latitude = parseFloat(data.latitude);
             else delete data.latitude;
             if (data.longitude) data.longitude = parseFloat(data.longitude);
             else delete data.longitude;
+
+            // Optionally persist a newly-typed foreman to the client's list
+            await maybeSaveForemanToClient('add', data.client_id);
 
             try {
                 const response = await authFetch(`${API_BASE}/jobsites/`, {
@@ -3316,9 +3447,13 @@
             }
         }
 
-        function editJobSite(jobsiteId) {
+        async function editJobSite(jobsiteId) {
             const js = allJobSites.find(s => s.id === jobsiteId);
             if (!js) return;
+            await ensureTicketTypesLoaded();
+            jobsiteReqTickets.edit = Array.isArray(js.required_ticket_type_ids) ? [...js.required_ticket_type_ids] : [];
+            populateJobsiteTicketDropdown('edit');
+            renderJobsiteReqChips('edit');
             
             // Populate client dropdown
             const select = document.getElementById('edit-jobsite-client');
@@ -3357,6 +3492,10 @@
             const data = Object.fromEntries(formData.entries());
             delete data.jobsite_id;
             data.client_id = parseInt(data.client_id) || null;
+            data.required_ticket_type_ids = jobsiteReqTickets.edit;
+
+            // Optionally persist a newly-typed foreman to the client's list
+            await maybeSaveForemanToClient('edit', data.client_id);
             
             // Handle GPS coordinates
             if (data.latitude) data.latitude = parseFloat(data.latitude);
@@ -4612,17 +4751,113 @@
             return `${y}-${m}-${day}`;
         }
 
-        function initAllocation() {
+        let allocRequiredTickets = []; // array of ticket_type_id (numbers)
+
+        async function initAllocation() {
             const dateInput = document.getElementById('alloc-date');
             if (!dateInput.value) {
                 // Default to the next day — that's the main allocation use-case
                 dateInput.value = localDateStr(1);
             }
+            // Make sure ticket data is available for the required-tickets filter
+            if (allTicketTypes.length === 0) {
+                try {
+                    const res = await authFetch(`${API_BASE}/tickets/types`);
+                    const data = await res.json();
+                    allTicketTypes = data.ticket_types || [];
+                } catch (e) { /* non-critical */ }
+            }
+            if (allTickets.length === 0) {
+                try { await loadTickets(); } catch (e) { /* non-critical */ }
+            }
+            populateAllocTicketDropdown();
+            populateAllocSiteDropdown();
             if (allWorkers.length === 0) {
                 loadWorkers().then(renderAllocation);
             } else {
                 renderAllocation();
             }
+        }
+
+        function populateAllocTicketDropdown() {
+            const sel = document.getElementById('alloc-req-ticket-add');
+            if (!sel) return;
+            const available = [...allTicketTypes].sort((a, b) => a.name.localeCompare(b.name));
+            sel.innerHTML = '<option value="">+ Add manually…</option>' +
+                available.filter(t => !allocRequiredTickets.includes(t.id))
+                    .map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+        }
+
+        function populateAllocSiteDropdown() {
+            const sel = document.getElementById('alloc-site-select');
+            if (!sel) return;
+            const sites = (allJobSites || []).filter(s => s.is_active)
+                .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            const prev = sel.value;
+            sel.innerHTML = '<option value="">— Pick a site to load its tickets —</option>' +
+                sites.map(s => {
+                    const reqCount = (s.required_ticket_type_ids || []).length;
+                    const tag = reqCount ? ` (${reqCount} ticket${reqCount === 1 ? '' : 's'})` : '';
+                    return `<option value="${s.id}">${s.name}${s.client_name ? ' — ' + s.client_name : ''}${tag}</option>`;
+                }).join('');
+            sel.value = prev;
+        }
+
+        function allocApplySiteTickets(siteId) {
+            const site = (allJobSites || []).find(s => String(s.id) === String(siteId));
+            allocRequiredTickets = site && Array.isArray(site.required_ticket_type_ids)
+                ? [...site.required_ticket_type_ids] : [];
+            populateAllocTicketDropdown();
+            renderAllocReqChips();
+            renderAllocation();
+        }
+
+        function allocAddRequiredTicket(value) {
+            const id = parseInt(value);
+            if (id && !allocRequiredTickets.includes(id)) {
+                allocRequiredTickets.push(id);
+            }
+            populateAllocTicketDropdown();
+            renderAllocReqChips();
+            renderAllocation();
+        }
+
+        function allocRemoveRequiredTicket(id) {
+            allocRequiredTickets = allocRequiredTickets.filter(t => t !== id);
+            populateAllocTicketDropdown();
+            renderAllocReqChips();
+            renderAllocation();
+        }
+
+        function renderAllocReqChips() {
+            const el = document.getElementById('alloc-req-chips');
+            if (!el) return;
+            el.innerHTML = allocRequiredTickets.map(id => {
+                const t = allTicketTypes.find(x => x.id === id);
+                const name = t ? t.name : ('#' + id);
+                return `<span class="inline-flex items-center gap-1 bg-blue-100 text-blue-800 rounded-full px-3 py-1 text-xs font-medium">
+                    ${name}
+                    <button onclick="allocRemoveRequiredTicket(${id})" class="text-blue-500 hover:text-blue-700"><i class="fas fa-times"></i></button>
+                </span>`;
+            }).join('');
+        }
+
+        function buildWorkerTicketMap() {
+            // worker_id -> Set of non-expired ticket_type_id they hold
+            const map = {};
+            (allTickets || []).forEach(t => {
+                if (t.is_expired) return;
+                if (!map[t.user_id]) map[t.user_id] = new Set();
+                map[t.user_id].add(t.ticket_type_id);
+            });
+            return map;
+        }
+
+        function workerHasRequiredTickets(workerId, ticketMap) {
+            if (allocRequiredTickets.length === 0) return true;
+            const held = ticketMap[workerId];
+            if (!held) return false;
+            return allocRequiredTickets.every(id => held.has(id));
         }
 
         function allocSetDay(offset) {
@@ -4637,6 +4872,7 @@
             const niceDate = new Date(selDate + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' });
             document.getElementById('alloc-day-label').textContent = `Allocated jobs — ${niceDate}`;
 
+            const ticketMap = buildWorkerTicketMap();
             const activeWorkers = allWorkers.filter(w => w.is_active);
             const allocated = [];
             const unallocated = [];
@@ -4681,9 +4917,12 @@
                         ? `${j.contact_name}${j.contact_phone ? '<div class="text-xs text-gray-400">' + j.contact_phone + '</div>' : ''}`
                         : '<span class="text-gray-400">—</span>';
                     const wname = `${w.first_name} ${w.surname}`.replace(/'/g, "\\'");
+                    const missingTicket = !workerHasRequiredTickets(w.id, ticketMap)
+                        ? '<div class="text-xs text-red-600 mt-1"><i class="fas fa-triangle-exclamation mr-1"></i>Missing required ticket</div>'
+                        : '';
                     return `
                         <tr class="hover:bg-gray-50">
-                            <td class="px-4 py-3 font-medium">${w.first_name} ${w.surname}</td>
+                            <td class="px-4 py-3 font-medium">${w.first_name} ${w.surname}${missingTicket}</td>
                             <td class="px-4 py-3">
                                 <div class="text-sm font-medium text-blue-700">${j.client_name || '-'}</div>
                                 <div class="text-xs text-gray-600">${j.job_site_name || ''}</div>
@@ -4701,11 +4940,18 @@
                 }).join('');
             }
 
-            // --- Unallocated workers ---
+            // --- Unallocated workers (filtered by required tickets) ---
             const unEl = document.getElementById('alloc-unassigned');
-            document.getElementById('alloc-unassigned-count').textContent = `(${unallocated.length})`;
-            unallocated.sort((a, b) => `${a.first_name} ${a.surname}`.toLowerCase().localeCompare(`${b.first_name} ${b.surname}`.toLowerCase()));
-            unEl.innerHTML = unallocated.map(w => {
+            const qualifiedUnallocated = unallocated.filter(w => workerHasRequiredTickets(w.id, ticketMap));
+            document.getElementById('alloc-unassigned-count').textContent = `(${qualifiedUnallocated.length})`;
+            const noteEl = document.getElementById('alloc-qualified-note');
+            if (noteEl) {
+                noteEl.textContent = allocRequiredTickets.length > 0
+                    ? `Showing only staff holding all ${allocRequiredTickets.length} selected ticket(s).`
+                    : '';
+            }
+            qualifiedUnallocated.sort((a, b) => `${a.first_name} ${a.surname}`.toLowerCase().localeCompare(`${b.first_name} ${b.surname}`.toLowerCase()));
+            unEl.innerHTML = qualifiedUnallocated.map(w => {
                 const wname = `${w.first_name} ${w.surname}`.replace(/'/g, "\\'");
                 const otherDay = (w.assigned_job && w.assigned_job.assignment_date)
                     ? `<div class="text-xs text-gray-400">on ${w.assigned_job.assignment_date}: ${w.assigned_job.client_name || w.assigned_job.job_site_name || 'assigned'}</div>`
@@ -4720,7 +4966,7 @@
                             <i class="fas fa-plus mr-1"></i>Assign
                         </button>
                     </div>`;
-            }).join('') || '<p class="text-gray-500 text-sm col-span-full">All active workers are allocated for this day.</p>';
+            }).join('') || `<p class="text-gray-500 text-sm col-span-full">${allocRequiredTickets.length > 0 ? 'No available staff hold all the required tickets for this job.' : 'All active workers are allocated for this day.'}</p>`;
 
             // --- Stale assignments banner ---
             const staleEl = document.getElementById('alloc-stale');
