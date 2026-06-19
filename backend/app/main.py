@@ -541,18 +541,26 @@ async def debug_headers(request: Request):
     }
 
 
+# Prevent browsers from serving a stale cached admin page after a deploy
+NO_CACHE_HEADERS = {
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
 @app.get("/admin")
 async def admin_dashboard():
     """Serve the admin dashboard"""
     admin_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "admin", "index.html")
-    return FileResponse(admin_path, media_type="text/html")
+    return FileResponse(admin_path, media_type="text/html", headers=NO_CACHE_HEADERS)
 
 
 @app.get("/admin/")
 async def admin_dashboard_slash():
     """Serve the admin dashboard with trailing slash"""
     admin_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "admin", "index.html")
-    return FileResponse(admin_path, media_type="text/html")
+    return FileResponse(admin_path, media_type="text/html", headers=NO_CACHE_HEADERS)
 
 
 @app.get("/admin/{filename}")
@@ -573,6 +581,9 @@ async def admin_static(filename: str):
             media_type = "application/javascript"
         else:
             media_type = "application/octet-stream"
-        return FileResponse(file_path, media_type=media_type)
+        # Don't cache HTML so admin always gets the latest after a deploy;
+        # other assets (images, etc.) can be cached normally.
+        headers = NO_CACHE_HEADERS if media_type == "text/html" else None
+        return FileResponse(file_path, media_type=media_type, headers=headers)
     return {"error": "File not found"}
 
