@@ -1066,6 +1066,28 @@
                         <option value="part_time">Part Time</option>
                     </select>
                 </div>
+                <div class="border-t pt-4">
+                    <label class="block text-sm font-semibold mb-2"><i class="fas fa-dollar-sign text-green-600 mr-1"></i>Pay Rates ($/hr)</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Ordinary</label>
+                            <input type="number" step="0.01" min="0" name="base_pay_rate" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Overtime</label>
+                            <input type="number" step="0.01" min="0" name="overtime_pay_rate" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Weekend</label>
+                            <input type="number" step="0.01" min="0" name="weekend_pay_rate" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Night</label>
+                            <input type="number" step="0.01" min="0" name="night_pay_rate" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Hourly pay paid to the worker (used for MYOB payroll).</p>
+                </div>
                 <div class="pt-4 border-t flex gap-4 justify-end">
                     <button type="button" onclick="closeModal('add-worker-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
                     <button type="submit" class="px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800">Add Worker</button>
@@ -1149,6 +1171,28 @@
                         <option value="part_time">Part Time</option>
                     </select>
                 </div>
+                <div class="border-t pt-4">
+                    <label class="block text-sm font-semibold mb-2"><i class="fas fa-dollar-sign text-green-600 mr-1"></i>Pay Rates ($/hr)</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Ordinary</label>
+                            <input type="number" step="0.01" min="0" id="edit-base-pay-rate" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Overtime</label>
+                            <input type="number" step="0.01" min="0" id="edit-overtime-pay-rate" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Weekend</label>
+                            <input type="number" step="0.01" min="0" id="edit-weekend-pay-rate" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Night</label>
+                            <input type="number" step="0.01" min="0" id="edit-night-pay-rate" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Hourly pay paid to the worker (used for MYOB payroll).</p>
+                </div>
                 <div class="pt-4 border-t flex gap-4 justify-end">
                     <button type="button" onclick="closeModal('edit-worker-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
                     <button type="submit" class="px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800">Save Changes</button>
@@ -1159,7 +1203,7 @@
 
     <!-- Add Client Modal -->
     <div id="add-client-modal" class="modal">
-        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div class="border-b px-6 py-4 flex justify-between items-center">
                 <h2 class="text-xl font-bold">Add New Client</h2>
                 <button onclick="closeModal('add-client-modal')" class="text-gray-400 hover:text-gray-600">
@@ -1187,6 +1231,28 @@
                     <label class="block text-sm font-medium mb-1">Address</label>
                     <textarea name="address" rows="2" class="w-full border rounded-lg px-3 py-2"></textarea>
                 </div>
+                <div class="border-t pt-4">
+                    <label class="block text-sm font-semibold mb-2"><i class="fas fa-file-invoice-dollar text-blue-600 mr-1"></i>Billing Rates ($/hr)</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Ordinary</label>
+                            <input type="number" step="0.01" min="0" name="hourly_billing_rate" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Overtime</label>
+                            <input type="number" step="0.01" min="0" name="overtime_billing_rate" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Weekend</label>
+                            <input type="number" step="0.01" min="0" name="weekend_billing_rate" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Night</label>
+                            <input type="number" step="0.01" min="0" name="night_billing_rate" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Hourly rate charged to this client (used for invoicing).</p>
+                </div>
                 <div class="pt-4 border-t flex gap-4 justify-end">
                     <button type="button" onclick="closeModal('add-client-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
                     <button type="submit" class="px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800">Add Client</button>
@@ -1197,7 +1263,7 @@
 
     <!-- Edit Client Modal -->
     <div id="edit-client-modal" class="modal">
-        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div class="border-b px-6 py-4 flex justify-between items-center">
                 <h2 class="text-xl font-bold">Edit Client</h2>
                 <button onclick="closeModal('edit-client-modal')" class="text-gray-400 hover:text-gray-600">
@@ -1225,6 +1291,28 @@
                 <div>
                     <label class="block text-sm font-medium mb-1">Address</label>
                     <textarea name="address" id="edit-client-address" rows="2" class="w-full border rounded-lg px-3 py-2"></textarea>
+                </div>
+                <div class="border-t pt-4">
+                    <label class="block text-sm font-semibold mb-2"><i class="fas fa-file-invoice-dollar text-blue-600 mr-1"></i>Billing Rates ($/hr)</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Ordinary</label>
+                            <input type="number" step="0.01" min="0" id="edit-client-hourly-rate" name="hourly_billing_rate" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Overtime</label>
+                            <input type="number" step="0.01" min="0" id="edit-client-overtime-rate" name="overtime_billing_rate" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Weekend</label>
+                            <input type="number" step="0.01" min="0" id="edit-client-weekend-rate" name="weekend_billing_rate" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Night</label>
+                            <input type="number" step="0.01" min="0" id="edit-client-night-rate" name="night_billing_rate" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Hourly rate charged to this client (used for invoicing).</p>
                 </div>
                 <div class="pt-4 border-t flex gap-4 justify-end">
                     <button type="button" onclick="closeModal('edit-client-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
@@ -2526,6 +2614,9 @@
                             ${pushStatusHtml}
                         </div>
                         <div class="text-xs text-gray-500">${w.email}</div>
+                        ${(w.base_pay_rate > 0 || w.overtime_pay_rate > 0 || w.weekend_pay_rate > 0 || w.night_pay_rate > 0)
+                            ? `<div class="text-xs text-green-700 mt-0.5"><i class="fas fa-dollar-sign mr-1"></i>$${(w.base_pay_rate||0).toFixed(2)} ord · $${(w.overtime_pay_rate||0).toFixed(2)} OT</div>`
+                            : `<div class="text-xs text-amber-600 mt-0.5"><i class="fas fa-exclamation-triangle mr-1"></i>No pay rate set</div>`}
                     </td>
                     <td class="px-4 py-3">${w.phone || '-'}</td>
                     <td class="px-4 py-3">${assignedJobHtml}</td>
@@ -2855,6 +2946,9 @@
             const form = event.target;
             const formData = new FormData(form);
             const data = Object.fromEntries(formData.entries());
+            ['base_pay_rate', 'overtime_pay_rate', 'weekend_pay_rate', 'night_pay_rate'].forEach(k => {
+                data[k] = parseFloat(data[k]) || 0;
+            });
 
             try {
                 const response = await authFetch(`${API_BASE}/users/admin/workers`, {
@@ -2898,6 +2992,10 @@
             document.getElementById('edit-dob').value = worker.date_of_birth || '';
             document.getElementById('edit-start-date').value = worker.start_date || '';
             document.getElementById('edit-employment-type').value = worker.employment_type || 'casual';
+            document.getElementById('edit-base-pay-rate').value = worker.base_pay_rate ?? 0;
+            document.getElementById('edit-overtime-pay-rate').value = worker.overtime_pay_rate ?? 0;
+            document.getElementById('edit-weekend-pay-rate').value = worker.weekend_pay_rate ?? 0;
+            document.getElementById('edit-night-pay-rate').value = worker.night_pay_rate ?? 0;
             
             openModal('edit-worker-modal');
         }
@@ -2917,7 +3015,11 @@
                 postcode: document.getElementById('edit-postcode').value || null,
                 date_of_birth: document.getElementById('edit-dob').value || null,
                 start_date: document.getElementById('edit-start-date').value || null,
-                employment_type: document.getElementById('edit-employment-type').value
+                employment_type: document.getElementById('edit-employment-type').value,
+                base_pay_rate: parseFloat(document.getElementById('edit-base-pay-rate').value) || 0,
+                overtime_pay_rate: parseFloat(document.getElementById('edit-overtime-pay-rate').value) || 0,
+                weekend_pay_rate: parseFloat(document.getElementById('edit-weekend-pay-rate').value) || 0,
+                night_pay_rate: parseFloat(document.getElementById('edit-night-pay-rate').value) || 0
             };
             
             try {
@@ -3028,6 +3130,9 @@
                             ${c.contact_name ? `<div class="text-sm text-gray-500">${c.contact_name}</div>` : ''}
                             ${c.contact_email ? `<div class="text-sm text-gray-500">${c.contact_email}</div>` : ''}
                             ${c.contact_phone ? `<div class="text-sm text-gray-500">${c.contact_phone}</div>` : ''}
+                            ${(c.hourly_billing_rate > 0 || c.overtime_billing_rate > 0 || c.weekend_billing_rate > 0 || c.night_billing_rate > 0)
+                                ? `<div class="mt-1 text-xs text-blue-700"><i class="fas fa-file-invoice-dollar mr-1"></i>Bill: $${(c.hourly_billing_rate||0).toFixed(2)} ord · $${(c.overtime_billing_rate||0).toFixed(2)} OT · $${(c.weekend_billing_rate||0).toFixed(2)} wknd · $${(c.night_billing_rate||0).toFixed(2)} night</div>`
+                                : `<div class="mt-1 text-xs text-amber-600"><i class="fas fa-exclamation-triangle mr-1"></i>No billing rates set</div>`}
                         </div>
                         <div class="flex items-center gap-2">
                             <button onclick="editClient(${c.id})" class="text-blue-600 hover:text-blue-800 p-1" title="Edit">
@@ -3105,6 +3210,9 @@
             const form = event.target;
             const formData = new FormData(form);
             const data = Object.fromEntries(formData.entries());
+            ['hourly_billing_rate', 'overtime_billing_rate', 'weekend_billing_rate', 'night_billing_rate'].forEach(k => {
+                data[k] = parseFloat(data[k]) || 0;
+            });
 
             try {
                 const response = await authFetch(`${API_BASE}/clients/admin`, {
@@ -3137,6 +3245,10 @@
             document.getElementById('edit-client-contact-email').value = client.contact_email || '';
             document.getElementById('edit-client-contact-phone').value = client.contact_phone || '';
             document.getElementById('edit-client-address').value = client.address || '';
+            document.getElementById('edit-client-hourly-rate').value = client.hourly_billing_rate ?? 0;
+            document.getElementById('edit-client-overtime-rate').value = client.overtime_billing_rate ?? 0;
+            document.getElementById('edit-client-weekend-rate').value = client.weekend_billing_rate ?? 0;
+            document.getElementById('edit-client-night-rate').value = client.night_billing_rate ?? 0;
             
             openModal('edit-client-modal');
         }
@@ -3148,6 +3260,9 @@
             const formData = new FormData(form);
             const data = Object.fromEntries(formData.entries());
             delete data.client_id;
+            ['hourly_billing_rate', 'overtime_billing_rate', 'weekend_billing_rate', 'night_billing_rate'].forEach(k => {
+                data[k] = parseFloat(data[k]) || 0;
+            });
 
             try {
                 const response = await authFetch(`${API_BASE}/clients/admin/${clientId}`, {
