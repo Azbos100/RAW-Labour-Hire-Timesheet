@@ -82,6 +82,8 @@ class WorkerCreate(BaseModel):
     overtime_pay_rate: Optional[float] = 0
     weekend_pay_rate: Optional[float] = 0
     night_pay_rate: Optional[float] = 0
+    travel_allowance: Optional[float] = 0
+    demo_allowance: Optional[float] = 0
     employment_type: Optional[str] = "casual"
     role: Optional[str] = "worker"
 
@@ -108,6 +110,8 @@ class WorkerUpdate(BaseModel):
     overtime_pay_rate: Optional[float] = None
     weekend_pay_rate: Optional[float] = None
     night_pay_rate: Optional[float] = None
+    travel_allowance: Optional[float] = None
+    demo_allowance: Optional[float] = None
     employment_type: Optional[str] = None
     role: Optional[str] = None
 
@@ -267,6 +271,8 @@ async def list_all_workers(
             "overtime_pay_rate": u.overtime_pay_rate or 0,
             "weekend_pay_rate": u.weekend_pay_rate or 0,
             "night_pay_rate": u.night_pay_rate or 0,
+            "travel_allowance": u.travel_allowance or 0,
+            "demo_allowance": u.demo_allowance or 0,
             "employment_type": u.employment_type or "casual",
             "role": u.role.value if u.role else "worker",
             "is_active": u.is_active,
@@ -328,6 +334,8 @@ async def get_worker(
         "overtime_pay_rate": u.overtime_pay_rate or 0,
         "weekend_pay_rate": u.weekend_pay_rate or 0,
         "night_pay_rate": u.night_pay_rate or 0,
+        "travel_allowance": u.travel_allowance or 0,
+        "demo_allowance": u.demo_allowance or 0,
         "employment_type": u.employment_type or "casual",
         "role": u.role.value if u.role else "worker",
         "is_active": u.is_active
@@ -373,6 +381,8 @@ async def create_worker(
         overtime_pay_rate=worker.overtime_pay_rate or 0,
         weekend_pay_rate=worker.weekend_pay_rate or 0,
         night_pay_rate=worker.night_pay_rate or 0,
+        travel_allowance=worker.travel_allowance or 0,
+        demo_allowance=worker.demo_allowance or 0,
         employment_type=worker.employment_type or "casual",
         role=UserRole(worker.role) if worker.role else UserRole.WORKER,
         is_active=True

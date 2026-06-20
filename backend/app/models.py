@@ -102,6 +102,10 @@ class User(Base):
     overtime_pay_rate = Column(Float, default=0)  # Overtime rate (1.5x typically)
     weekend_pay_rate = Column(Float, default=0)   # Weekend rate
     night_pay_rate = Column(Float, default=0)     # Night shift rate
+
+    # Allowances (paid to the worker)
+    travel_allowance = Column(Float, default=0)   # Flat amount per day worked
+    demo_allowance = Column(Float, default=0)     # Extra paid per hour worked (standing rate)
     
     # MYOB Integration
     myob_employee_id = Column(String(100))  # MYOB Employee UID
@@ -151,6 +155,7 @@ class Client(Base):
     overtime_billing_rate = Column(Float, default=0)   # Overtime rate billed
     weekend_billing_rate = Column(Float, default=0)    # Weekend rate billed
     night_billing_rate = Column(Float, default=0)      # Night shift rate billed
+    travel_charge_per_day = Column(Float, default=0)   # Travel charged per day per worker hired
     
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -172,6 +172,20 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Migration note (job site required tickets): {e}")
 
+        # Allowances: worker travel (per day) + demo (per hour); client travel charge (per day per worker)
+        try:
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS travel_allowance FLOAT DEFAULT 0;
+            """))
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS demo_allowance FLOAT DEFAULT 0;
+            """))
+            await conn.execute(text("""
+                ALTER TABLE clients ADD COLUMN IF NOT EXISTS travel_charge_per_day FLOAT DEFAULT 0;
+            """))
+        except Exception as e:
+            print(f"Migration note (allowances): {e}")
+
     # Seed a default client/job site if none exist
     async with AsyncSessionLocal() as session:
         result = await session.execute(

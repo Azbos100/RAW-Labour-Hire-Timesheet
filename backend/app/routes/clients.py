@@ -31,6 +31,7 @@ class ClientCreate(BaseModel):
     overtime_billing_rate: float = 0
     weekend_billing_rate: float = 0
     night_billing_rate: float = 0
+    travel_charge_per_day: float = 0
 
 
 class JobSiteCreate(BaseModel):
@@ -71,6 +72,7 @@ async def list_clients(
                 "overtime_billing_rate": (c.overtime_billing_rate or 0) if is_admin else None,
                 "weekend_billing_rate": (c.weekend_billing_rate or 0) if is_admin else None,
                 "night_billing_rate": (c.night_billing_rate or 0) if is_admin else None,
+                "travel_charge_per_day": (c.travel_charge_per_day or 0) if is_admin else None,
                 "is_active": c.is_active
             }
             for c in clients
@@ -133,6 +135,7 @@ async def update_client_admin(
     client.overtime_billing_rate = client_data.overtime_billing_rate
     client.weekend_billing_rate = client_data.weekend_billing_rate
     client.night_billing_rate = client_data.night_billing_rate
+    client.travel_charge_per_day = client_data.travel_charge_per_day
     
     await db.commit()
     
