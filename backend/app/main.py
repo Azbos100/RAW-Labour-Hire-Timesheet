@@ -183,6 +183,9 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("""
                 ALTER TABLE clients ADD COLUMN IF NOT EXISTS travel_charge_per_day FLOAT DEFAULT 0;
             """))
+            await conn.execute(text("""
+                ALTER TABLE clients ADD COLUMN IF NOT EXISTS tool_hire_per_day FLOAT DEFAULT 0;
+            """))
         except Exception as e:
             print(f"Migration note (allowances): {e}")
 

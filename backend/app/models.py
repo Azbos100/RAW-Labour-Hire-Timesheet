@@ -156,6 +156,7 @@ class Client(Base):
     weekend_billing_rate = Column(Float, default=0)    # Weekend rate billed
     night_billing_rate = Column(Float, default=0)      # Night shift rate billed
     travel_charge_per_day = Column(Float, default=0)   # Travel charged per day per worker hired
+    tool_hire_per_day = Column(Float, default=0)       # Tool hire charged per day per worker hired
     
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)

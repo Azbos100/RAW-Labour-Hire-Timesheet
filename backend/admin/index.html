@@ -1279,11 +1279,17 @@
                             <input type="number" step="0.01" min="0" name="night_billing_rate" value="0" class="w-full border rounded-lg px-3 py-2">
                         </div>
                     </div>
-                    <div class="mt-3">
-                        <label class="block text-xs text-gray-500 mb-1">Travel charge ($/day per worker)</label>
-                        <input type="number" step="0.01" min="0" name="travel_charge_per_day" value="0" class="w-full border rounded-lg px-3 py-2">
+                    <div class="grid grid-cols-2 gap-3 mt-3">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Travel charge ($/day per worker)</label>
+                            <input type="number" step="0.01" min="0" name="travel_charge_per_day" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Tool hire ($/day per worker)</label>
+                            <input type="number" step="0.01" min="0" name="tool_hire_per_day" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
                     </div>
-                    <p class="text-xs text-gray-400 mt-1">Hourly rates + a per-day travel charge for each staff member hired (used for invoicing).</p>
+                    <p class="text-xs text-gray-400 mt-1">Hourly rates + per-day travel &amp; tool-hire charges for each staff member hired (used for invoicing).</p>
                 </div>
                 <div class="pt-4 border-t flex gap-4 justify-end">
                     <button type="button" onclick="closeModal('add-client-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
@@ -1344,11 +1350,17 @@
                             <input type="number" step="0.01" min="0" id="edit-client-night-rate" name="night_billing_rate" value="0" class="w-full border rounded-lg px-3 py-2">
                         </div>
                     </div>
-                    <div class="mt-3">
-                        <label class="block text-xs text-gray-500 mb-1">Travel charge ($/day per worker)</label>
-                        <input type="number" step="0.01" min="0" id="edit-client-travel-charge" name="travel_charge_per_day" value="0" class="w-full border rounded-lg px-3 py-2">
+                    <div class="grid grid-cols-2 gap-3 mt-3">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Travel charge ($/day per worker)</label>
+                            <input type="number" step="0.01" min="0" id="edit-client-travel-charge" name="travel_charge_per_day" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Tool hire ($/day per worker)</label>
+                            <input type="number" step="0.01" min="0" id="edit-client-tool-hire" name="tool_hire_per_day" value="0" class="w-full border rounded-lg px-3 py-2">
+                        </div>
                     </div>
-                    <p class="text-xs text-gray-400 mt-1">Hourly rates + a per-day travel charge for each staff member hired (used for invoicing).</p>
+                    <p class="text-xs text-gray-400 mt-1">Hourly rates + per-day travel &amp; tool-hire charges for each staff member hired (used for invoicing).</p>
                 </div>
                 <div class="pt-4 border-t flex gap-4 justify-end">
                     <button type="button" onclick="closeModal('edit-client-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
@@ -3176,8 +3188,8 @@
                             ${(c.hourly_billing_rate > 0 || c.overtime_billing_rate > 0 || c.weekend_billing_rate > 0 || c.night_billing_rate > 0)
                                 ? `<div class="mt-1 text-xs text-blue-700"><i class="fas fa-file-invoice-dollar mr-1"></i>Bill: $${(c.hourly_billing_rate||0).toFixed(2)} ord · $${(c.overtime_billing_rate||0).toFixed(2)} OT · $${(c.weekend_billing_rate||0).toFixed(2)} wknd · $${(c.night_billing_rate||0).toFixed(2)} night</div>`
                                 : `<div class="mt-1 text-xs text-amber-600"><i class="fas fa-exclamation-triangle mr-1"></i>No billing rates set</div>`}
-                            ${c.travel_charge_per_day > 0
-                                ? `<div class="text-xs text-teal-600"><i class="fas fa-truck mr-1"></i>Travel: $${(c.travel_charge_per_day||0).toFixed(2)}/day per worker</div>`
+                            ${(c.travel_charge_per_day > 0 || c.tool_hire_per_day > 0)
+                                ? `<div class="text-xs text-teal-600"><i class="fas fa-truck mr-1"></i>${c.travel_charge_per_day > 0 ? 'Travel: $' + (c.travel_charge_per_day||0).toFixed(2) + '/day' : ''}${(c.travel_charge_per_day > 0 && c.tool_hire_per_day > 0) ? ' · ' : ''}${c.tool_hire_per_day > 0 ? 'Tools: $' + (c.tool_hire_per_day||0).toFixed(2) + '/day' : ''} per worker</div>`
                                 : ''}
                         </div>
                         <div class="flex items-center gap-2">
@@ -3256,7 +3268,7 @@
             const form = event.target;
             const formData = new FormData(form);
             const data = Object.fromEntries(formData.entries());
-            ['hourly_billing_rate', 'overtime_billing_rate', 'weekend_billing_rate', 'night_billing_rate', 'travel_charge_per_day'].forEach(k => {
+            ['hourly_billing_rate', 'overtime_billing_rate', 'weekend_billing_rate', 'night_billing_rate', 'travel_charge_per_day', 'tool_hire_per_day'].forEach(k => {
                 data[k] = parseFloat(data[k]) || 0;
             });
 
@@ -3296,6 +3308,7 @@
             document.getElementById('edit-client-weekend-rate').value = client.weekend_billing_rate ?? 0;
             document.getElementById('edit-client-night-rate').value = client.night_billing_rate ?? 0;
             document.getElementById('edit-client-travel-charge').value = client.travel_charge_per_day ?? 0;
+            document.getElementById('edit-client-tool-hire').value = client.tool_hire_per_day ?? 0;
             
             openModal('edit-client-modal');
         }
@@ -3307,7 +3320,7 @@
             const formData = new FormData(form);
             const data = Object.fromEntries(formData.entries());
             delete data.client_id;
-            ['hourly_billing_rate', 'overtime_billing_rate', 'weekend_billing_rate', 'night_billing_rate', 'travel_charge_per_day'].forEach(k => {
+            ['hourly_billing_rate', 'overtime_billing_rate', 'weekend_billing_rate', 'night_billing_rate', 'travel_charge_per_day', 'tool_hire_per_day'].forEach(k => {
                 data[k] = parseFloat(data[k]) || 0;
             });
 
