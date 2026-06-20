@@ -41,22 +41,21 @@ def _accumulate(acc, row):
 
 
 def _amounts(d: dict, worker, client) -> dict:
-    """Dollar amounts for one worker-day.
+    """Hourly dollar amounts for one worker-day (flat per-day allowances added
+    separately so they only apply once per day even if the worker moved sites).
 
-    Worker pay = ordinary*rate + OT*OT_rate + (Sat+Sun)*weekend_rate
-                 + demo_allowance*total_hours + travel_allowance (per day).
-    Client charge = same hour buckets at billing rates
-                    + travel_charge_per_day + tool_hire_per_day (per day per worker).
+    Worker pay (hourly) = ordinary*rate + OT*OT_rate + (Sat+Sun)*weekend_rate
+                          + demo_allowance*total_hours.
+    Client charge (hourly) = same hour buckets at billing rates.
     On a Night shift, ordinary hours use the night rate (OT unchanged).
     """
     night = d.get("shift_type") == "Night"
 
-    # ---- worker pay ----
+    # ---- worker pay (hourly) ----
     base = (worker.base_pay_rate or 0) if worker else 0
     ot_r = (worker.overtime_pay_rate or 0) if worker else 0
     wknd = (worker.weekend_pay_rate or 0) if worker else 0
     night_r = (worker.night_pay_rate or 0) if worker else 0
-    travel = (worker.travel_allowance or 0) if worker else 0
     demo = (worker.demo_allowance or 0) if worker else 0
     ord_pay_rate = night_r if (night and night_r > 0) else base
     pay = (
@@ -64,23 +63,18 @@ def _amounts(d: dict, worker, client) -> dict:
         + d["ot"] * ot_r
         + (d["ot_sat"] + d["ot_sun"]) * wknd
         + d["total"] * demo
-        + travel
     )
 
-    # ---- client charge ----
+    # ---- client charge (hourly) ----
     b_ord = (client.hourly_billing_rate or 0) if client else 0
     b_ot = (client.overtime_billing_rate or 0) if client else 0
     b_wknd = (client.weekend_billing_rate or 0) if client else 0
     b_night = (client.night_billing_rate or 0) if client else 0
-    c_travel = (client.travel_charge_per_day or 0) if client else 0
-    c_tool = (client.tool_hire_per_day or 0) if client else 0
     ord_charge_rate = b_night if (night and b_night > 0) else b_ord
     charge = (
         d["ordinary"] * ord_charge_rate
         + d["ot"] * b_ot
         + (d["ot_sat"] + d["ot_sun"]) * b_wknd
-        + c_travel
-        + c_tool
     )
 
     return {"pay": round(pay, 2), "charge": round(charge, 2)}
@@ -160,11 +154,31 @@ async def _fetch_rows(db, ws, we, client_id, approved_only):
 
     result = await db.execute(q)
     rows = []
+    # Flat per-day allowances apply ONCE per day, even if a worker is moved
+    # between sites during the day:
+    #  - travel allowance (pay): once per worker per day
+    #  - travel charge + tool hire: once per client per worker per day
+    seen_worker_day = set()
+    seen_client_worker_day = set()
     for entry, ts, worker, client, job_site in result.all():
         if (entry.total_hours or 0) <= 0:
             continue
         derived = _derive(entry)
         amounts = _amounts(derived, worker, client)
+
+        wid = worker.id if worker else None
+        dkey = entry.entry_date
+        wd_key = (wid, dkey)
+        if wid is not None and wd_key not in seen_worker_day:
+            seen_worker_day.add(wd_key)
+            amounts["pay"] = round(amounts["pay"] + ((worker.travel_allowance or 0) if worker else 0), 2)
+
+        cwd_key = (ts.client_id, wid, dkey)
+        if cwd_key not in seen_client_worker_day:
+            seen_client_worker_day.add(cwd_key)
+            day_charge = ((client.travel_charge_per_day or 0) + (client.tool_hire_per_day or 0)) if client else 0
+            amounts["charge"] = round(amounts["charge"] + day_charge, 2)
+
         rows.append({
             "entry_id": entry.id,
             "date": entry.entry_date,
