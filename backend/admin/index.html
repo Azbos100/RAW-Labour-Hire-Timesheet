@@ -4664,6 +4664,7 @@
         }
 
         function h(n) { return (n === null || n === undefined || n === 0) ? '' : (Math.round(n * 100) / 100); }
+        function m(n) { return (n === null || n === undefined || n === 0) ? '' : '$' + (Math.round(n * 100) / 100).toFixed(2); }
 
         function renderCrosscheck() {
             const banner = document.getElementById('inv-crosscheck');
@@ -4693,9 +4694,9 @@
             if (!data || !data.clients || data.clients.length === 0) {
                 return `<div class="text-center text-gray-500 py-8">No billing data for this week.</div>`;
             }
-            const hdr = ['Client', 'Job Address', 'Day', 'Date', 'Worker', 'Shift', 'Role', 'Ord', 'OT', 'OT Sat', 'OT Sun', 'Total'];
+            const hdr = ['Client', 'Job Address', 'Day', 'Date', 'Worker', 'Shift', 'Role', 'Ord', 'OT', 'OT Sat', 'OT Sun', 'Total', 'Charge'];
             let rows = '';
-            const totalCells = (t) => `<td class="px-2 py-1 text-right">${h(t.ordinary)}</td><td class="px-2 py-1 text-right">${h(t.ot)}</td><td class="px-2 py-1 text-right">${h(t.ot_sat)}</td><td class="px-2 py-1 text-right">${h(t.ot_sun)}</td><td class="px-2 py-1 text-right font-semibold">${h(t.total)}</td>`;
+            const totalCells = (t) => `<td class="px-2 py-1 text-right">${h(t.ordinary)}</td><td class="px-2 py-1 text-right">${h(t.ot)}</td><td class="px-2 py-1 text-right">${h(t.ot_sat)}</td><td class="px-2 py-1 text-right">${h(t.ot_sun)}</td><td class="px-2 py-1 text-right font-semibold">${h(t.total)}</td><td class="px-2 py-1 text-right font-semibold text-blue-700">${m(t.charge)}</td>`;
             data.clients.forEach(c => {
                 c.addresses.forEach(a => {
                     a.dates.forEach(d => {
@@ -4713,6 +4714,7 @@
                                 <td class="px-2 py-1 text-right">${h(r.ot_sat)}</td>
                                 <td class="px-2 py-1 text-right">${h(r.ot_sun)}</td>
                                 <td class="px-2 py-1 text-right font-medium">${h(r.total)}</td>
+                                <td class="px-2 py-1 text-right text-blue-700">${m(r.charge)}</td>
                             </tr>`;
                         });
                         rows += `<tr class="bg-gray-50 text-gray-600"><td></td><td></td><td></td><td class="px-2 py-1 text-right italic">${formatDate(d.date)} Total</td><td></td><td></td><td></td>${totalCells(d.totals)}</tr>`;
@@ -4737,11 +4739,12 @@
                 <td class="px-2 py-1 text-right">${h(w.ot)}</td>
                 <td class="px-2 py-1 text-right">${h(w.ot_sat)}</td>
                 <td class="px-2 py-1 text-right">${h(w.ot_sun)}</td>
-                <td class="px-2 py-1 text-right font-medium">${h(w.total)}</td></tr>`).join('');
+                <td class="px-2 py-1 text-right font-medium">${h(w.total)}</td>
+                <td class="px-2 py-1 text-right text-green-700">${m(w.pay)}</td></tr>`).join('');
             const g = data.grand_total;
-            rows += `<tr class="bg-gray-800 text-white font-bold"><td class="px-2 py-1">GRAND TOTAL</td><td class="px-2 py-1 text-right">${h(g.ordinary)}</td><td class="px-2 py-1 text-right">${h(g.ot)}</td><td class="px-2 py-1 text-right">${h(g.ot_sat)}</td><td class="px-2 py-1 text-right">${h(g.ot_sun)}</td><td class="px-2 py-1 text-right">${h(g.total)}</td></tr>`;
+            rows += `<tr class="bg-gray-800 text-white font-bold"><td class="px-2 py-1">GRAND TOTAL</td><td class="px-2 py-1 text-right">${h(g.ordinary)}</td><td class="px-2 py-1 text-right">${h(g.ot)}</td><td class="px-2 py-1 text-right">${h(g.ot_sat)}</td><td class="px-2 py-1 text-right">${h(g.ot_sun)}</td><td class="px-2 py-1 text-right">${h(g.total)}</td><td class="px-2 py-1 text-right">${m(g.pay)}</td></tr>`;
             return `<div class="text-sm text-gray-500 mb-2">Week ${formatDate(data.week_start)} → ${formatDate(data.week_ending)}</div>
-                <table class="w-full text-sm"><thead><tr class="text-left text-gray-500 border-b-2"><th class="px-2 py-2">Worker</th><th class="px-2 py-2 text-right">Ord</th><th class="px-2 py-2 text-right">OT</th><th class="px-2 py-2 text-right">OT Sat</th><th class="px-2 py-2 text-right">OT Sun</th><th class="px-2 py-2 text-right">Total</th></tr></thead><tbody>${rows}</tbody></table>`;
+                <table class="w-full text-sm"><thead><tr class="text-left text-gray-500 border-b-2"><th class="px-2 py-2">Worker</th><th class="px-2 py-2 text-right">Ord</th><th class="px-2 py-2 text-right">OT</th><th class="px-2 py-2 text-right">OT Sat</th><th class="px-2 py-2 text-right">OT Sun</th><th class="px-2 py-2 text-right">Total</th><th class="px-2 py-2 text-right">Pay</th></tr></thead><tbody>${rows}</tbody></table>`;
         }
 
         function renderPayroll() {
@@ -4757,11 +4760,12 @@
                 <td class="px-2 py-1 text-right">${h(r.ot)}</td>
                 <td class="px-2 py-1 text-right">${h(r.ot_sat)}</td>
                 <td class="px-2 py-1 text-right">${h(r.ot_sun)}</td>
-                <td class="px-2 py-1 text-right font-medium">${h(r.total)}</td></tr>`).join('');
+                <td class="px-2 py-1 text-right font-medium">${h(r.total)}</td>
+                <td class="px-2 py-1 text-right text-green-700">${m(r.pay)}</td></tr>`).join('');
             const g = data.grand_total;
-            rows += `<tr class="bg-gray-800 text-white font-bold"><td class="px-2 py-1">GRAND TOTAL</td><td></td><td></td><td class="px-2 py-1 text-right">${h(g.ordinary)}</td><td class="px-2 py-1 text-right">${h(g.ot)}</td><td class="px-2 py-1 text-right">${h(g.ot_sat)}</td><td class="px-2 py-1 text-right">${h(g.ot_sun)}</td><td class="px-2 py-1 text-right">${h(g.total)}</td></tr>`;
+            rows += `<tr class="bg-gray-800 text-white font-bold"><td class="px-2 py-1">GRAND TOTAL</td><td></td><td></td><td class="px-2 py-1 text-right">${h(g.ordinary)}</td><td class="px-2 py-1 text-right">${h(g.ot)}</td><td class="px-2 py-1 text-right">${h(g.ot_sat)}</td><td class="px-2 py-1 text-right">${h(g.ot_sun)}</td><td class="px-2 py-1 text-right">${h(g.total)}</td><td class="px-2 py-1 text-right">${m(g.pay)}</td></tr>`;
             return `<div class="text-sm text-gray-500 mb-2">Week ${formatDate(data.week_start)} → ${formatDate(data.week_ending)}</div>
-                <table class="w-full text-sm"><thead><tr class="text-left text-gray-500 border-b-2"><th class="px-2 py-2">Worker</th><th class="px-2 py-2">Shift</th><th class="px-2 py-2">Role</th><th class="px-2 py-2 text-right">Ord</th><th class="px-2 py-2 text-right">OT</th><th class="px-2 py-2 text-right">OT Sat</th><th class="px-2 py-2 text-right">OT Sun</th><th class="px-2 py-2 text-right">Total</th></tr></thead><tbody>${rows}</tbody></table>`;
+                <table class="w-full text-sm"><thead><tr class="text-left text-gray-500 border-b-2"><th class="px-2 py-2">Worker</th><th class="px-2 py-2">Shift</th><th class="px-2 py-2">Role</th><th class="px-2 py-2 text-right">Ord</th><th class="px-2 py-2 text-right">OT</th><th class="px-2 py-2 text-right">OT Sat</th><th class="px-2 py-2 text-right">OT Sun</th><th class="px-2 py-2 text-right">Total</th><th class="px-2 py-2 text-right">Pay</th></tr></thead><tbody>${rows}</tbody></table>`;
         }
 
         function csvCell(v) {
@@ -4787,42 +4791,42 @@
                 const data = invoicingData.client;
                 if (!data) return;
                 filename = `${importReady ? 'client_billing_import' : 'client_billing'}_${data.week_ending}.csv`;
-                lines.push(['Client', 'Job_Address', 'Day', 'Date', 'Worker', 'Shift_Type', 'Role', 'Ordinary_Hours', 'OT_Hours', 'OT_Sat', 'OT_Sun', 'Total'].join(','));
+                lines.push(['Client', 'Job_Address', 'Day', 'Date', 'Worker', 'Shift_Type', 'Role', 'Ordinary_Hours', 'OT_Hours', 'OT_Sat', 'OT_Sun', 'Total', 'Charge'].join(','));
                 (data.clients || []).forEach(c => {
                     c.addresses.forEach(a => {
                         a.dates.forEach(d => {
                             d.rows.forEach(r => {
-                                lines.push([c.client, a.address, d.day, dateOut(d.date), r.worker, r.shift_type, r.role, n(r.ordinary), n(r.ot), n(r.ot_sat), n(r.ot_sun), n(r.total)].map(csvCell).join(','));
+                                lines.push([c.client, a.address, d.day, dateOut(d.date), r.worker, r.shift_type, r.role, n(r.ordinary), n(r.ot), n(r.ot_sat), n(r.ot_sun), n(r.total), n(r.charge)].map(csvCell).join(','));
                             });
-                            if (!importReady) lines.push(['', '', '', d.date + ' Total', '', '', '', n(d.totals.ordinary), n(d.totals.ot), n(d.totals.ot_sat), n(d.totals.ot_sun), n(d.totals.total)].map(csvCell).join(','));
+                            if (!importReady) lines.push(['', '', '', d.date + ' Total', '', '', '', n(d.totals.ordinary), n(d.totals.ot), n(d.totals.ot_sat), n(d.totals.ot_sun), n(d.totals.total), n(d.totals.charge)].map(csvCell).join(','));
                         });
-                        if (!importReady) lines.push(['', a.address + ' Total', '', '', '', '', '', n(a.totals.ordinary), n(a.totals.ot), n(a.totals.ot_sat), n(a.totals.ot_sun), n(a.totals.total)].map(csvCell).join(','));
+                        if (!importReady) lines.push(['', a.address + ' Total', '', '', '', '', '', n(a.totals.ordinary), n(a.totals.ot), n(a.totals.ot_sat), n(a.totals.ot_sun), n(a.totals.total), n(a.totals.charge)].map(csvCell).join(','));
                     });
-                    if (!importReady) lines.push([c.client + ' Total', '', '', '', '', '', '', n(c.totals.ordinary), n(c.totals.ot), n(c.totals.ot_sat), n(c.totals.ot_sun), n(c.totals.total)].map(csvCell).join(','));
+                    if (!importReady) lines.push([c.client + ' Total', '', '', '', '', '', '', n(c.totals.ordinary), n(c.totals.ot), n(c.totals.ot_sat), n(c.totals.ot_sun), n(c.totals.total), n(c.totals.charge)].map(csvCell).join(','));
                 });
                 if (!importReady) {
                     const g = data.grand_total;
-                    lines.push(['GRAND TOTAL', '', '', '', '', '', '', n(g.ordinary), n(g.ot), n(g.ot_sat), n(g.ot_sun), n(g.total)].map(csvCell).join(','));
+                    lines.push(['GRAND TOTAL', '', '', '', '', '', '', n(g.ordinary), n(g.ot), n(g.ot_sat), n(g.ot_sun), n(g.total), n(g.charge)].map(csvCell).join(','));
                 }
             } else if (invoicingView === 'worker') {
                 const data = invoicingData.worker;
                 if (!data) return;
                 filename = `${importReady ? 'worker_totals_import' : 'worker_totals'}_${data.week_ending}.csv`;
-                lines.push(['Worker', 'Ordinary_Hours', 'OT_Hours', 'OT_Sat', 'OT_Sun', 'Total'].join(','));
-                (data.workers || []).forEach(w => lines.push([w.worker, n(w.ordinary), n(w.ot), n(w.ot_sat), n(w.ot_sun), n(w.total)].map(csvCell).join(',')));
+                lines.push(['Worker', 'Ordinary_Hours', 'OT_Hours', 'OT_Sat', 'OT_Sun', 'Total', 'Pay'].join(','));
+                (data.workers || []).forEach(w => lines.push([w.worker, n(w.ordinary), n(w.ot), n(w.ot_sat), n(w.ot_sun), n(w.total), n(w.pay)].map(csvCell).join(',')));
                 if (!importReady) {
                     const g = data.grand_total;
-                    lines.push(['GRAND TOTAL', n(g.ordinary), n(g.ot), n(g.ot_sat), n(g.ot_sun), n(g.total)].map(csvCell).join(','));
+                    lines.push(['GRAND TOTAL', n(g.ordinary), n(g.ot), n(g.ot_sat), n(g.ot_sun), n(g.total), n(g.pay)].map(csvCell).join(','));
                 }
             } else {
                 const data = invoicingData.payroll;
                 if (!data) return;
                 filename = `${importReady ? 'myob_payroll_import' : 'myob_payroll'}_${data.week_ending}.csv`;
-                lines.push(['Worker', 'Shift_Type', 'Role', 'Ordinary_Hours', 'OT_Hours', 'OT_Sat', 'OT_Sun', 'Total'].join(','));
-                (data.rows || []).forEach(r => lines.push([r.worker, r.shift_type, r.role, n(r.ordinary), n(r.ot), n(r.ot_sat), n(r.ot_sun), n(r.total)].map(csvCell).join(',')));
+                lines.push(['Worker', 'Shift_Type', 'Role', 'Ordinary_Hours', 'OT_Hours', 'OT_Sat', 'OT_Sun', 'Total', 'Pay'].join(','));
+                (data.rows || []).forEach(r => lines.push([r.worker, r.shift_type, r.role, n(r.ordinary), n(r.ot), n(r.ot_sat), n(r.ot_sun), n(r.total), n(r.pay)].map(csvCell).join(',')));
                 if (!importReady) {
                     const g = data.grand_total;
-                    lines.push(['GRAND TOTAL', '', '', n(g.ordinary), n(g.ot), n(g.ot_sat), n(g.ot_sun), n(g.total)].map(csvCell).join(','));
+                    lines.push(['GRAND TOTAL', '', '', n(g.ordinary), n(g.ot), n(g.ot_sat), n(g.ot_sun), n(g.total), n(g.pay)].map(csvCell).join(','));
                 }
             }
             const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });

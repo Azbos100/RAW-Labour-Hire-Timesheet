@@ -27,15 +27,63 @@ router = APIRouter()
 
 DAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 HOUR_KEYS = ("ordinary", "ot", "ot_sat", "ot_sun", "total")
+MONEY_KEYS = ("charge", "pay")
+SUM_KEYS = HOUR_KEYS + MONEY_KEYS
 
 
 def _zero():
-    return {k: 0.0 for k in HOUR_KEYS}
+    return {k: 0.0 for k in SUM_KEYS}
 
 
 def _accumulate(acc, row):
-    for k in HOUR_KEYS:
+    for k in SUM_KEYS:
         acc[k] = round(acc[k] + (row.get(k) or 0.0), 2)
+
+
+def _amounts(d: dict, worker, client) -> dict:
+    """Dollar amounts for one worker-day.
+
+    Worker pay = ordinary*rate + OT*OT_rate + (Sat+Sun)*weekend_rate
+                 + demo_allowance*total_hours + travel_allowance (per day).
+    Client charge = same hour buckets at billing rates
+                    + travel_charge_per_day + tool_hire_per_day (per day per worker).
+    On a Night shift, ordinary hours use the night rate (OT unchanged).
+    """
+    night = d.get("shift_type") == "Night"
+
+    # ---- worker pay ----
+    base = (worker.base_pay_rate or 0) if worker else 0
+    ot_r = (worker.overtime_pay_rate or 0) if worker else 0
+    wknd = (worker.weekend_pay_rate or 0) if worker else 0
+    night_r = (worker.night_pay_rate or 0) if worker else 0
+    travel = (worker.travel_allowance or 0) if worker else 0
+    demo = (worker.demo_allowance or 0) if worker else 0
+    ord_pay_rate = night_r if (night and night_r > 0) else base
+    pay = (
+        d["ordinary"] * ord_pay_rate
+        + d["ot"] * ot_r
+        + (d["ot_sat"] + d["ot_sun"]) * wknd
+        + d["total"] * demo
+        + travel
+    )
+
+    # ---- client charge ----
+    b_ord = (client.hourly_billing_rate or 0) if client else 0
+    b_ot = (client.overtime_billing_rate or 0) if client else 0
+    b_wknd = (client.weekend_billing_rate or 0) if client else 0
+    b_night = (client.night_billing_rate or 0) if client else 0
+    c_travel = (client.travel_charge_per_day or 0) if client else 0
+    c_tool = (client.tool_hire_per_day or 0) if client else 0
+    ord_charge_rate = b_night if (night and b_night > 0) else b_ord
+    charge = (
+        d["ordinary"] * ord_charge_rate
+        + d["ot"] * b_ot
+        + (d["ot_sat"] + d["ot_sun"]) * b_wknd
+        + c_travel
+        + c_tool
+    )
+
+    return {"pay": round(pay, 2), "charge": round(charge, 2)}
 
 
 def _week_ending_for(d: date) -> date:
@@ -116,6 +164,7 @@ async def _fetch_rows(db, ws, we, client_id, approved_only):
         if (entry.total_hours or 0) <= 0:
             continue
         derived = _derive(entry)
+        amounts = _amounts(derived, worker, client)
         rows.append({
             "entry_id": entry.id,
             "date": entry.entry_date,
@@ -126,6 +175,7 @@ async def _fetch_rows(db, ws, we, client_id, approved_only):
             "client_id": ts.client_id,
             "job_address": _job_address(job_site, entry),
             **derived,
+            **amounts,
         })
     return rows
 
@@ -178,6 +228,8 @@ async def client_billing(
             "ot_sat": r["ot_sat"],
             "ot_sun": r["ot_sun"],
             "total": r["total"],
+            "charge": r["charge"],
+            "pay": r["pay"],
         })
         _accumulate(d["totals"], r)
         _accumulate(a["totals"], r)
