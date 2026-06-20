@@ -819,6 +819,32 @@
                     </div>
                 </div>
 
+                <!-- Message Foremen (marketing broadcast) -->
+                <div class="bg-white rounded-xl shadow overflow-hidden lg:col-span-2">
+                    <div class="p-4 border-b">
+                        <h2 class="text-lg font-semibold flex items-center gap-2">
+                            <i class="fas fa-bullhorn text-teal-600"></i>
+                            Message Foremen
+                        </h2>
+                    </div>
+                    <div class="p-6">
+                        <p class="text-gray-600 mb-3 text-sm">
+                            Send a one-off SMS to every foreman / site contact saved on the system
+                            (<span id="foremen-count" class="font-semibold">…</span> recipient(s), duplicates by phone removed).
+                        </p>
+                        <textarea id="foremen-message" rows="4" oninput="updateForemenCharCount()" class="w-full border rounded-lg px-3 py-2 mb-2">Hi if your needing any skilled Labourers or Operators let me know we currently have a few available thanks Josh from RAW Labour Hire!</textarea>
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs text-gray-400"><span id="foremen-char-count">0</span> chars</span>
+                            <button onclick="document.getElementById('foremen-message').value=''; updateForemenCharCount();" class="text-xs text-gray-500 hover:text-gray-700">Clear</button>
+                        </div>
+                        <button onclick="broadcastToForemen()" id="foremen-send-btn" class="w-full bg-teal-600 text-white py-3 rounded-lg hover:bg-teal-700 flex items-center justify-center gap-2">
+                            <i class="fas fa-paper-plane"></i>
+                            Send to all foremen
+                        </button>
+                        <div id="foremen-send-result" class="text-sm mt-3"></div>
+                    </div>
+                </div>
+
                 <!-- Twilio Setup Info -->
                 <div class="bg-white rounded-xl shadow overflow-hidden lg:col-span-2">
                     <div class="p-4 border-b">
@@ -1733,6 +1759,8 @@
                 initCalendar();
             } else if (tab === 'allocation') {
                 initAllocation();
+            } else if (tab === 'notifications') {
+                loadForemenCount();
             }
         }
 
@@ -4384,6 +4412,68 @@
             if (sent > 0) {
                 document.getElementById('sms-message').value = '';
                 deselectAllWorkers();
+            }
+        }
+
+        // ==================== MESSAGE FOREMEN (broadcast) ====================
+        function updateForemenCharCount() {
+            const el = document.getElementById('foremen-char-count');
+            const ta = document.getElementById('foremen-message');
+            if (el && ta) el.textContent = ta.value.length;
+        }
+
+        async function loadForemenCount() {
+            const el = document.getElementById('foremen-count');
+            if (!el) return;
+            try {
+                const res = await authFetch(`${API_BASE}/notifications/foremen`);
+                const data = await res.json();
+                el.textContent = data.count ?? 0;
+            } catch (e) {
+                el.textContent = '?';
+            }
+            updateForemenCharCount();
+        }
+
+        async function broadcastToForemen() {
+            const message = document.getElementById('foremen-message').value.trim();
+            if (!message) {
+                alert('Please enter a message');
+                return;
+            }
+            const countEl = document.getElementById('foremen-count');
+            const count = countEl ? countEl.textContent : '';
+            if (!confirm(`Send this SMS to all foremen${count && count !== '?' ? ' (' + count + ')' : ''}?\n\n"${message}"`)) {
+                return;
+            }
+            const btn = document.getElementById('foremen-send-btn');
+            const resultEl = document.getElementById('foremen-send-result');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…';
+            resultEl.textContent = '';
+            try {
+                const res = await authFetch(`${API_BASE}/notifications/broadcast-foremen`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    resultEl.className = 'text-sm mt-3 text-green-700';
+                    resultEl.textContent = `Sent to ${data.sent} of ${data.total} foreman(s).` + (data.failed ? ` ${data.failed} failed.` : '');
+                    if (data.failed && data.errors && data.errors.length) {
+                        resultEl.textContent += ' ' + data.errors.slice(0, 3).join('; ');
+                    }
+                } else {
+                    resultEl.className = 'text-sm mt-3 text-red-600';
+                    resultEl.textContent = data.detail || 'Failed to send';
+                }
+            } catch (e) {
+                resultEl.className = 'text-sm mt-3 text-red-600';
+                resultEl.textContent = 'Error sending: ' + e.message;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send to all foremen';
             }
         }
 

@@ -113,6 +113,29 @@ async def send_sms(to_phone: str, message: str) -> dict:
         }
 
 
+def send_sms_sync(to_phone: str, message: str) -> dict:
+    """Synchronous SMS send (for running many sends in a background thread)."""
+    client = get_twilio_client()
+    if not client:
+        return {"success": False, "error": "SMS service not configured"}
+
+    formatted_phone = format_phone_number(to_phone)
+    if not formatted_phone:
+        return {"success": False, "error": "Invalid phone number"}
+
+    try:
+        message_obj = client.messages.create(
+            body=message,
+            from_=TWILIO_PHONE_NUMBER,
+            to=formatted_phone
+        )
+        return {"success": True, "message_sid": message_obj.sid, "to": formatted_phone}
+    except TwilioRestException as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 # ==================== NOTIFICATION TEMPLATES ====================
 
 def clock_in_reminder_message(worker_name: str) -> str:

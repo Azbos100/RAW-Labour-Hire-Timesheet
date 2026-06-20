@@ -3,6 +3,8 @@ RAW Labour Hire - Notifications API
 Handles SMS reminders for clock in/out
 """
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -11,9 +13,11 @@ from datetime import datetime, date, time, timedelta
 from typing import Optional, List
 
 from ..database import get_db
-from ..models import User, Timesheet, TimesheetEntry, NotificationSettings
+from ..models import User, Timesheet, TimesheetEntry, NotificationSettings, ClientContact
 from ..services.sms import (
     send_sms,
+    send_sms_sync,
+    format_phone_number,
     clock_in_reminder_message,
     clock_out_reminder_message,
     timesheet_approved_message,
@@ -212,6 +216,81 @@ async def send_sms_to_worker(
         return {"message": "SMS sent successfully", "to": worker.phone}
     else:
         raise HTTPException(status_code=500, detail=sms_result.get("error", "Failed to send SMS"))
+
+
+class BroadcastSMSRequest(BaseModel):
+    message: str
+
+
+def _dedupe_foremen(contacts):
+    """Return [(name, formatted_phone)] with blank/duplicate phone numbers removed."""
+    seen = set()
+    out = []
+    for c in contacts:
+        if not c.phone:
+            continue
+        fp = format_phone_number(c.phone)
+        if not fp or fp in seen:
+            continue
+        seen.add(fp)
+        out.append((c.name, fp))
+    return out
+
+
+@router.get("/foremen")
+async def list_foremen(db: AsyncSession = Depends(get_db)):
+    """List active foremen / site contacts who have a phone number (deduped)."""
+    result = await db.execute(
+        select(ClientContact).where(ClientContact.is_active == True)
+    )
+    contacts = result.scalars().all()
+    recipients = _dedupe_foremen(contacts)
+    return {
+        "count": len(recipients),
+        "foremen": [{"name": n, "phone": p} for n, p in recipients],
+    }
+
+
+@router.post("/broadcast-foremen")
+async def broadcast_to_foremen(
+    data: BroadcastSMSRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Send a one-off SMS to every active foreman / site contact (deduped by phone)."""
+    message = (data.message or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message is empty")
+
+    result = await db.execute(
+        select(ClientContact).where(ClientContact.is_active == True)
+    )
+    contacts = result.scalars().all()
+    recipients = _dedupe_foremen(contacts)
+
+    if not recipients:
+        raise HTTPException(status_code=400, detail="No foremen with phone numbers found")
+
+    def _send_all():
+        sent = 0
+        failed = 0
+        errors = []
+        for name, phone in recipients:
+            res = send_sms_sync(phone, message)
+            if res.get("success"):
+                sent += 1
+            else:
+                failed += 1
+                errors.append(f"{name}: {res.get('error', 'failed')}")
+        return sent, failed, errors
+
+    sent, failed, errors = await asyncio.to_thread(_send_all)
+
+    return {
+        "sent": sent,
+        "failed": failed,
+        "total": len(recipients),
+        "errors": errors[:10],
+    }
 
 
 # ==================== SCHEDULED REMINDER ENDPOINTS ====================
