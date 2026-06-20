@@ -829,17 +829,29 @@
                     </div>
                     <div class="p-6">
                         <p class="text-gray-600 mb-3 text-sm">
-                            Send a one-off SMS to every foreman / site contact saved on the system
-                            (<span id="foremen-count" class="font-semibold">…</span> recipient(s), duplicates by phone removed).
+                            Send a one-off SMS to the foremen / site contacts you choose
+                            (<span id="foremen-count" class="font-semibold">…</span> on file, duplicates by phone removed).
                         </p>
+                        <div class="flex gap-2 mb-2">
+                            <button onclick="selectAllForemen()" class="flex-1 bg-teal-100 text-teal-700 py-2 px-3 rounded-lg hover:bg-teal-200 text-sm font-medium">
+                                <i class="fas fa-check-double mr-1"></i>Select All
+                            </button>
+                            <button onclick="deselectAllForemen()" class="flex-1 bg-gray-100 text-gray-700 py-2 px-3 rounded-lg hover:bg-gray-200 text-sm font-medium">
+                                <i class="fas fa-times mr-1"></i>Deselect All
+                            </button>
+                        </div>
+                        <div id="foremen-checkboxes" class="max-h-72 overflow-y-auto border rounded-lg p-2 mb-2 bg-gray-50">
+                            <p class="text-gray-500 text-sm">Loading foremen…</p>
+                        </div>
+                        <div id="foremen-selected-count" class="text-sm text-teal-700 mb-2">0 selected</div>
                         <textarea id="foremen-message" rows="4" oninput="updateForemenCharCount()" class="w-full border rounded-lg px-3 py-2 mb-2">Hi if your needing any skilled Labourers or Operators let me know we currently have a few available thanks Josh from RAW Labour Hire!</textarea>
                         <div class="flex items-center justify-between mb-3">
                             <span class="text-xs text-gray-400"><span id="foremen-char-count">0</span> chars</span>
-                            <button onclick="document.getElementById('foremen-message').value=''; updateForemenCharCount();" class="text-xs text-gray-500 hover:text-gray-700">Clear</button>
+                            <button onclick="document.getElementById('foremen-message').value=''; updateForemenCharCount();" class="text-xs text-gray-500 hover:text-gray-700">Clear message</button>
                         </div>
                         <button onclick="broadcastToForemen()" id="foremen-send-btn" class="w-full bg-teal-600 text-white py-3 rounded-lg hover:bg-teal-700 flex items-center justify-center gap-2">
                             <i class="fas fa-paper-plane"></i>
-                            Send to all foremen
+                            Send to selected foremen
                         </button>
                         <div id="foremen-send-result" class="text-sm mt-3"></div>
                     </div>
@@ -4422,16 +4434,50 @@
             if (el && ta) el.textContent = ta.value.length;
         }
 
-        async function loadForemenCount() {
-            const el = document.getElementById('foremen-count');
+        function escapeHtml(s) {
+            return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+
+        function updateForemenSelectedCount() {
+            const el = document.getElementById('foremen-selected-count');
             if (!el) return;
+            const n = document.querySelectorAll('.foreman-checkbox:checked').length;
+            el.textContent = `${n} selected`;
+        }
+
+        function selectAllForemen() {
+            document.querySelectorAll('.foreman-checkbox').forEach(cb => cb.checked = true);
+            updateForemenSelectedCount();
+        }
+
+        function deselectAllForemen() {
+            document.querySelectorAll('.foreman-checkbox').forEach(cb => cb.checked = false);
+            updateForemenSelectedCount();
+        }
+
+        async function loadForemenCount() {
+            const countEl = document.getElementById('foremen-count');
+            const listEl = document.getElementById('foremen-checkboxes');
+            if (!listEl) return;
             try {
                 const res = await authFetch(`${API_BASE}/notifications/foremen`);
                 const data = await res.json();
-                el.textContent = data.count ?? 0;
+                const foremen = data.foremen || [];
+                if (countEl) countEl.textContent = data.count ?? foremen.length;
+                if (foremen.length === 0) {
+                    listEl.innerHTML = `<p class="text-gray-500 text-sm">No foremen with phone numbers saved yet. Add them under the Clients tab.</p>`;
+                } else {
+                    listEl.innerHTML = foremen.map(f => `
+                        <label class="flex items-center gap-2 py-1.5 px-1 hover:bg-white rounded cursor-pointer text-sm">
+                            <input type="checkbox" class="foreman-checkbox rounded" value="${escapeHtml(f.phone)}" data-name="${escapeHtml(f.name)}" checked onchange="updateForemenSelectedCount()">
+                            <span class="flex-1"><i class="fas fa-hard-hat text-orange-500 mr-1"></i><b>${escapeHtml(f.name)}</b>${f.client_name ? ` <span class="text-gray-400">(${escapeHtml(f.client_name)})</span>` : ''} — ${escapeHtml(f.phone)}</span>
+                        </label>`).join('');
+                }
             } catch (e) {
-                el.textContent = '?';
+                if (countEl) countEl.textContent = '?';
+                listEl.innerHTML = `<p class="text-red-500 text-sm">Couldn't load foremen.</p>`;
             }
+            updateForemenSelectedCount();
             updateForemenCharCount();
         }
 
@@ -4441,9 +4487,13 @@
                 alert('Please enter a message');
                 return;
             }
-            const countEl = document.getElementById('foremen-count');
-            const count = countEl ? countEl.textContent : '';
-            if (!confirm(`Send this SMS to all foremen${count && count !== '?' ? ' (' + count + ')' : ''}?\n\n"${message}"`)) {
+            const selected = Array.from(document.querySelectorAll('.foreman-checkbox:checked'));
+            if (selected.length === 0) {
+                alert('Please select at least one foreman');
+                return;
+            }
+            const phones = selected.map(cb => cb.value);
+            if (!confirm(`Send this SMS to ${selected.length} foreman(s)?\n\n"${message}"`)) {
                 return;
             }
             const btn = document.getElementById('foremen-send-btn');
@@ -4455,7 +4505,7 @@
                 const res = await authFetch(`${API_BASE}/notifications/broadcast-foremen`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message })
+                    body: JSON.stringify({ message, phones })
                 });
                 const data = await res.json();
                 if (res.ok) {
@@ -4473,7 +4523,7 @@
                 resultEl.textContent = 'Error sending: ' + e.message;
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send to all foremen';
+                btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send to selected foremen';
             }
         }
 

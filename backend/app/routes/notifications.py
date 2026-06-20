@@ -13,7 +13,7 @@ from datetime import datetime, date, time, timedelta
 from typing import Optional, List
 
 from ..database import get_db
-from ..models import User, Timesheet, TimesheetEntry, NotificationSettings, ClientContact
+from ..models import User, Timesheet, TimesheetEntry, NotificationSettings, ClientContact, Client
 from ..services.sms import (
     send_sms,
     send_sms_sync,
@@ -220,34 +220,40 @@ async def send_sms_to_worker(
 
 class BroadcastSMSRequest(BaseModel):
     message: str
+    phones: Optional[List[str]] = None  # if set, only send to these numbers
 
 
-def _dedupe_foremen(contacts):
-    """Return [(name, formatted_phone)] with blank/duplicate phone numbers removed."""
+def _dedupe_foremen(rows):
+    """Return [(name, formatted_phone, client_name)] with blank/duplicate phones removed."""
     seen = set()
     out = []
-    for c in contacts:
+    for c, client_name in rows:
         if not c.phone:
             continue
         fp = format_phone_number(c.phone)
         if not fp or fp in seen:
             continue
         seen.add(fp)
-        out.append((c.name, fp))
+        out.append((c.name, fp, client_name))
     return out
+
+
+async def _foreman_rows(db: AsyncSession):
+    result = await db.execute(
+        select(ClientContact, Client.name)
+        .join(Client, ClientContact.client_id == Client.id)
+        .where(ClientContact.is_active == True)
+    )
+    return result.all()
 
 
 @router.get("/foremen")
 async def list_foremen(db: AsyncSession = Depends(get_db)):
     """List active foremen / site contacts who have a phone number (deduped)."""
-    result = await db.execute(
-        select(ClientContact).where(ClientContact.is_active == True)
-    )
-    contacts = result.scalars().all()
-    recipients = _dedupe_foremen(contacts)
+    recipients = _dedupe_foremen(await _foreman_rows(db))
     return {
         "count": len(recipients),
-        "foremen": [{"name": n, "phone": p} for n, p in recipients],
+        "foremen": [{"name": n, "phone": p, "client_name": cn} for n, p, cn in recipients],
     }
 
 
@@ -256,16 +262,17 @@ async def broadcast_to_foremen(
     data: BroadcastSMSRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    """Send a one-off SMS to every active foreman / site contact (deduped by phone)."""
+    """Send a one-off SMS to selected (or all) active foremen / site contacts."""
     message = (data.message or "").strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message is empty")
 
-    result = await db.execute(
-        select(ClientContact).where(ClientContact.is_active == True)
-    )
-    contacts = result.scalars().all()
-    recipients = _dedupe_foremen(contacts)
+    recipients = _dedupe_foremen(await _foreman_rows(db))
+
+    # If specific phone numbers were chosen, filter to those
+    if data.phones:
+        wanted = {format_phone_number(p) for p in data.phones if p}
+        recipients = [r for r in recipients if r[1] in wanted]
 
     if not recipients:
         raise HTTPException(status_code=400, detail="No foremen with phone numbers found")
@@ -274,7 +281,7 @@ async def broadcast_to_foremen(
         sent = 0
         failed = 0
         errors = []
-        for name, phone in recipients:
+        for name, phone, _client_name in recipients:
             res = send_sms_sync(phone, message)
             if res.get("success"):
                 sent += 1
