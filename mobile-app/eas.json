@@ -37,6 +37,10 @@
       "ios": {
         "appleId": "azbos@me.com",
         "ascAppId": "6740648073"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./google-play-service-account.json",
+        "track": "internal"
       }
     }
   }

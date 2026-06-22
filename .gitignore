@@ -45,6 +45,10 @@ mobile-app/dist/
 *.mobileprovision
 *.orig.*
 
+# Google Play service account key (secret - never commit)
+google-play-service-account.json
+mobile-app/google-play-service-account.json
+
 # Uploads (production will use cloud storage)
 backend/app/uploads/
 
