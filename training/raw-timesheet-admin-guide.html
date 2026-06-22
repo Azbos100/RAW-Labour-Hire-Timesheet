@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RAW Timesheet — Admin Dashboard Guide</title>
+<style>
+  :root{
+    --primary:#1E3A8A;
+    --primary-d:#162C6B;
+    --success:#059669;
+    --success-l:#10B981;
+    --danger:#DC2626;
+    --amber:#F59E0B;
+    --screen-bg:#F3F4F6;
+    --text:#1F2937;
+    --muted:#6B7280;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;}
+  html,body{height:100%;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(1200px 800px at 50% -10%,#1b2b56 0%,#0b1220 60%);
+    color:#fff;display:flex;flex-direction:column;align-items:center;
+    min-height:100vh;overflow-x:hidden;
+  }
+
+  /* ---- Top bar ---- */
+  .topbar{width:100%;max-width:1100px;display:flex;align-items:center;justify-content:space-between;padding:18px 24px 4px;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand .logo{width:40px;height:40px;border-radius:9px;background:#fff;display:flex;align-items:center;justify-content:center;}
+  .brand .logo svg{width:26px;height:26px;}
+  .brand h1{font-size:18px;font-weight:800;letter-spacing:.3px;}
+  .brand p{font-size:12px;color:#9fb0d8;font-weight:500;}
+  .rec-tip{font-size:12px;color:#cdd8f3;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);padding:8px 12px;border-radius:10px;max-width:330px;line-height:1.4;}
+  .rec-tip b{color:#fff;}
+
+  /* ---- Stage ---- */
+  .stage{flex:1;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:10px 16px 24px;}
+
+  /* ---- Browser window ---- */
+  .win{width:940px;max-width:95vw;background:#fff;border-radius:14px;overflow:hidden;
+    box-shadow:0 30px 70px rgba(0,0,0,.5),0 0 0 1px #2a3970;display:flex;flex-direction:column;flex:none;}
+  .chrome{height:38px;background:#e9edf6;display:flex;align-items:center;gap:7px;padding:0 14px;border-bottom:1px solid #d6deea;flex:none;}
+  .chrome .dot{width:11px;height:11px;border-radius:50%;}
+  .url{flex:1;margin-left:12px;background:#fff;border:1px solid #d6deea;border-radius:8px;font-size:12px;color:#64748b;padding:5px 12px;text-align:center;}
+  .viewport{height:566px;background:var(--screen-bg);overflow:hidden;display:flex;flex-direction:column;}
+
+  /* admin nav */
+  .an{background:#fff;border-bottom:1px solid #e5e7eb;display:flex;flex-wrap:wrap;padding:0 10px;flex:none;}
+  .an .t{font-size:12px;color:#6b7280;padding:11px 9px;font-weight:600;white-space:nowrap;border-bottom:2px solid transparent;display:flex;align-items:center;gap:5px;}
+  .an .t.on{color:var(--primary);border-bottom-color:var(--primary);}
+
+  .ab{flex:1;overflow:hidden;padding:16px;}
+
+  /* KPIs */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px;}
+  .kpi{background:#fff;border-radius:12px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);display:flex;align-items:center;justify-content:space-between;}
+  .kpi .l{font-size:12px;color:#6b7280;}
+  .kpi .n{font-size:24px;font-weight:800;margin-top:4px;}
+  .kpi .ic{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px;}
+
+  /* table */
+  .tbl{width:100%;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);border-collapse:collapse;font-size:13px;}
+  .tbl th{background:#f8fafc;color:#64748b;text-align:left;padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
+  .tbl td{padding:11px 12px;border-top:1px solid #f1f5f9;color:#1f2937;}
+  .tbl tr.hl td{background:#FFFBEB;}
+
+  /* pills + buttons */
+  .ap{display:inline-block;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:700;}
+  .ap.g{background:#D1FAE5;color:#059669;}
+  .ap.a{background:#FEF3C7;color:#B45309;}
+  .ap.r{background:#FEE2E2;color:#DC2626;}
+  .ap.s{background:#eef0f5;color:#6B7280;}
+  .abtn{display:inline-flex;align-items:center;gap:5px;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;color:#fff;}
+  .abtn.g{background:#059669;} .abtn.b{background:var(--primary);} .abtn.r{background:#DC2626;}
+  .abtn.ghost{background:#fff;color:#DC2626;border:1px solid #FCA5A5;}
+  .abtn.sm{padding:5px 9px;font-size:11px;}
+
+  .acard{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:12px;}
+  .asec{font-weight:700;color:#1f2937;margin:2px 0 10px;font-size:15px;}
+  .arow{display:flex;align-items:center;gap:8px;}
+  .amuted{color:#6b7280;font-size:12.5px;}
+  .field{background:#fff;border:1px solid #e2e6ee;border-radius:8px;padding:8px 10px;color:#475569;font-size:12.5px;}
+  .toggle{width:40px;height:23px;background:var(--success-l);border-radius:12px;position:relative;flex:none;}
+  .toggle div{width:17px;height:17px;background:#fff;border-radius:50%;position:absolute;top:3px;right:3px;}
+
+  /* highlight ring */
+  .ring{animation:ring 1.6s ease-in-out infinite;border-radius:10px;}
+  @keyframes ring{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,0);}50%{box-shadow:0 0 0 4px rgba(245,158,11,.6);}}
+
+  .screen-fade{animation:fade .45s ease;}
+  @keyframes fade{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+
+  /* center splash */
+  .splash{height:100%;background:var(--primary);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#fff;padding:32px;}
+
+  /* ---- Caption ---- */
+  .caption{max-width:880px;text-align:center;font-size:18px;line-height:1.55;color:#eaf0ff;min-height:60px;padding:0 8px;font-weight:500;}
+  .caption b{color:#ffd479;}
+
+  /* ---- Controls ---- */
+  .controls{display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);padding:10px 16px;border-radius:999px;}
+  .ctrl{background:none;border:none;color:#fff;cursor:pointer;font-size:15px;display:flex;align-items:center;gap:7px;padding:8px 12px;border-radius:999px;font-weight:600;}
+  .ctrl:hover{background:rgba(255,255,255,.12);}
+  .ctrl.primary{background:var(--success-l);}
+  .ctrl.primary:hover{background:#0f9e6e;}
+  .slidecount{font-size:13px;color:#9fb0d8;min-width:54px;text-align:center;}
+
+  .progress{width:100%;max-width:1100px;height:4px;background:rgba(255,255,255,.12);border-radius:4px;overflow:hidden;}
+  .progress .bar{height:100%;width:0;background:linear-gradient(90deg,#10B981,#60a5fa);transition:width .3s linear;}
+  .dots{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:880px;}
+  .dot{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.2);cursor:pointer;}
+  .dot.active{background:#10B981;transform:scale(1.25);}
+  .foot{font-size:12px;color:#8595bd;padding:6px 0 22px;text-align:center;}
+  @media (max-width:980px){.rec-tip{display:none;} .win{transform:scale(.84);transform-origin:top center;} .stage{gap:6px;}}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo">
+        <svg viewBox="0 0 64 64" fill="none"><ellipse cx="32" cy="32" rx="30" ry="30" fill="#1E3A8A"/><path d="M10 38c14-10 30-12 44-6M12 30c12-9 28-11 40-6M16 23c9-6 21-8 31-5" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+      </div>
+      <div>
+        <h1>RAW Timesheet</h1>
+        <p>Admin guide — how to run the dashboard</p>
+      </div>
+    </div>
+    <div class="rec-tip">🎥 <b>To make a video:</b> press <b>Play</b>, then screen-record this window (Mac: <b>⇧⌘5</b>). Turn your sound on to capture the voice-over.</div>
+  </div>
+
+  <div class="progress"><div class="bar" id="bar"></div></div>
+
+  <div class="stage">
+    <div class="win">
+      <div class="chrome">
+        <span class="dot" style="background:#ff5f57;"></span>
+        <span class="dot" style="background:#febc2e;"></span>
+        <span class="dot" style="background:#28c840;"></span>
+        <div class="url">🔒 admin.rawlabourhire.com/admin</div>
+      </div>
+      <div class="viewport" id="screen"></div>
+    </div>
+
+    <div class="caption" id="caption"></div>
+    <div class="dots" id="dots"></div>
+
+    <div class="controls">
+      <button class="ctrl" id="restart" title="Restart">⏮ Restart</button>
+      <button class="ctrl" id="prev" title="Previous">◀ Back</button>
+      <button class="ctrl primary" id="play" title="Play / Pause">▶ Play</button>
+      <button class="ctrl" id="next" title="Next">Next ▶</button>
+      <span class="slidecount" id="count">1 / 15</span>
+      <button class="ctrl" id="mute" title="Mute voice-over">🔊 Voice</button>
+    </div>
+    <div class="controls" style="margin-top:10px;">
+      <span style="font-size:13px;color:#9fb0d8;">🗣️ Voice-over:</span>
+      <select id="voiceSel" style="background:#16224a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:7px 10px;font-size:13px;max-width:280px;"></select>
+    </div>
+    <div class="foot">RAW Labour Hire · Admin dashboard at admin.rawlabourhire.com/admin · Support: Josh McPherson 0424 142 040</div>
+  </div>
+
+<script>
+/* ---------------- Admin window builders ---------------- */
+const ANAV=[['Timesheets','⏱️'],['Calendar','📅'],['Allocation','👷'],['Archived','🗄️'],['Tickets','🪪'],['Inductions','✅'],['Workers','👥'],['Clients','🏢'],['Invoicing','💵'],['Alerts','🔔']];
+const NAV=(active)=>`<div class="an">${ANAV.map(([n,i])=>`<div class="t ${n===active?'on':''}">${i} ${n}</div>`).join('')}</div>`;
+
+const FRAME = (active, body) => `
+  <div style="background:#1E3A8A;color:#fff;padding:11px 18px;display:flex;align-items:center;justify-content:space-between;flex:none;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:30px;height:30px;border-radius:7px;background:#fff;display:flex;align-items:center;justify-content:center;">
+        <svg viewBox="0 0 64 64" style="width:20px;height:20px;"><ellipse cx="32" cy="32" rx="30" ry="30" fill="#1E3A8A"/><path d="M10 38c14-10 30-12 44-6M12 30c12-9 28-11 40-6" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+      </div>
+      <div><div style="font-weight:800;font-size:15px;">RAW Labour Hire</div><div style="font-size:11px;color:#bcd0f5;">Admin Dashboard</div></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:9px;font-size:12px;">
+      <span id="refreshBtn" style="background:#1d2f63;padding:6px 10px;border-radius:7px;">🔄 Refresh</span>
+      <span style="opacity:.85;">🛡️ Admin</span>
+      <span id="logoutBtn" style="background:#DC2626;padding:6px 10px;border-radius:7px;">Logout</span>
+    </div>
+  </div>
+  ${NAV(active)}
+  <div class="ab">${body}</div>`;
+
+const kpi = (l,n,ic,bg,col) => `
+  <div class="kpi"><div><div class="l">${l}</div><div class="n" style="color:${col};">${n}</div></div>
+  <div class="ic" style="background:${bg};color:${col};">${ic}</div></div>`;
+
+const screens = {
+  intro: () => `
+    <div class="splash">
+      <div style="width:88px;height:88px;border-radius:22px;background:#fff;display:flex;align-items:center;justify-content:center;margin-bottom:22px;">
+        <svg viewBox="0 0 64 64" style="width:58px;height:58px;"><ellipse cx="32" cy="32" rx="30" ry="30" fill="#1E3A8A"/><path d="M10 38c14-10 30-12 44-6M12 30c12-9 28-11 40-6M16 23c9-6 21-8 31-5" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+      </div>
+      <div style="font-size:26px;font-weight:800;">RAW Admin Dashboard</div>
+      <div style="font-size:15px;opacity:.85;margin-top:10px;line-height:1.6;">Approve timesheets · allocate jobs · manage workers &amp; clients · invoice through MYOB</div>
+    </div>`,
+
+  login: () => `
+    <div style="height:100%;display:flex;align-items:center;justify-content:center;background:#eef2fb;">
+      <div style="width:340px;background:#fff;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.12);padding:28px;">
+        <div style="text-align:center;margin-bottom:22px;">
+          <div style="width:60px;height:60px;border-radius:15px;background:var(--primary);display:inline-flex;align-items:center;justify-content:center;">
+            <svg viewBox="0 0 64 64" style="width:38px;height:38px;"><ellipse cx="32" cy="32" rx="30" ry="30" fill="#1E3A8A"/><path d="M10 38c14-10 30-12 44-6M12 30c12-9 28-11 40-6" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+          </div>
+          <div style="font-size:19px;font-weight:800;color:var(--text);margin-top:12px;">Admin Login</div>
+          <div class="amuted" style="margin-top:3px;">RAW Labour Hire Dashboard</div>
+        </div>
+        <div class="amuted" style="font-weight:700;margin-bottom:5px;">Email</div>
+        <div class="field" style="margin-bottom:12px;">admin@rawlabourhire.com</div>
+        <div class="amuted" style="font-weight:700;margin-bottom:5px;">Password</div>
+        <div class="field" style="margin-bottom:18px;">••••••••••</div>
+        <button class="abtn b ring" style="width:100%;justify-content:center;padding:11px;font-size:14px;">Log In</button>
+      </div>
+    </div>`,
+
+  dashboard: () => FRAME('Timesheets', `
+    <div class="kpis">
+      ${kpi('Pending Approval','6','⏳','#FEF3C7','#B45309')}
+      ${kpi('Approved This Week','38','✔','#D1FAE5','#059669')}
+      ${kpi('Total Hours','312.5','🕐','#DBEAFE','#1E40AF')}
+      ${kpi('Active Workers','24','👥','#EDE9FE','#6D28D9')}
+    </div>
+    <table class="tbl">
+      <thead><tr><th>Docket #</th><th>Worker</th><th>Job Site</th><th>Hours</th><th>Status</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>#10231</td><td>Liam Carter</td><td>2 Lonsdale Street</td><td>8.0</td><td><span class="ap a">Pending</span></td><td><span class="abtn g sm">Approve</span></td></tr>
+        <tr><td>#10230</td><td>Noah Bennett</td><td>93-97 Maroondah Hwy</td><td>8.5</td><td><span class="ap a">Pending</span></td><td><span class="abtn g sm">Approve</span></td></tr>
+        <tr><td>#10228</td><td>Jack Wilson</td><td>2 Lonsdale Street</td><td>7.5</td><td><span class="ap g">Approved</span></td><td>—</td></tr>
+      </tbody>
+    </table>`),
+
+  approve: () => FRAME('Timesheets', `
+    <table class="tbl" style="margin-bottom:12px;">
+      <thead><tr><th>Docket #</th><th>Worker</th><th>Job Site</th><th>Hours</th><th>Status</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr class="hl"><td>#10231</td><td>Liam Carter</td><td>2 Lonsdale Street</td><td>8.0</td><td><span class="ap a">Pending</span></td><td><span class="abtn b sm">Open</span></td></tr>
+      </tbody>
+    </table>
+    <div class="acard ring">
+      <div class="asec">Docket #10231 — Liam Carter</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div><div class="amuted" style="font-weight:700;">Clock In</div><div class="field">7:02 AM</div></div>
+        <div><div class="amuted" style="font-weight:700;">Clock Out</div><div class="field">3:30 PM</div></div>
+      </div>
+      <div class="amuted" style="margin-bottom:12px;">Ordinary 8.0h · Overtime 0h · Supervisor signed ✓</div>
+      <div class="arow" style="gap:10px;">
+        <button class="abtn ghost">✕ Reject</button>
+        <button class="abtn g">✓ Approve</button>
+      </div>
+    </div>`),
+
+  onsite: () => FRAME('Timesheets', `
+    <div class="acard ring">
+      <div class="asec">👷 Workers On Site (now)</div>
+      <table class="tbl">
+        <thead><tr><th>Worker</th><th>Job Site</th><th>Since</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td>Liam Carter</td><td>2 Lonsdale Street</td><td>7:02 AM</td><td><span class="abtn r sm">Clock Out</span></td></tr>
+          <tr><td>Mia Thompson</td><td>93-97 Maroondah Hwy</td><td>6:58 AM</td><td><span class="abtn r sm">Clock Out</span></td></tr>
+        </tbody>
+      </table>
+      <div class="amuted" style="margin-top:10px;">Forgot to clock out? You can do it for them here.</div>
+    </div>`),
+
+  calendar: () => {
+    let cells='';
+    const work={3:2,4:1,5:3,9:4,10:2,11:5,12:1,16:3,17:2,18:4,19:6,23:2,24:3,25:1};
+    for(let d=1; d<=28; d++){
+      const w=work[d]||0;
+      cells+=`<div style="min-height:52px;border:1px solid #eef0f5;border-radius:8px;padding:5px;background:${d===23?'#EFF6FF':'#fff'};${d===23?'border-color:#3B82F6;':''}">
+        <div style="font-size:11px;color:#94a3b8;">${d}</div>
+        ${w?`<div style="margin-top:4px;font-size:10px;font-weight:700;color:#1E3A8A;background:#DBEAFE;border-radius:6px;padding:2px 4px;display:inline-block;">${w} on site</div>`:''}
+      </div>`;
+    }
+    return FRAME('Calendar', `
+      <div class="arow" style="justify-content:space-between;margin-bottom:10px;">
+        <div class="asec" style="margin:0;">June 2026</div>
+        <div class="amuted">‹ Prev · Next ›</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;font-size:11px;color:#94a3b8;margin-bottom:5px;">
+        <div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;">${cells}</div>`);
+  },
+
+  allocation: () => FRAME('Allocation', `
+    <div class="arow" style="justify-content:space-between;margin-bottom:12px;">
+      <div class="asec" style="margin:0;">📋 Allocated — Tue 23 Jun</div>
+      <div class="field" style="padding:6px 10px;">📅 Tue 23 Jun ▾</div>
+    </div>
+    <table class="tbl" style="margin-bottom:14px;">
+      <thead><tr><th>Worker</th><th>Client / Site</th><th>Start</th><th>Foreman</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>Liam Carter</td><td>BuildCo · 2 Lonsdale St</td><td>7:00 AM</td><td>Dave 0400 111 222</td><td><span class="ap g">Accepted</span></td></tr>
+        <tr><td>Noah Bennett</td><td>BuildCo · 2 Lonsdale St</td><td>7:00 AM</td><td>Dave 0400 111 222</td><td><span class="ap a">Pending</span></td></tr>
+      </tbody>
+    </table>
+    <div class="acard ring" style="background:#F0FDF4;">
+      <div class="asec" style="color:#166534;">➕ Not allocated for this day (4)</div>
+      <div class="amuted">Mia Thompson · Jack Wilson · Ava Nguyen · Ethan Brown — drag onto a job or tap to assign. They get a notification to accept.</div>
+    </div>`),
+
+  workers: () => FRAME('Workers', `
+    <div class="arow" style="justify-content:space-between;margin-bottom:12px;">
+      <div class="asec" style="margin:0;">Workers Directory</div>
+      <button class="abtn b sm">➕ Add Worker</button>
+    </div>
+    <table class="tbl">
+      <thead><tr><th>Name</th><th>Phone</th><th>Last on App</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>
+        <tr><td>Liam Carter</td><td>0414 268 336</td><td>2 min ago</td><td><span class="ap g">Active</span></td>
+          <td><span style="color:#7c3aed;">🕐</span> <span style="color:#0d9488;">🔑</span> <span style="color:#059669;">👤✓</span></td></tr>
+        <tr><td>Noah Bennett</td><td>0433 534 014</td><td>1 hr ago</td><td><span class="ap g">Active</span></td>
+          <td><span style="color:#7c3aed;">🕐</span> <span style="color:#0d9488;">🔑</span> <span style="color:#059669;">👤✓</span></td></tr>
+        <tr><td>Sam Older</td><td>0400 000 000</td><td>3 weeks ago</td><td><span class="ap r">Inactive</span></td>
+          <td><span style="color:#dc2626;">👤✕</span> <span style="color:#b91c1c;">🗑️</span></td></tr>
+      </tbody>
+    </table>
+    <div class="amuted" style="margin-top:10px;">🟢 Active · 🔴 Inactive · 🔑 reset password · 🕐 shift schedule · 🗑️ remove (payroll history kept).</div>`),
+
+  clients: () => FRAME('Clients', `
+    <div class="acard">
+      <div class="asec">🏢 Clients</div>
+      <table class="tbl">
+        <thead><tr><th>Client</th><th>Billing Rate</th><th>MYOB</th></tr></thead>
+        <tbody>
+          <tr><td>BuildCo Pty Ltd</td><td>$68.00 / hr</td><td><span class="ap g">Linked</span></td></tr>
+          <tr><td>Metro Construction</td><td>$72.50 / hr</td><td><span class="ap g">Linked</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="acard ring">
+      <div class="asec">📍 Job Sites</div>
+      <div class="amuted">2 Lonsdale Street, Melbourne · 93-97 Maroondah Hwy, Ringwood — each with its own address &amp; rate.</div>
+    </div>`),
+
+  tickets: () => FRAME('Tickets', `
+    <div class="arow" style="justify-content:space-between;margin-bottom:12px;">
+      <div class="asec" style="margin:0;">Worker Tickets &amp; Licences</div>
+      <div class="field" style="padding:6px 10px;">Ticket Type: White Card ▾</div>
+    </div>
+    <table class="tbl">
+      <thead><tr><th>Worker</th><th>Ticket</th><th>Images</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Liam Carter</td><td>White Card</td><td>Front · Back</td><td><span class="abtn b sm">Download</span></td></tr>
+        <tr><td>Mia Thompson</td><td>Forklift (LF)</td><td>Front · Back</td><td><span class="abtn b sm">Download</span></td></tr>
+        <tr><td>Jack Wilson</td><td>EWP / Boom</td><td>Front · Back</td><td><span class="abtn b sm">Download</span></td></tr>
+      </tbody>
+    </table>`),
+
+  inductions: () => FRAME('Inductions', `
+    <div class="acard ring">
+      <div class="asec">📄 SWMS &amp; Induction Documents</div>
+      <div class="arow" style="justify-content:space-between;"><div>Site SWMS — Lonsdale St</div><button class="abtn b sm">⬆ Upload new</button></div>
+    </div>
+    <div class="acard">
+      <div class="asec">Worker Induction Status</div>
+      <table class="tbl">
+        <thead><tr><th>Worker</th><th>RAW Induction</th><th>Site SWMS</th></tr></thead>
+        <tbody>
+          <tr><td>Liam Carter</td><td><span class="ap g">Signed</span></td><td><span class="ap g">Signed</span></td></tr>
+          <tr><td>Noah Bennett</td><td><span class="ap g">Signed</span></td><td><span class="ap a">To sign</span></td></tr>
+        </tbody>
+      </table>
+    </div>`),
+
+  invoicing: () => FRAME('Invoicing', `
+    <div class="arow" style="justify-content:space-between;margin-bottom:12px;">
+      <div class="asec" style="margin:0;">💵 Weekly Invoicing — MYOB</div>
+      <div class="field" style="padding:6px 10px;">Pay Week: 14–20 Jun ▾</div>
+    </div>
+    <table class="tbl" style="margin-bottom:12px;">
+      <thead><tr><th>Client</th><th>Job Site</th><th>Hours</th><th>Amount</th></tr></thead>
+      <tbody>
+        <tr><td>BuildCo Pty Ltd</td><td>2 Lonsdale Street</td><td>96.0</td><td>$6,528.00</td></tr>
+        <tr><td>Metro Construction</td><td>93-97 Maroondah Hwy</td><td>72.5</td><td>$5,256.25</td></tr>
+      </tbody>
+    </table>
+    <button class="abtn g ring" style="padding:10px 16px;">➡ Push to MYOB &amp; create invoices</button>`),
+
+  alerts: () => FRAME('Alerts', `
+    <div class="acard">
+      <div class="arow" style="justify-content:space-between;"><div class="asec" style="margin:0;">⏰ Clock-in / Clock-out reminders</div><div class="toggle"><div></div></div></div>
+      <div class="arow" style="gap:10px;margin-top:10px;"><div class="field">In: 07:00</div><div class="field">Out: 17:00</div></div>
+    </div>
+    <div class="acard">
+      <div class="arow" style="justify-content:space-between;"><div class="asec" style="margin:0;">📣 Unaccepted Jobs Notice</div><div class="toggle"><div></div></div></div>
+      <div class="amuted" style="margin-top:8px;">Time 18:15 · Recipients: Josh + selected workers · Extra SMS numbers</div>
+    </div>
+    <div class="acard ring">
+      <div class="arow" style="justify-content:space-between;"><div class="asec" style="margin:0;">📋 Daily Roster Digest</div><div class="toggle"><div></div></div></div>
+      <div class="amuted" style="margin-top:8px;">7:00 PM SMS — who's out vs who's still available, with client, site &amp; start time.</div>
+    </div>`),
+
+  housekeeping: () => FRAME('Archived', `
+    <div class="acard">
+      <div class="asec">🗄️ Archived Timesheets</div>
+      <table class="tbl">
+        <thead><tr><th>Docket #</th><th>Worker</th><th>Week</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>#10180</td><td>Jack Wilson</td><td>7–13 Jun</td><td><span class="abtn b sm">Restore</span></td></tr>
+        </tbody>
+      </table>
+      <div class="amuted" style="margin-top:10px;">Old timesheets stay out of the way but can be restored anytime.</div>
+    </div>
+    <div class="acard ring">
+      <div class="asec">Up top, anytime</div>
+      <div class="amuted">🔄 <b>Refresh</b> pulls the latest data · <b>Logout</b> signs you out securely.</div>
+    </div>`),
+
+  outro: () => `
+    <div class="splash">
+      <div style="font-size:40px;margin-bottom:14px;">✅</div>
+      <div style="font-size:22px;font-weight:800;">That's the dashboard!</div>
+      <div style="font-size:14px;opacity:.92;margin-top:14px;line-height:1.7;text-align:left;">
+        ✔ Approve timesheets → payroll &amp; invoicing<br/>
+        ✔ Allocate the next day's jobs<br/>
+        ✔ Keep workers, clients &amp; tickets up to date<br/>
+        ✔ Push approved hours to MYOB<br/>
+        ✔ Manage reminders &amp; the daily roster digest
+      </div>
+      <div style="margin-top:22px;font-size:13px;opacity:.85;">Questions? Call or text Josh McPherson<br/><b style="font-size:16px;">0424 142 040</b></div>
+    </div>`,
+};
+
+/* ---------------- Slide script (screen + caption + narration) ---------------- */
+const slides = [
+  { s:'intro',
+    cap:'Welcome to the <b>RAW Admin Dashboard</b> — your control centre for the whole operation.',
+    say:'G\'day, and welcome to the RAW Labour Hire admin dashboard. This is your control centre for the whole operation, approving timesheets, allocating jobs, managing your workers and clients, and pushing it all through to invoicing. Let\'s take a quick tour.' },
+  { s:'login',
+    cap:'Open <b>admin.rawlabourhire.com/admin</b> and log in with your admin email and password.',
+    say:'You\'ll find the dashboard at admin dot raw labour hire dot com, slash admin. Just log in with your admin email and password, and you\'re in.' },
+  { s:'dashboard',
+    cap:'The <b>Timesheets</b> tab is home base. The cards up top show pending approvals, approved hours, total hours and active workers.',
+    say:'First up is the Timesheets tab, your home base. Right at the top you\'ve got your live numbers, how many timesheets are pending approval, how many you\'ve approved this week, the total hours, and how many workers are active.' },
+  { s:'approve',
+    cap:'Click a timesheet to open it. Check the hours, adjust the times if needed, then <b>Approve</b> — or Reject to send it back.',
+    say:'Below that is the list of timesheets. Click any one to open it, where you can check the hours, tweak the clock-in or clock-out times if you need to, then hit Approve. Once it\'s approved, those hours flow straight through to payroll and invoicing. Anything that looks off, just reject it and send it back.' },
+  { s:'onsite',
+    cap:'The <b>On Site</b> button shows who\'s clocked in right now — and lets you clock someone out if they forget.',
+    say:'See the On Site button? Give it a tap to see exactly who\'s clocked in right now, and where. And if someone\'s forgotten to clock out, you can do it for them, right from here.' },
+  { s:'calendar',
+    cap:'The <b>Calendar</b> tab is the big picture — a month at a glance showing who worked which day.',
+    say:'The Calendar tab gives you the big picture, a month at a glance, showing who worked which day. It\'s handy for spotting gaps, or double bookings.' },
+  { s:'allocation',
+    cap:'The <b>Allocation</b> tab sets up the next day. Assign workers to each client and site — they get a notification to accept.',
+    say:'The Allocation tab is where you set up the next day\'s work. Pick a date, then assign your workers to each client and job site, set the start time and the site foreman. The moment you save, every worker gets a notification on their phone to accept the job.' },
+  { s:'workers',
+    cap:'The <b>Workers</b> tab is your directory — add, edit, reset passwords, set schedules. Green is active, red is inactive.',
+    say:'The Workers tab is your full directory. Add a new worker, edit their details, set a shift schedule, or reset a password on the spot. Active workers show in green, inactive in red, and you can permanently remove anyone who\'s left, while keeping their payroll history intact.' },
+  { s:'clients',
+    cap:'In <b>Clients</b>, manage every client and job site — addresses, billing rates and the MYOB link.',
+    say:'Over in Clients, you manage every client and their job sites, the addresses, the billing rates, and their MYOB customer link, so everything lines up when it\'s time to invoice.' },
+  { s:'tickets',
+    cap:'The <b>Tickets</b> tab holds every worker\'s licences. Filter by type to see who\'s current, and download the images.',
+    say:'The Tickets tab holds every worker\'s licences and tickets, like their White Cards. Filter by ticket type to see who\'s current, and download the images whenever you need them for a site.' },
+  { s:'inductions',
+    cap:'In <b>Inductions</b>, upload your SWMS and site documents, and see who\'s read and signed them.',
+    say:'In Inductions, you upload your site documents and S-W-M-S, and see at a glance who\'s read and signed them. No one should be on site until they\'re signed off here.' },
+  { s:'invoicing',
+    cap:'The <b>Invoicing</b> tab groups approved hours by client and site, then pushes them to <b>MYOB</b>.',
+    say:'The Invoicing tab is where it all comes together. It takes your approved hours, groups them by client and job site, and pushes them through to MYOB to generate the weekly invoices. No more re-typing into a spreadsheet.' },
+  { s:'alerts',
+    cap:'The <b>Alerts</b> tab controls reminders, the Unaccepted Jobs notice, and the 7pm Daily Roster Digest.',
+    say:'The Alerts tab controls all the automatic messages. Set your clock-in and clock-out reminder times, decide who gets the Unaccepted Jobs notice each evening, and set up the Daily Roster Digest, that seven p.m. text listing who\'s out and who\'s still available.' },
+  { s:'housekeeping',
+    cap:'The <b>Archived</b> tab keeps old timesheets recoverable. Up top, <b>Refresh</b> reloads data and <b>Logout</b> signs you out.',
+    say:'A couple of last things. The Archived tab keeps your old timesheets tidy, but recoverable. And up the top, Refresh pulls the very latest data, while Logout signs you out securely when you\'re done.' },
+  { s:'outro',
+    cap:'That\'s the dashboard! Approve, allocate, manage, and invoice. Questions? Call Josh on <b>0424 142 040</b>.',
+    say:'And that\'s the dashboard! Approve your timesheets, allocate the next day\'s jobs, keep your workers and clients up to date, and let invoicing do the heavy lifting. Any questions, give Josh a call or text, on 0 4 2 4, 1 4 2, 0 4 0. Cheers.' },
+];
+
+/* ---------------- Player ---------------- */
+let idx = 0, playing = false, muted = false, timer = null;
+const screenEl = document.getElementById('screen');
+const capEl = document.getElementById('caption');
+const barEl = document.getElementById('bar');
+const countEl = document.getElementById('count');
+const dotsEl = document.getElementById('dots');
+const playBtn = document.getElementById('play');
+const muteBtn = document.getElementById('mute');
+
+slides.forEach((_,i)=>{const d=document.createElement('div');d.className='dot';d.onclick=()=>{stop();go(i);};dotsEl.appendChild(d);});
+const dots=[...dotsEl.children];
+
+function estDur(text){ return Math.max(3800, Math.min(14000, text.length*55)); }
+
+function render(i){
+  const sl = slides[i];
+  screenEl.innerHTML = screens[sl.s]();
+  screenEl.classList.remove('screen-fade'); void screenEl.offsetWidth; screenEl.classList.add('screen-fade');
+  capEl.innerHTML = sl.cap;
+  countEl.textContent = `${i+1} / ${slides.length}`;
+  barEl.style.width = `${((i+1)/slides.length)*100}%`;
+  dots.forEach((d,k)=>d.classList.toggle('active',k===i));
+}
+
+/* ---- Voice selection (prefer a male Australian voice) ---- */
+let chosenVoice = null;
+const voiceSel = document.getElementById('voiceSel');
+const MALE_HINTS = ['lee','daniel','gordon','james','rishi','aaron','fred','alex','arthur','george','guy','william','liam','oliver','jamie','matthew','mark','male'];
+const FEMALE_HINTS = ['karen','catherine','samantha','victoria','tessa','fiona','moira','serena','female','zira','hazel','allison','ava','susan','nicky'];
+
+function scoreVoice(v){
+  const n = (v.name||'').toLowerCase();
+  const lang = (v.lang||'').toLowerCase();
+  let s = 0;
+  if(lang.includes('en-au')) s += 100;
+  else if(lang.includes('en-gb')) s += 40;
+  else if(lang.startsWith('en')) s += 20;
+  if(MALE_HINTS.some(h=>n.includes(h))) s += 50;
+  if(FEMALE_HINTS.some(h=>n.includes(h))) s -= 50;
+  if(/male/.test(n) && !/female/.test(n)) s += 10;
+  return s;
+}
+
+function buildVoiceList(){
+  const voices = (window.speechSynthesis ? window.speechSynthesis.getVoices() : [])
+    .filter(v=>/en/i.test(v.lang))
+    .sort((a,b)=>scoreVoice(b)-scoreVoice(a));
+  if(!voices.length) return;
+  voiceSel.innerHTML = voices.map((v)=>`<option value="${v.name}">${v.name} (${v.lang})</option>`).join('');
+  chosenVoice = voices[0];
+  voiceSel.value = chosenVoice.name;
+  voiceSel.onchange = ()=>{ chosenVoice = voices.find(v=>v.name===voiceSel.value) || chosenVoice; };
+}
+
+function speak(text, onEnd){
+  if(muted || !('speechSynthesis' in window)){ timer=setTimeout(onEnd, estDur(text)); return; }
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 0.92; u.pitch = 0.95;
+  if(chosenVoice) u.voice = chosenVoice;
+  u.onend = ()=>{ if(playing) onEnd(); };
+  timer = setTimeout(()=>{ if(playing){ window.speechSynthesis.cancel(); onEnd(); } }, estDur(text)+6000);
+  window.speechSynthesis.speak(u);
+}
+
+function playCurrent(){
+  render(idx);
+  speak(slides[idx].say, ()=>{
+    clearTimeout(timer);
+    if(idx < slides.length-1){ idx++; playCurrent(); }
+    else { playing=false; updatePlayBtn(); }
+  });
+}
+
+function play(){ if(playing) return; playing=true; updatePlayBtn(); playCurrent(); }
+function pause(){ playing=false; updatePlayBtn(); clearTimeout(timer); if('speechSynthesis' in window) window.speechSynthesis.cancel(); }
+function stop(){ pause(); }
+function go(i){ idx=Math.max(0,Math.min(slides.length-1,i)); render(idx); }
+function updatePlayBtn(){ playBtn.textContent = playing ? '⏸ Pause' : '▶ Play'; }
+
+playBtn.onclick = ()=> playing ? pause() : play();
+document.getElementById('next').onclick = ()=>{ const w=playing; pause(); go(idx+1); if(w) play(); };
+document.getElementById('prev').onclick = ()=>{ const w=playing; pause(); go(idx-1); if(w) play(); };
+document.getElementById('restart').onclick = ()=>{ pause(); idx=0; render(0); };
+muteBtn.onclick = ()=>{ muted=!muted; muteBtn.textContent = muted ? '🔇 Muted' : '🔊 Voice'; if(muted && 'speechSynthesis' in window) window.speechSynthesis.cancel(); };
+
+document.addEventListener('keydown',e=>{ if(e.code==='Space'){e.preventDefault(); playBtn.click();} if(e.code==='ArrowRight')document.getElementById('next').click(); if(e.code==='ArrowLeft')document.getElementById('prev').click(); });
+
+if('speechSynthesis' in window){
+  buildVoiceList();
+  window.speechSynthesis.onvoiceschanged = buildVoiceList;
+}
+render(0);
+</script>
+</body>
+</html>
