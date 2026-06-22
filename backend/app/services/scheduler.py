@@ -85,17 +85,67 @@ def _parse_csv_phones(value):
     return [p.strip() for p in str(value).split(',') if p.strip()]
 
 
-async def _deliver_notice(db, recipient_ids, extra_phones, title, body, data, sms_enabled, notice_label):
-    """Send a notice to a set of worker recipients (push, SMS fallback) plus a
-    set of raw phone numbers (SMS only). Looked up live so we always use the
-    latest token/phone for each worker.
+def _chunk_sms(text, limit=1400):
+    """Split a long SMS body into Twilio-safe chunks (max 1600 chars each).
+
+    Splits on line boundaries so a worker's line is never cut in half, and
+    prefixes each part with "(i/n)" when more than one part is needed.
+    """
+    lines = text.split("\n")
+    chunks, current = [], ""
+    for line in lines:
+        # Hard-split any single line that is somehow longer than the limit.
+        while len(line) > limit:
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.append(line[:limit])
+            line = line[limit:]
+        candidate = line if not current else current + "\n" + line
+        if len(candidate) > limit:
+            chunks.append(current)
+            current = line
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+
+    if len(chunks) <= 1:
+        return chunks or [text]
+    total = len(chunks)
+    return [f"({i}/{total}) {c}" for i, c in enumerate(chunks, 1)]
+
+
+async def _deliver_notice(db, recipient_ids, extra_phones, title, body, data, sms_enabled, notice_label, prefer_sms=False):
+    """Send a notice to a set of worker recipients plus a set of raw phone
+    numbers (SMS only). Looked up live so we always use the latest token/phone
+    for each worker.
+
+    By default worker recipients get a push (SMS fallback). When prefer_sms is
+    True we text them instead (falling back to push only if they have no phone),
+    so notices like the roster digest reliably land as an SMS.
     """
     from sqlalchemy import select
     from ..models import User
     from .push_notifications import send_push_notification
-    from .sms import send_sms
+    from .sms import send_sms, format_phone_number
 
     sms_body = f"RAW: {title}. {body}"
+    sms_parts = _chunk_sms(sms_body)
+
+    # Track numbers we've already texted (in E.164) so a recipient who is both a
+    # worker and an extra number doesn't get the same SMS twice.
+    texted = set()
+
+    async def _sms_once(phone, who):
+        fp = format_phone_number(phone) if phone else ""
+        if not fp or fp in texted:
+            return False
+        texted.add(fp)
+        for part in sms_parts:
+            result = await send_sms(phone, part)
+            print(f"[Scheduler] {notice_label} SMS -> {who} ({fp}): {result}")
+        return True
 
     recipients = []
     if recipient_ids:
@@ -105,22 +155,25 @@ async def _deliver_notice(db, recipient_ids, extra_phones, title, body, data, sm
 
     sent = 0
     for r in recipients:
-        if r.push_token:
+        who = f"{r.first_name} {r.surname}"
+        can_sms = bool(r.phone and sms_enabled)
+        if prefer_sms and can_sms:
+            if await _sms_once(r.phone, who):
+                sent += 1
+        elif r.push_token:
             result = await send_push_notification(r.push_token, title, body, data)
-            print(f"[Scheduler] {notice_label} push -> {r.first_name} {r.surname}: {result}")
+            print(f"[Scheduler] {notice_label} push -> {who}: {result}")
             sent += 1
-        elif r.phone and sms_enabled:
-            result = await send_sms(r.phone, sms_body)
-            print(f"[Scheduler] {notice_label} SMS -> {r.first_name} {r.surname}: {result}")
-            sent += 1
+        elif can_sms:
+            if await _sms_once(r.phone, who):
+                sent += 1
         else:
-            print(f"[Scheduler] {notice_label}: {r.first_name} {r.surname} has no push token / usable SMS; skipped")
+            print(f"[Scheduler] {notice_label}: {who} has no push token / usable SMS; skipped")
 
     if sms_enabled:
         for phone in extra_phones:
-            result = await send_sms(phone, sms_body)
-            print(f"[Scheduler] {notice_label} SMS -> {phone}: {result}")
-            sent += 1
+            if await _sms_once(phone, "extra"):
+                sent += 1
     elif extra_phones:
         print(f"[Scheduler] {notice_label}: SMS disabled; skipped {len(extra_phones)} extra number(s)")
 
@@ -210,7 +263,7 @@ async def send_roster_digest():
     """
     from ..database import AsyncSessionLocal
     from sqlalchemy import select
-    from ..models import User, NotificationSettings, UserRole
+    from ..models import User, NotificationSettings, UserRole, JobSite, Client
 
     tomorrow = (datetime.now(TIMEZONE) + timedelta(days=1)).date()
     print(f"[Scheduler] Running roster digest for {tomorrow}")
@@ -243,20 +296,52 @@ async def send_roster_digest():
                 else:
                     available.append(w)
 
+            # Look up job-site + client names for the allocated workers so the
+            # message mirrors the "Next Day" allocation page.
+            site_ids = list({w.assigned_job_site_id for w in out if w.assigned_job_site_id})
+            sites_map = {}
+            if site_ids:
+                rows = (await db.execute(
+                    select(JobSite, Client.name)
+                    .outerjoin(Client, JobSite.client_id == Client.id)
+                    .where(JobSite.id.in_(site_ids))
+                )).all()
+                for js, client_name in rows:
+                    sites_map[js.id] = (client_name, js.name, js.address)
+
+            def _out_line(w):
+                client_name, site_name, address = sites_map.get(w.assigned_job_site_id, (None, "Unknown site", None))
+                parts = [f"{w.first_name} {w.surname}:"]
+                where = " / ".join(p for p in (client_name, site_name) if p)
+                if where:
+                    parts.append(where)
+                if address:
+                    parts.append(f"@ {address}")
+                if w.assignment_start_time:
+                    parts.append(f"start {w.assignment_start_time}")
+                if w.assignment_contact_name:
+                    foreman = w.assignment_contact_name
+                    if w.assignment_contact_phone:
+                        foreman += f" {w.assignment_contact_phone}"
+                    parts.append(f"foreman {foreman}")
+                status = "accepted" if w.assignment_accepted is True else ("declined" if w.assignment_accepted is False else "not accepted")
+                parts.append(f"[{status}]")
+                return "  - " + " ".join(parts)
+
             date_label = tomorrow.strftime("%a %d %b")
-            out_names = ", ".join(f"{w.first_name} {w.surname}" for w in out) or "none"
-            avail_names = ", ".join(f"{w.first_name} {w.surname}" for w in available) or "none"
+            out_block = "\n".join(_out_line(w) for w in out) if out else "  - none"
+            avail_block = "\n".join(f"  - {w.first_name} {w.surname}" for w in available) if available else "  - none"
             title = f"Roster {date_label}: {len(out)} out, {len(available)} available"
             body = (
                 f"Roster for {date_label}\n\n"
-                f"OUT ({len(out)}): {out_names}\n\n"
-                f"AVAILABLE ({len(available)}): {avail_names}"
+                f"OUT ({len(out)}):\n{out_block}\n\n"
+                f"AVAILABLE ({len(available)}):\n{avail_block}"
             )
 
             await _deliver_notice(
                 db, recipient_ids, extra_phones, title, body,
                 {"type": "roster_digest", "date": tomorrow.isoformat()},
-                sms_enabled, "Roster digest",
+                sms_enabled, "Roster digest", prefer_sms=True,
             )
     except Exception as e:
         print(f"[Scheduler] Error sending roster digest: {e}")
