@@ -545,6 +545,12 @@ class NotificationSettings(Base):
     
     # SMS settings
     sms_enabled = Column(Boolean, default=True)
+
+    # Daily "who hasn't accepted tomorrow's jobs" notice (push + SMS fallback),
+    # fired Mon-Fri at 18:15. Recipient is configurable; if unset it defaults to
+    # Joshua McPherson by name.
+    allocation_notice_enabled = Column(Boolean, default=True)
+    allocation_notice_recipient_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)

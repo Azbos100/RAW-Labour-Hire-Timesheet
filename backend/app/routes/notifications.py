@@ -119,6 +119,8 @@ class NotificationSettingsUpdate(BaseModel):
     clock_out_reminder_enabled: bool = True
     clock_out_reminder_time: str = "17:00"  # HH:MM format
     sms_enabled: bool = True
+    allocation_notice_enabled: bool = True
+    allocation_notice_recipient_id: Optional[int] = None
 
 
 class SendSMSRequest(BaseModel):
@@ -143,7 +145,9 @@ async def get_notification_settings(
             "clock_in_reminder_time": "07:00",
             "clock_out_reminder_enabled": True,
             "clock_out_reminder_time": "17:00",
-            "sms_enabled": True
+            "sms_enabled": True,
+            "allocation_notice_enabled": True,
+            "allocation_notice_recipient_id": None,
         }
     
     return {
@@ -151,7 +155,9 @@ async def get_notification_settings(
         "clock_in_reminder_time": settings.clock_in_reminder_time.strftime("%H:%M") if settings.clock_in_reminder_time else "07:00",
         "clock_out_reminder_enabled": settings.clock_out_reminder_enabled,
         "clock_out_reminder_time": settings.clock_out_reminder_time.strftime("%H:%M") if settings.clock_out_reminder_time else "17:00",
-        "sms_enabled": settings.sms_enabled
+        "sms_enabled": settings.sms_enabled,
+        "allocation_notice_enabled": settings.allocation_notice_enabled,
+        "allocation_notice_recipient_id": settings.allocation_notice_recipient_id,
     }
 
 
@@ -174,7 +180,9 @@ async def update_notification_settings(
             clock_in_reminder_time=clock_in_time,
             clock_out_reminder_enabled=data.clock_out_reminder_enabled,
             clock_out_reminder_time=clock_out_time,
-            sms_enabled=data.sms_enabled
+            sms_enabled=data.sms_enabled,
+            allocation_notice_enabled=data.allocation_notice_enabled,
+            allocation_notice_recipient_id=data.allocation_notice_recipient_id,
         )
         db.add(settings)
     else:
@@ -183,6 +191,8 @@ async def update_notification_settings(
         settings.clock_out_reminder_enabled = data.clock_out_reminder_enabled
         settings.clock_out_reminder_time = clock_out_time
         settings.sms_enabled = data.sms_enabled
+        settings.allocation_notice_enabled = data.allocation_notice_enabled
+        settings.allocation_notice_recipient_id = data.allocation_notice_recipient_id
     
     await db.commit()
     

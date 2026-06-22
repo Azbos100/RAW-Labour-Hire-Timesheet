@@ -218,6 +218,17 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Migration note (allowances): {e}")
 
+        # Allocation-acceptance notice settings
+        try:
+            await conn.execute(text("""
+                ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS allocation_notice_enabled BOOLEAN DEFAULT TRUE;
+            """))
+            await conn.execute(text("""
+                ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS allocation_notice_recipient_id INTEGER;
+            """))
+        except Exception as e:
+            print(f"Migration note (allocation notice settings): {e}")
+
         # Widen PII columns so they can hold encrypted ciphertext
         try:
             for col in ("bank_account_name", "bank_bsb", "bank_account_number", "tax_file_number"):

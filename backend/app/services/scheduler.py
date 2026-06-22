@@ -71,28 +71,38 @@ async def notify_unaccepted_allocations():
     """
     from ..database import AsyncSessionLocal
     from sqlalchemy import select, func, or_
-    from ..models import User
+    from ..models import User, NotificationSettings
     from .push_notifications import send_push_notification
+    from .sms import send_sms
 
     tomorrow = (datetime.now(TIMEZONE) + timedelta(days=1)).date()
     print(f"[Scheduler] Running unaccepted-allocation notice for {tomorrow}")
 
     try:
         async with AsyncSessionLocal() as db:
-            # Recipient: Joshua McPherson (look up live so we always use his
-            # latest push token).
-            recipient = (await db.execute(
-                select(User).where(
-                    func.lower(User.first_name) == "joshua",
-                    func.lower(User.surname) == "mcpherson",
-                )
-            )).scalars().first()
+            settings = (await db.execute(select(NotificationSettings).limit(1))).scalar_one_or_none()
+            if settings and settings.allocation_notice_enabled is False:
+                print("[Scheduler] Allocation notice disabled in settings; skipping")
+                return
+            sms_enabled = settings.sms_enabled if settings else True
+
+            # Recipient: configured worker if set, otherwise default to Joshua
+            # McPherson (looked up live so we always use the latest token/phone).
+            recipient = None
+            if settings and settings.allocation_notice_recipient_id:
+                recipient = (await db.execute(
+                    select(User).where(User.id == settings.allocation_notice_recipient_id)
+                )).scalars().first()
+            if not recipient:
+                recipient = (await db.execute(
+                    select(User).where(
+                        func.lower(User.first_name) == "joshua",
+                        func.lower(User.surname) == "mcpherson",
+                    )
+                )).scalars().first()
 
             if not recipient:
-                print("[Scheduler] Joshua McPherson not found; skipping notice")
-                return
-            if not recipient.push_token:
-                print("[Scheduler] Joshua McPherson has no push token; skipping notice")
+                print("[Scheduler] No allocation-notice recipient found; skipping")
                 return
 
             # Active workers assigned for tomorrow who haven't accepted yet.
@@ -120,13 +130,22 @@ async def notify_unaccepted_allocations():
                 title = "All jobs accepted for tomorrow"
                 body = f"All allocated workers have accepted their jobs for {date_label}."
 
-            result = await send_push_notification(
-                recipient.push_token,
-                title,
-                body,
-                {"type": "allocation_acceptance_summary", "date": tomorrow.isoformat()},
-            )
-            print(f"[Scheduler] Unaccepted-allocation notice result: {result}")
+            # Push if we have a token; otherwise fall back to SMS so the notice
+            # still gets through even without push notifications set up.
+            if recipient.push_token:
+                result = await send_push_notification(
+                    recipient.push_token,
+                    title,
+                    body,
+                    {"type": "allocation_acceptance_summary", "date": tomorrow.isoformat()},
+                )
+                print(f"[Scheduler] Allocation notice push result: {result}")
+            elif recipient.phone and sms_enabled:
+                sms_body = f"RAW: {title}. " + ("; ".join(lines) if rows else body)
+                result = await send_sms(recipient.phone, sms_body)
+                print(f"[Scheduler] Allocation notice SMS result: {result}")
+            else:
+                print("[Scheduler] Recipient has no push token and no usable SMS; skipping")
     except Exception as e:
         print(f"[Scheduler] Error sending unaccepted-allocation notice: {e}")
 

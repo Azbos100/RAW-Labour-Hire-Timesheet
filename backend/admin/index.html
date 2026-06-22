@@ -805,6 +805,27 @@
                             </div>
                         </div>
                         
+                        <div class="border-t pt-4">
+                            <div class="flex items-center justify-between mb-4">
+                                <div>
+                                    <p class="font-medium">Unaccepted Jobs Notice</p>
+                                    <p class="text-sm text-gray-500">Mon–Fri 6:15 PM: alerts the chosen person with workers who haven't accepted tomorrow's jobs (push, SMS fallback)</p>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <div id="allocation-notice-enabled" onclick="toggleSwitch('allocation-notice-enabled')" class="toggle-switch" style="width:48px;height:26px;background:#D1D5DB;border-radius:13px;cursor:pointer;padding:3px;box-sizing:border-box;display:flex;align-items:center;">
+                                        <div class="toggle-slider" style="width:20px;height:20px;background:white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:transform 0.2s ease;transform:translateX(0);"></div>
+                                    </div>
+                                    <span id="allocation-notice-enabled-label" class="text-sm font-bold text-red-600">OFF</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <label class="text-sm text-gray-500">Send to:</label>
+                                <select id="allocation-notice-recipient" class="border rounded-lg px-3 py-2 flex-1">
+                                    <option value="">Default (Joshua McPherson)</option>
+                                </select>
+                            </div>
+                        </div>
+                        
                         <div class="pt-4 border-t">
                             <button onclick="saveNotificationSettings()" class="w-full bg-blue-900 text-white py-3 rounded-lg hover:bg-blue-800">
                                 <i class="fas fa-save mr-2"></i>Save Settings
@@ -3137,6 +3158,8 @@
                 populateWorkerFilter();
                 // Also populate SMS worker checkboxes
                 populateSMSWorkerSelect();
+                // Keep the allocation-notice recipient dropdown in sync
+                populateAllocationRecipient();
                 // Keep the Allocation view in sync if it's been initialised
                 if (document.getElementById('alloc-date') && document.getElementById('alloc-date').value) {
                     renderAllocation();
@@ -5120,6 +5143,16 @@
             return document.getElementById(id).classList.contains('active');
         }
 
+        let allocationNoticeRecipientId = '';
+        function populateAllocationRecipient() {
+            const recSel = document.getElementById('allocation-notice-recipient');
+            if (!recSel) return;
+            recSel.innerHTML = '<option value="">Default (Joshua McPherson)</option>' +
+                (allWorkers || []).filter(w => w.is_active)
+                    .map(w => `<option value="${w.id}">${esc(w.first_name)} ${esc(w.surname)}</option>`).join('');
+            recSel.value = allocationNoticeRecipientId || '';
+        }
+
         async function loadNotificationSettings() {
             try {
                 const response = await authFetch(`${API_BASE}/notifications/settings`);
@@ -5130,6 +5163,9 @@
                 document.getElementById('clock-in-time').value = data.clock_in_reminder_time;
                 setToggle('clock-out-enabled', data.clock_out_reminder_enabled);
                 document.getElementById('clock-out-time').value = data.clock_out_reminder_time;
+                setToggle('allocation-notice-enabled', data.allocation_notice_enabled !== false);
+                allocationNoticeRecipientId = data.allocation_notice_recipient_id != null ? String(data.allocation_notice_recipient_id) : '';
+                populateAllocationRecipient();
                 
                 // Load scheduler status
                 loadSchedulerStatus();
@@ -5364,12 +5400,15 @@
         }
 
         async function saveNotificationSettings() {
+            const recVal = document.getElementById('allocation-notice-recipient').value;
             const data = {
                 sms_enabled: getToggleValue('sms-enabled'),
                 clock_in_reminder_enabled: getToggleValue('clock-in-enabled'),
                 clock_in_reminder_time: document.getElementById('clock-in-time').value,
                 clock_out_reminder_enabled: getToggleValue('clock-out-enabled'),
-                clock_out_reminder_time: document.getElementById('clock-out-time').value
+                clock_out_reminder_time: document.getElementById('clock-out-time').value,
+                allocation_notice_enabled: getToggleValue('allocation-notice-enabled'),
+                allocation_notice_recipient_id: recVal ? parseInt(recVal) : null
             };
 
             try {
