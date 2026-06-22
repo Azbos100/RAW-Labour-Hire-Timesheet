@@ -2144,10 +2144,11 @@
 
             const statusFilter = (document.getElementById('filter-status') || {}).value || '';
             let rows = allTimesheets;
-            // Hide pure drafts (not submitted yet) EXCEPT when the user explicitly
-            // asks for them via the "Not Submitted (clocked)" filter. Keep drafts that
-            // have at least one submitted day, since those still need approval.
-            if (statusFilter !== 'not_submitted') {
+            // Hide pure drafts (not submitted yet) only on the specific status views
+            // (Pending Approval / Approved / Rejected). On "All Statuses" ('') and the
+            // "Not Submitted (clocked)" view we show them so nothing is hidden. Drafts
+            // that have at least one submitted day are always kept (still need approval).
+            if (statusFilter !== 'not_submitted' && statusFilter !== '') {
                 rows = rows.filter(ts => ts.status !== 'draft' || (ts.submitted_entries_count || 0) > 0);
             }
             if (weekFilter) rows = rows.filter(ts => ts.week_starting === weekFilter);
