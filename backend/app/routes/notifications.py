@@ -305,6 +305,19 @@ async def broadcast_to_foremen(
 # ==================== SCHEDULED REMINDER ENDPOINTS ====================
 # These should be called by a cron job or scheduler
 
+def worker_assigned_today(worker, today: date) -> bool:
+    """True if the worker has a job assigned for `today` and hasn't declined it.
+
+    This is what gates clock-in reminders: we only nudge people who actually have
+    a job on, not every idle worker on the books.
+    """
+    return (
+        worker.assigned_job_site_id is not None
+        and worker.assignment_date == today
+        and worker.assignment_accepted is not False  # skip explicitly declined jobs
+    )
+
+
 def worker_should_work_today(worker, today: date) -> bool:
     """Check if worker is scheduled to work today based on their schedule"""
     day_of_week = today.weekday()  # 0=Monday, 6=Sunday
@@ -377,13 +390,9 @@ async def check_clock_in_reminders(
         if not worker.phone:
             continue
         
-        # Check if worker should work today
-        if not worker_should_work_today(worker, today):
-            skipped_count += 1
-            continue
-        
-        # Check if worker's shift has started
-        if not worker_shift_started(worker, current_time):
+        # Only remind workers who actually have a job assigned for today (and who
+        # haven't declined it). This stops idle/unassigned workers being texted.
+        if not worker_assigned_today(worker, today):
             skipped_count += 1
             continue
         
