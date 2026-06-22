@@ -49,6 +49,9 @@ export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL
   ? getDevBaseUrl()
   : PRODUCTION_URL;
 
+/** Narrated staff training guide (same host as the API, no /api prefix). */
+export const STAFF_GUIDE_URL = API_BASE_URL.replace(/\/api\/?$/, '') + '/guide';
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,

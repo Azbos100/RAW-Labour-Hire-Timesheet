@@ -22,7 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Application from 'expo-application';
 import { COLORS } from '../constants/colors';
 import { useAuth } from '../context/AuthContext';
-import { profileAPI } from '../services/api';
+import { profileAPI, STAFF_GUIDE_URL } from '../services/api';
 import {
   areNotificationsEnabled,
   requestNotificationPermission,
@@ -351,13 +351,27 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleOpenStaffGuide = async () => {
+    try {
+      const canOpen = await Linking.canOpenURL(STAFF_GUIDE_URL);
+      if (!canOpen) {
+        Alert.alert('Unable to open guide', STAFF_GUIDE_URL);
+        return;
+      }
+      await Linking.openURL(STAFF_GUIDE_URL);
+    } catch {
+      Alert.alert('Error', 'Could not open the staff guide. Try again or contact the office.');
+    }
+  };
+
   const handleSupport = () => {
     Alert.alert(
-      'Help & Support',
-      'How would you like to contact us?',
+      'Help',
+      'How can we help?',
       [
+        { text: 'Staff Guide', onPress: handleOpenStaffGuide },
         { text: 'Email', onPress: () => Linking.openURL('mailto:accounts@rawlabourhire.com') },
-        { text: 'Call', onPress: () => Linking.openURL('tel:+61414268338') },
+        { text: 'Call', onPress: () => Linking.openURL('tel:+61424142040') },
         { text: 'Cancel', style: 'cancel' },
       ]
     );
@@ -561,8 +575,15 @@ export default function ProfileScreen() {
         <Text style={styles.sectionTitle}>App</Text>
         <View style={styles.menuCard}>
           <MenuItem
+            icon="book-outline"
+            title="Staff Guide"
+            subtitle="How to use the app — step-by-step"
+            onPress={handleOpenStaffGuide}
+          />
+          <MenuItem
             icon="help-circle-outline"
-            title="Help & Support"
+            title="Help"
+            subtitle="Staff guide, email & phone support"
             onPress={handleSupport}
           />
           <MenuItem
