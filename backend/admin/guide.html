@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RAW Timesheet — How to Use the App (Staff Guide)</title>
+<style>
+  :root{
+    --primary:#1E3A8A;
+    --primary-d:#162C6B;
+    --success:#059669;
+    --success-l:#10B981;
+    --danger:#DC2626;
+    --amber:#F59E0B;
+    --bg:#0b1220;
+    --screen-bg:#F3F4F6;
+    --text:#1F2937;
+    --muted:#6B7280;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;}
+  html,body{height:100%;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(1200px 800px at 50% -10%,#1b2b56 0%,#0b1220 60%);
+    color:#fff;display:flex;flex-direction:column;align-items:center;
+    min-height:100vh;overflow-x:hidden;
+  }
+
+  /* ---- Top bar ---- */
+  .topbar{width:100%;max-width:1100px;display:flex;align-items:center;justify-content:space-between;padding:18px 24px 4px;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand .logo{width:40px;height:40px;border-radius:9px;background:#fff;display:flex;align-items:center;justify-content:center;}
+  .brand .logo svg{width:26px;height:26px;}
+  .brand h1{font-size:18px;font-weight:800;letter-spacing:.3px;}
+  .brand p{font-size:12px;color:#9fb0d8;font-weight:500;}
+  .rec-tip{font-size:12px;color:#cdd8f3;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);padding:8px 12px;border-radius:10px;max-width:330px;line-height:1.4;}
+  .rec-tip b{color:#fff;}
+
+  /* ---- Stage ---- */
+  .stage{flex:1;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:10px 16px 24px;}
+
+  /* ---- Phone ---- */
+  .phone{
+    width:340px;height:710px;background:#000;border-radius:46px;padding:12px;
+    box-shadow:0 30px 70px rgba(0,0,0,.55),0 0 0 2px #2a3970 inset;position:relative;flex:none;
+  }
+  .phone .notch{position:absolute;top:14px;left:50%;transform:translateX(-50%);width:130px;height:26px;background:#000;border-radius:0 0 16px 16px;z-index:20;}
+  .scr{position:relative;width:100%;height:100%;background:var(--screen-bg);border-radius:36px;overflow:hidden;display:flex;flex-direction:column;}
+  #screen{flex:1;display:flex;flex-direction:column;min-height:0;}
+  .statusbar{height:34px;background:var(--primary);display:flex;align-items:flex-end;justify-content:space-between;padding:0 22px 5px;color:#fff;font-size:12px;font-weight:600;flex:none;}
+  .statusbar .icons{display:flex;gap:6px;align-items:center;}
+  .appbar{background:var(--primary);color:#fff;padding:10px 16px 14px;font-weight:700;font-size:17px;flex:none;display:flex;align-items:center;gap:10px;}
+  .appbar .back{font-size:20px;font-weight:400;opacity:.9;}
+  .body{flex:1;overflow:hidden;padding:14px;position:relative;}
+  .tabbar{flex:none;height:60px;background:#fff;border-top:1px solid #e5e7eb;display:flex;}
+  .tabbar .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:9.5px;color:#9aa3b2;}
+  .tabbar .tab.active{color:var(--primary);}
+  .tabbar .tab .ico{font-size:18px;line-height:1;}
+
+  /* fade animation */
+  .screen-fade{animation:fade .45s ease;}
+  @keyframes fade{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+
+  /* ---- Generic card styles inside phone ---- */
+  .card{background:#fff;border-radius:16px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.07);margin-bottom:14px;}
+  .row{display:flex;align-items:center;gap:8px;}
+  .muted{color:var(--muted);font-size:13px;}
+  .h{color:var(--text);font-weight:700;}
+  .pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;}
+  .pill.green{background:#D1FAE5;color:#059669;}
+  .pill.red{background:#FEE2E2;color:#DC2626;}
+  .pill.amber{background:#FEF3C7;color:#D97706;}
+  .btn{border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;}
+  .btn.blue{background:var(--primary);}
+  .btn.green{background:var(--success-l);}
+  .btn.red{background:var(--danger);}
+  .btn.ghost-red{background:#FEF2F2;color:#DC2626;border:1px solid #FCA5A5;}
+  .field{background:#fff;border:1px solid #e2e6ee;border-radius:10px;padding:12px;color:#9aa3b2;font-size:14px;margin-bottom:12px;}
+  .label{font-size:12px;color:var(--muted);font-weight:700;margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px;}
+  .sectiontitle{font-size:16px;font-weight:700;color:var(--text);margin:4px 4px 12px;}
+
+  /* highlight ring for callouts */
+  .ring{box-shadow:0 0 0 3px rgba(245,158,11,.0);animation:ring 1.6s ease-in-out infinite;border-radius:14px;}
+  @keyframes ring{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.0);}50%{box-shadow:0 0 0 4px rgba(245,158,11,.55);}}
+
+  /* ---- Caption ---- */
+  .caption{max-width:760px;text-align:center;font-size:19px;line-height:1.55;color:#eaf0ff;min-height:64px;padding:0 8px;font-weight:500;}
+  .caption b{color:#ffd479;}
+
+  /* ---- Controls ---- */
+  .controls{display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);padding:10px 16px;border-radius:999px;}
+  .ctrl{background:none;border:none;color:#fff;cursor:pointer;font-size:15px;display:flex;align-items:center;gap:7px;padding:8px 12px;border-radius:999px;font-weight:600;}
+  .ctrl:hover{background:rgba(255,255,255,.12);}
+  .ctrl.primary{background:var(--success-l);}
+  .ctrl.primary:hover{background:#0f9e6e;}
+  .slidecount{font-size:13px;color:#9fb0d8;min-width:54px;text-align:center;}
+
+  /* progress */
+  .progress{width:100%;max-width:1100px;height:4px;background:rgba(255,255,255,.12);border-radius:4px;overflow:hidden;}
+  .progress .bar{height:100%;width:0;background:linear-gradient(90deg,#10B981,#60a5fa);transition:width .3s linear;}
+  .dots{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:760px;}
+  .dot{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.2);cursor:pointer;}
+  .dot.active{background:#10B981;transform:scale(1.25);}
+  .foot{font-size:12px;color:#8595bd;padding:6px 0 22px;text-align:center;}
+  @media (max-width:760px){.rec-tip{display:none;} .phone{transform:scale(.92);}}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo">
+        <svg viewBox="0 0 64 64" fill="none"><ellipse cx="32" cy="32" rx="30" ry="30" fill="#1E3A8A"/><path d="M10 38c14-10 30-12 44-6M12 30c12-9 28-11 40-6M16 23c9-6 21-8 31-5" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+      </div>
+      <div>
+        <h1>RAW Timesheet</h1>
+        <p>Staff guide — how to use the app</p>
+      </div>
+    </div>
+    <div class="rec-tip">🎥 <b>To make a video:</b> press <b>Play</b>, then screen-record this window (Mac: <b>⇧⌘5</b>). Turn your sound on to capture the voice-over.</div>
+  </div>
+
+  <div class="progress"><div class="bar" id="bar"></div></div>
+
+  <div class="stage">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="scr">
+        <div class="statusbar"><span id="clock">7:30</span><span class="icons">●●● 📶 🔋</span></div>
+        <div id="screen"></div>
+      </div>
+    </div>
+
+    <div class="caption" id="caption"></div>
+    <div class="dots" id="dots"></div>
+
+    <div class="controls">
+      <button class="ctrl" id="restart" title="Restart">⏮ Restart</button>
+      <button class="ctrl" id="prev" title="Previous">◀ Back</button>
+      <button class="ctrl primary" id="play" title="Play / Pause">▶ Play</button>
+      <button class="ctrl" id="next" title="Next">Next ▶</button>
+      <span class="slidecount" id="count">1 / 13</span>
+      <button class="ctrl" id="mute" title="Mute voice-over">🔊 Voice</button>
+    </div>
+    <div class="controls" style="margin-top:10px;">
+      <span style="font-size:13px;color:#9fb0d8;">🗣️ Voice-over:</span>
+      <select id="voiceSel" style="background:#16224a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:7px 10px;font-size:13px;max-width:280px;"></select>
+    </div>
+    <div class="foot">RAW Labour Hire · Questions? Call or text Josh McPherson on 0424 142 040</div>
+  </div>
+
+<script>
+/* ---------------- Screen builders (mimic the real app) ---------------- */
+const TABS = (active) => `
+  <div class="tabbar">
+    <div class="tab ${active==='jobs'?'active':''}"><span class="ico">💼</span>My Jobs</div>
+    <div class="tab ${active==='ts'?'active':''}"><span class="ico">📄</span>Timesheets</div>
+    <div class="tab ${active==='ind'?'active':''}"><span class="ico">🛡️</span>Inductions</div>
+    <div class="tab ${active==='tk'?'active':''}"><span class="ico">🪪</span>Tickets</div>
+    <div class="tab ${active==='pr'?'active':''}"><span class="ico">👤</span>Profile</div>
+  </div>`;
+
+const screens = {
+  intro: () => `
+    <div class="body" style="background:var(--primary);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#fff;padding:30px;">
+      <div style="width:96px;height:96px;border-radius:24px;background:#fff;display:flex;align-items:center;justify-content:center;margin-bottom:24px;">
+        <svg viewBox="0 0 64 64" style="width:64px;height:64px;"><ellipse cx="32" cy="32" rx="30" ry="30" fill="#1E3A8A"/><path d="M10 38c14-10 30-12 44-6M12 30c12-9 28-11 40-6M16 23c9-6 21-8 31-5" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+      </div>
+      <div style="font-size:26px;font-weight:800;">RAW Timesheet</div>
+      <div style="font-size:15px;opacity:.85;margin-top:10px;line-height:1.5;">Your phone is your timesheet.<br/>Accept jobs · clock in &amp; out · get signed off.</div>
+    </div>`,
+
+  login: () => `
+    <div class="body" style="display:flex;flex-direction:column;justify-content:center;background:#fff;">
+      <div style="text-align:center;margin-bottom:26px;">
+        <div style="width:70px;height:70px;border-radius:18px;background:var(--primary);display:inline-flex;align-items:center;justify-content:center;">
+          <svg viewBox="0 0 64 64" style="width:44px;height:44px;"><ellipse cx="32" cy="32" rx="30" ry="30" fill="#1E3A8A"/><path d="M10 38c14-10 30-12 44-6M12 30c12-9 28-11 40-6" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+        </div>
+        <div style="font-size:20px;font-weight:800;color:var(--text);margin-top:12px;">Welcome back</div>
+        <div class="muted" style="margin-top:4px;">Log in to RAW Timesheet</div>
+      </div>
+      <div class="label">Email</div>
+      <div class="field">you@example.com</div>
+      <div class="label">Password</div>
+      <div class="field">••••••••</div>
+      <button class="btn blue" style="margin-top:6px;">Log In</button>
+      <div style="text-align:center;margin-top:16px;color:var(--primary);font-weight:600;font-size:14px;">Forgot Password?</div>
+    </div>`,
+
+  jobsPending: () => `
+    <div class="appbar">My Jobs</div>
+    <div class="body">
+      <div class="card">
+        <div class="row" style="margin-bottom:14px;"><span style="font-size:26px;">🕐</span><div><div class="h" style="font-size:17px;">Not Clocked In</div></div></div>
+        <button class="btn blue ring">→] Clock In</button>
+      </div>
+      <div class="sectiontitle">My Assigned Jobs</div>
+      <div class="card" style="border:1px solid #eef0f5;">
+        <div class="row" style="align-items:flex-start;">
+          <div style="width:42px;height:42px;border-radius:12px;background:#FFF7ED;display:flex;align-items:center;justify-content:center;font-size:20px;">💼</div>
+          <div style="flex:1;margin-left:10px;">
+            <div class="h" style="font-size:16px;">2 Lonsdale Street</div>
+            <span class="pill amber" style="margin-top:5px;">⏳ Pending Response</span>
+          </div>
+        </div>
+        <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px;">
+          <div class="row muted">📍 2 Lonsdale St, Melbourne VIC</div>
+          <div class="row muted">📅 Tue 23 Jun at 7:00 AM</div>
+        </div>
+        <div class="row" style="gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid #eee;">
+          <button class="btn ghost-red" style="flex:1;">✕ Decline</button>
+          <button class="btn green ring" style="flex:1;">✓ Accept Job</button>
+        </div>
+      </div>
+    </div>
+    ${TABS('jobs')}`,
+
+  jobsAccepted: () => `
+    <div class="appbar">My Jobs</div>
+    <div class="body">
+      <div class="card">
+        <div class="row" style="margin-bottom:14px;"><span style="font-size:26px;">🕐</span><div><div class="h" style="font-size:17px;">Not Clocked In</div></div></div>
+        <button class="btn blue ring">→] Clock In</button>
+      </div>
+      <div class="sectiontitle">My Assigned Jobs</div>
+      <div class="card" style="border:1px solid #eef0f5;">
+        <div class="row" style="align-items:flex-start;">
+          <div style="width:42px;height:42px;border-radius:12px;background:#FFF7ED;display:flex;align-items:center;justify-content:center;font-size:20px;">💼</div>
+          <div style="flex:1;margin-left:10px;">
+            <div class="h" style="font-size:16px;">2 Lonsdale Street</div>
+            <span class="pill green" style="margin-top:5px;">✓ Accepted</span>
+          </div>
+        </div>
+        <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px;">
+          <div class="row muted">📍 2 Lonsdale St, Melbourne VIC</div>
+          <div class="row muted">📅 Tue 23 Jun at 7:00 AM</div>
+        </div>
+      </div>
+    </div>
+    ${TABS('jobs')}`,
+
+  clockIn: () => `
+    <div class="appbar"><span class="back">‹</span> Clock In</div>
+    <div class="body">
+      <div class="sectiontitle">Your Location</div>
+      <div class="card">
+        <div class="row" style="gap:10px;"><span style="font-size:22px;">📍</span><div><div class="h">2 Lonsdale St, Melbourne</div><div class="muted" style="margin-top:3px;">GPS location found ✓</div></div></div>
+      </div>
+      <div class="sectiontitle">Job Site</div>
+      <div class="card">
+        <div class="h">2 Lonsdale Street</div>
+        <div class="muted" style="margin-top:3px;">Matched to your assigned job</div>
+      </div>
+      <button class="btn green ring" style="margin-top:6px;">→] Clock In Now</button>
+      <div class="row muted" style="margin-top:14px;background:#F3F4F6;padding:12px;border-radius:8px;">ℹ️ Your GPS location is recorded automatically when you clock in.</div>
+    </div>`,
+
+  clockedIn: () => `
+    <div class="appbar">My Jobs</div>
+    <div class="body">
+      <div class="card">
+        <div class="row" style="margin-bottom:14px;"><span style="font-size:26px;">⏱️</span><div><div class="h" style="font-size:17px;color:var(--success);">Currently Clocked In</div><div class="muted">Since 7:02 AM</div></div></div>
+        <div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:12px;margin-bottom:14px;">
+          <div style="font-weight:700;color:#92400E;">Staying Back?</div>
+          <div style="font-size:12px;color:#B45309;margin-top:2px;">Tap to pause clock-out reminders</div>
+        </div>
+        <button class="btn red ring">[→ Clock Out</button>
+      </div>
+    </div>
+    ${TABS('jobs')}`,
+
+  clockOut: () => `
+    <div class="appbar"><span class="back">‹</span> Clock Out</div>
+    <div class="body" style="overflow:hidden;">
+      <div class="sectiontitle">Your Location</div>
+      <div class="card"><div class="row muted">📍 2 Lonsdale St, Melbourne · GPS found ✓</div></div>
+      <div class="sectiontitle">First Aid / Injury</div>
+      <div class="card"><div class="muted">Any injuries today? Tap to report.</div></div>
+      <div class="sectiontitle">Comments</div>
+      <div class="field" style="height:54px;">Add any notes about today's work…</div>
+      <button class="btn red ring">[→ Clock Out</button>
+    </div>`,
+
+  signature: () => `
+    <div class="appbar">Supervisor Sign-Off</div>
+    <div class="body" style="display:flex;flex-direction:column;">
+      <div class="muted" style="margin-bottom:10px;">Hand your phone to the site supervisor to sign and confirm your hours.</div>
+      <div class="card" style="margin-bottom:10px;"><div class="h">Hours: 8h paid</div><div class="muted" style="margin-top:3px;">Ordinary 8h · Overtime 0h</div></div>
+      <div style="flex:1;background:#fff;border:2px dashed #cbd2e0;border-radius:14px;display:flex;align-items:center;justify-content:center;color:#aab2c4;font-style:italic;position:relative;min-height:160px;">
+        <span style="font-size:30px;position:absolute;top:46%;left:30%;transform:rotate(-8deg);color:#1E3A8A;">✒️ ~signature~</span>
+        Sign here
+      </div>
+      <div class="row" style="gap:10px;margin-top:12px;">
+        <button class="btn ghost-red" style="flex:1;">Clear</button>
+        <button class="btn green ring" style="flex:1;">Confirm</button>
+      </div>
+    </div>`,
+
+  timesheets: () => `
+    <div class="appbar">My Timesheets</div>
+    <div class="body">
+      <div class="card" style="border-left:4px solid var(--success);">
+        <div class="row" style="justify-content:space-between;"><div class="h">Tue 23 Jun</div><span class="pill green">Approved</span></div>
+        <div class="muted" style="margin-top:6px;">2 Lonsdale Street · 8h</div>
+      </div>
+      <div class="card" style="border-left:4px solid var(--amber);">
+        <div class="row" style="justify-content:space-between;"><div class="h">Mon 22 Jun</div><span class="pill amber">Pending</span></div>
+        <div class="muted" style="margin-top:6px;">93-97 Maroondah Hwy · 8.5h</div>
+      </div>
+      <div class="card" style="border-left:4px solid #9aa3b2;">
+        <div class="row" style="justify-content:space-between;"><div class="h">Sun 21 Jun</div><span class="pill" style="background:#eef0f5;color:#6B7280;">Not Submitted</span></div>
+        <div class="muted" style="margin-top:6px;">Draft · tap to review</div>
+        <button class="btn blue ring" style="margin-top:12px;padding:11px;font-size:14px;">📤 Send to Admin</button>
+      </div>
+    </div>
+    ${TABS('ts')}`,
+
+  tickets: () => `
+    <div class="appbar">My Tickets</div>
+    <div class="body">
+      <div class="muted" style="margin-bottom:12px;">Upload photos of your licences &amp; tickets so the office always has them on file.</div>
+      <div class="card">
+        <div class="h">White Card</div>
+        <div class="row" style="gap:10px;margin-top:10px;">
+          <div style="flex:1;height:70px;border:1px dashed #cbd2e0;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#9aa3b2;font-size:12px;">＋ Front</div>
+          <div style="flex:1;height:70px;border:1px dashed #cbd2e0;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#9aa3b2;font-size:12px;">＋ Back</div>
+        </div>
+      </div>
+      <button class="btn blue ring" style="margin-top:4px;">＋ Add a Ticket</button>
+    </div>
+    ${TABS('tk')}`,
+
+  inductions: () => `
+    <div class="appbar">Inductions</div>
+    <div class="body">
+      <div class="muted" style="margin-bottom:12px;">Read and sign your site documents (SWMS / inductions) before you start.</div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between;"><div class="h">Site SWMS — Lonsdale St</div><span class="pill amber">To sign</span></div>
+        <button class="btn blue ring" style="margin-top:12px;padding:11px;font-size:14px;">Review &amp; Sign</button>
+      </div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between;"><div class="h">RAW Company Induction</div><span class="pill green">✓ Signed</span></div>
+      </div>
+    </div>
+    ${TABS('ind')}`,
+
+  profile: () => `
+    <div class="appbar">My Profile</div>
+    <div class="body">
+      <div class="card" style="text-align:center;">
+        <div style="width:60px;height:60px;border-radius:50%;background:var(--primary);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;">AA</div>
+        <div class="h" style="margin-top:10px;font-size:17px;">Aaron Anderson</div>
+        <div class="muted">0414 268 336</div>
+      </div>
+      <div class="card"><div class="row" style="justify-content:space-between;"><div class="h">🔔 Notifications</div><div style="width:42px;height:24px;background:var(--success-l);border-radius:12px;position:relative;"><div style="width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:3px;right:3px;"></div></div></div><div class="muted" style="margin-top:6px;">Keep ON for job alerts &amp; reminders</div></div>
+      <button class="btn ghost-red ring">⎋ Log Out</button>
+    </div>
+    ${TABS('pr')}`,
+
+  outro: () => `
+    <div class="body" style="background:var(--primary);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#fff;padding:28px;">
+      <div style="font-size:40px;margin-bottom:14px;">✅</div>
+      <div style="font-size:21px;font-weight:800;">You're all set!</div>
+      <div style="font-size:14px;opacity:.9;margin-top:14px;line-height:1.7;text-align:left;">
+        ✔ Accept your job when it arrives<br/>
+        ✔ Clock IN when you get to site<br/>
+        ✔ Clock OUT &amp; get supervisor sign-off<br/>
+        ✔ Send your timesheet to Admin<br/>
+        ✔ Keep notifications ON
+      </div>
+      <div style="margin-top:22px;font-size:13px;opacity:.85;">Questions? Call or text Josh McPherson<br/><b style="font-size:16px;">0424 142 040</b></div>
+    </div>`,
+};
+
+/* ---------------- Slide script (screen + caption + narration) ---------------- */
+const slides = [
+  { s:'intro', tab:'',
+    cap:'Welcome to <b>RAW Timesheet</b>. Your phone is now your timesheet — let\'s walk through how to use it.',
+    say:'G\'day, and welcome to RAW Timesheet. From now on, your phone is your timesheet, so let\'s run through everything you\'ll need to do, step by step. It only takes a couple of minutes.' },
+  { s:'login', tab:'',
+    cap:'<b>Log in</b> with your email and password. Forgot your password? Tap <b>Forgot Password</b> to get a code by text.',
+    say:'First up, logging in. Just enter the email and password the office set up for you, and tap Log In. And if you ever forget your password, no worries, tap Forgot Password, and we\'ll text you a code to reset it.' },
+  { s:'jobsPending', tab:'jobs',
+    cap:'The <b>My Jobs</b> tab is your home screen. When the office assigns you a job, it shows here as <b>Pending</b>.',
+    say:'Once you\'re in, you\'ll land on the My Jobs tab. Think of this as your home base. Whenever the office books you for a job, it\'ll pop up right here, marked as Pending Response.' },
+  { s:'jobsAccepted', tab:'jobs',
+    cap:'Tap <b>Accept Job</b> to confirm you\'re coming — or Decline if you can\'t make it. The office sees your answer straight away.',
+    say:'So when a job comes through, have a look, then tap Accept Job to let us know you\'re coming. Can\'t make it? Just tap Decline. Either way, the office sees your answer instantly, so please, always respond.' },
+  { s:'clockIn', tab:'',
+    cap:'When you arrive on site, tap <b>Clock In</b>. The app records your GPS location automatically.',
+    say:'Right. You\'ve accepted the job, and you\'ve arrived on site. Open the app and tap Clock In. The app quietly grabs your location, matches it to the job site, and locks in your start time. Easy.' },
+  { s:'clockedIn', tab:'jobs',
+    cap:'You\'re now <b>Clocked In</b>. Staying back late? Tap <b>Staying Back?</b> to pause clock-out reminders.',
+    say:'And you\'re on the clock. The app now tracks your hours for the day. If you end up staying back late, just tap the Staying Back button, so it stops nagging you with clock-out reminders.' },
+  { s:'clockOut', tab:'',
+    cap:'When you finish, tap <b>Clock Out</b>. Add a comment, or report an injury, if you need to.',
+    say:'When you\'ve finished up for the day, head back in and tap Clock Out. This is also where you add any notes about the job, and importantly, where you report any injuries or first aid before you knock off.' },
+  { s:'signature', tab:'',
+    cap:'Hand your phone to the site supervisor to <b>sign off your hours</b>, then tap Confirm.',
+    say:'Now for the bit that gets you paid right. Hand your phone to the site supervisor. They sign on the screen to confirm your hours, you tap Confirm, and that\'s your shift locked in.' },
+  { s:'timesheets', tab:'ts',
+    cap:'The <b>My Timesheets</b> tab shows every shift — Approved, Pending, or Not Submitted. Tap <b>Send to Admin</b> to submit a draft.',
+    say:'Want to keep an eye on your shifts? Pop over to the My Timesheets tab. Green means Approved, amber means the office is still checking it, and grey means it\'s a draft. If you see one marked Not Submitted, just open it and tap Send to Admin.' },
+  { s:'tickets', tab:'tk',
+    cap:'In <b>My Tickets</b>, upload photos of your licences and tickets so the office always has them.',
+    say:'Next, your tickets. Jump into the My Tickets tab and snap a photo of the front and back of each of your licences, like your White Card. That way the office always has your current tickets on hand.' },
+  { s:'inductions', tab:'ind',
+    cap:'In <b>Inductions</b>, read and sign your site documents before you start work.',
+    say:'Before you start on any site, check the Inductions tab. Give each document a read, like the site S-W-M-S, and sign it off. Get these done, and you\'re good to go.' },
+  { s:'profile', tab:'pr',
+    cap:'In <b>My Profile</b>, keep your details up to date and make sure <b>Notifications are ON</b>.',
+    say:'Last one. Your Profile. Keep your phone number and details up to date here. And do make sure Notifications are switched on, so you never miss a job alert or a reminder. You can also log out from this screen.' },
+  { s:'outro', tab:'',
+    cap:'That\'s it! Accept jobs, clock in &amp; out, get signed off, and send to Admin. Questions? Call Josh on <b>0424 142 040</b>.',
+    say:'And that\'s the lot! Accept your jobs, clock in when you arrive, clock out and get signed off, then send your timesheet to admin. If you ever get stuck, give Josh a call or text, on 0 4 2 4, 1 4 2, 0 4 0. Cheers, and welcome to the team.' },
+];
+
+/* ---------------- Player ---------------- */
+let idx = 0, playing = false, muted = false, timer = null;
+const screenEl = document.getElementById('screen');
+const capEl = document.getElementById('caption');
+const barEl = document.getElementById('bar');
+const countEl = document.getElementById('count');
+const dotsEl = document.getElementById('dots');
+const playBtn = document.getElementById('play');
+const muteBtn = document.getElementById('mute');
+
+// build dots
+slides.forEach((_,i)=>{const d=document.createElement('div');d.className='dot';d.onclick=()=>{stop();go(i);};dotsEl.appendChild(d);});
+const dots=[...dotsEl.children];
+
+function clock(){const n=new Date();let h=n.getHours();const m=String(n.getMinutes()).padStart(2,'0');const ap=h>=12?'':'';h=h%12||12;document.getElementById('clock').textContent=`${h}:${m}`;}
+clock();setInterval(clock,10000);
+
+function estDur(text){ return Math.max(3800, Math.min(13000, text.length*55)); }
+
+function render(i){
+  const sl = slides[i];
+  // The status bar lives in .scr (outside #screen); just swap the screen body.
+  screenEl.innerHTML = screens[sl.s]();
+  const body = screenEl.querySelector('.body');
+  if(body) body.classList.add('screen-fade');
+  capEl.innerHTML = sl.cap;
+  countEl.textContent = `${i+1} / ${slides.length}`;
+  barEl.style.width = `${((i+1)/slides.length)*100}%`;
+  dots.forEach((d,k)=>d.classList.toggle('active',k===i));
+}
+
+/* ---- Voice selection (prefer a male Australian voice) ---- */
+let chosenVoice = null;
+const voiceSel = document.getElementById('voiceSel');
+// Known male voice names across macOS / Windows / Chrome
+const MALE_HINTS = ['lee','daniel','gordon','james','rishi','aaron','fred','alex','arthur','george','guy','william','liam','oliver','jamie','matthew','mark','male'];
+const FEMALE_HINTS = ['karen','catherine','samantha','victoria','tessa','fiona','moira','serena','female','zira','hazel','allison','ava','susan','nicky'];
+
+function scoreVoice(v){
+  const n = (v.name||'').toLowerCase();
+  const lang = (v.lang||'').toLowerCase();
+  let s = 0;
+  if(lang.includes('en-au')) s += 100;          // Australian first
+  else if(lang.includes('en-gb')) s += 40;      // then UK
+  else if(lang.startsWith('en')) s += 20;       // then any English
+  if(MALE_HINTS.some(h=>n.includes(h))) s += 50; // male bonus
+  if(FEMALE_HINTS.some(h=>n.includes(h))) s -= 50; // female penalty
+  if(/male/.test(n) && !/female/.test(n)) s += 10;
+  return s;
+}
+
+function buildVoiceList(){
+  const voices = (window.speechSynthesis ? window.speechSynthesis.getVoices() : [])
+    .filter(v=>/en/i.test(v.lang))
+    .sort((a,b)=>scoreVoice(b)-scoreVoice(a));
+  if(!voices.length) return;
+  voiceSel.innerHTML = voices.map((v,i)=>`<option value="${v.name}">${v.name} (${v.lang})</option>`).join('');
+  // auto-pick the best (top of sorted list)
+  chosenVoice = voices[0];
+  voiceSel.value = chosenVoice.name;
+  voiceSel.onchange = ()=>{ chosenVoice = voices.find(v=>v.name===voiceSel.value) || chosenVoice; };
+}
+
+function speak(text, onEnd){
+  if(muted || !('speechSynthesis' in window)){ timer=setTimeout(onEnd, estDur(text)); return; }
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 0.92; u.pitch = 0.95;   // a touch slower & lower for a calm male read
+  if(chosenVoice) u.voice = chosenVoice;
+  u.onend = ()=>{ if(playing) onEnd(); };
+  // safety fallback in case onend never fires
+  timer = setTimeout(()=>{ if(playing){ window.speechSynthesis.cancel(); onEnd(); } }, estDur(text)+6000);
+  window.speechSynthesis.speak(u);
+}
+
+function playCurrent(){
+  render(idx);
+  speak(slides[idx].say, ()=>{
+    clearTimeout(timer);
+    if(idx < slides.length-1){ idx++; playCurrent(); }
+    else { playing=false; updatePlayBtn(); }
+  });
+}
+
+function play(){ if(playing) return; playing=true; updatePlayBtn(); playCurrent(); }
+function pause(){ playing=false; updatePlayBtn(); clearTimeout(timer); if('speechSynthesis' in window) window.speechSynthesis.cancel(); }
+function stop(){ pause(); }
+function go(i){ idx=Math.max(0,Math.min(slides.length-1,i)); render(idx); }
+function updatePlayBtn(){ playBtn.textContent = playing ? '⏸ Pause' : '▶ Play'; }
+
+playBtn.onclick = ()=> playing ? pause() : play();
+document.getElementById('next').onclick = ()=>{ const wasPlaying=playing; pause(); go(idx+1); if(wasPlaying) play(); };
+document.getElementById('prev').onclick = ()=>{ const wasPlaying=playing; pause(); go(idx-1); if(wasPlaying) play(); };
+document.getElementById('restart').onclick = ()=>{ pause(); idx=0; render(0); };
+muteBtn.onclick = ()=>{ muted=!muted; muteBtn.textContent = muted ? '🔇 Muted' : '🔊 Voice'; if(muted && 'speechSynthesis' in window) window.speechSynthesis.cancel(); };
+
+// keyboard
+document.addEventListener('keydown',e=>{ if(e.code==='Space'){e.preventDefault(); playBtn.click();} if(e.code==='ArrowRight')document.getElementById('next').click(); if(e.code==='ArrowLeft')document.getElementById('prev').click(); });
+
+// preload voices then render first slide
+if('speechSynthesis' in window){
+  buildVoiceList();
+  window.speechSynthesis.onvoiceschanged = buildVoiceList; // voices often load async
+}
+render(0);
+</script>
+</body>
+</html>

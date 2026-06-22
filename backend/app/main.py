@@ -839,6 +839,19 @@ NO_CACHE_HEADERS = {
 }
 
 
+@app.get("/guide")
+async def staff_guide():
+    """Serve the narrated staff training guide (public, no login)."""
+    guide_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "admin", "guide.html")
+    return FileResponse(guide_path, media_type="text/html", headers=NO_CACHE_HEADERS)
+
+
+@app.get("/guide/")
+async def staff_guide_slash():
+    guide_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "admin", "guide.html")
+    return FileResponse(guide_path, media_type="text/html", headers=NO_CACHE_HEADERS)
+
+
 @app.get("/admin")
 async def admin_dashboard():
     """Serve the admin dashboard"""
