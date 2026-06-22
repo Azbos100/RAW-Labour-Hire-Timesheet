@@ -39,6 +39,13 @@ class UploadTicketRequest(BaseModel):
     back_image: Optional[str] = None  # Base64 encoded
 
 
+class AdminUpdateTicketRequest(BaseModel):
+    ticket_type_id: Optional[int] = None
+    ticket_number: Optional[str] = None
+    issue_date: Optional[str] = None  # ISO format date or "" to clear
+    expiry_date: Optional[str] = None  # ISO format date or "" to clear
+
+
 class UserTicketResponse(BaseModel):
     id: int
     ticket_type_id: int
@@ -346,6 +353,48 @@ async def get_all_tickets(
         })
     
     return {"tickets": ticket_data}
+
+
+@router.patch("/admin/{ticket_id}")
+async def admin_update_ticket(
+    ticket_id: int,
+    request: AdminUpdateTicketRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update a ticket's type/category and details (admin) - e.g. re-categorise from 'Other'."""
+    result = await db.execute(
+        select(UserTicket).where(UserTicket.id == ticket_id)
+    )
+    ticket = result.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    if request.ticket_type_id is not None:
+        type_result = await db.execute(
+            select(TicketType).where(TicketType.id == request.ticket_type_id)
+        )
+        ticket_type = type_result.scalar_one_or_none()
+        if not ticket_type:
+            raise HTTPException(status_code=404, detail="Ticket type not found")
+        ticket.ticket_type_id = request.ticket_type_id
+
+    if request.ticket_number is not None:
+        ticket.ticket_number = request.ticket_number.strip() or None
+
+    if request.issue_date is not None:
+        ticket.issue_date = date.fromisoformat(request.issue_date) if request.issue_date else None
+
+    if request.expiry_date is not None:
+        ticket.expiry_date = date.fromisoformat(request.expiry_date) if request.expiry_date else None
+
+    # Keep status in sync with a (possibly) new expiry date
+    if ticket.status == "expired" and (not ticket.expiry_date or ticket.expiry_date >= date.today()):
+        ticket.status = "pending"
+    elif ticket.expiry_date and ticket.expiry_date < date.today():
+        ticket.status = "expired"
+
+    await db.commit()
+    return {"message": "Ticket updated", "ticket_id": ticket_id}
 
 
 @router.post("/admin/{ticket_id}/verify")

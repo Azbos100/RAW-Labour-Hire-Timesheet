@@ -355,6 +355,20 @@ async def clock_in(
             client_id = nearest_site.client_id
             print(f"[Clock-in] Auto-detected job site: {nearest_site.name} ({nearest_distance:.2f}km away)")
     
+    # Priority 2.5: Use the worker's admin-assigned job site. This covers the
+    # common case where the app didn't pass a job_site_id and GPS just missed
+    # the 1km radius - we should still attribute the shift to where they were
+    # actually allocated (and to the correct client) rather than RAW General.
+    if not client_id and getattr(current_user, 'assigned_job_site_id', None):
+        result = await db.execute(
+            select(JobSite).where(JobSite.id == current_user.assigned_job_site_id)
+        )
+        assigned_site = result.scalar_one_or_none()
+        if assigned_site:
+            job_site = assigned_site
+            client_id = assigned_site.client_id
+            print(f"[Clock-in] Using assigned job site: {assigned_site.name}")
+
     # Priority 3: Use default "RAW General Site" (ID=1) as fallback
     if not client_id:
         result = await db.execute(
@@ -372,12 +386,16 @@ async def clock_in(
             detail="Please select a valid job site/client"
         )
     
-    # Get or create timesheet for this week
+    # Get or create timesheet for this week.
+    # A docket is per client AND per job site: same job across multiple days in
+    # the week = one docket; a different job = a separate docket.
+    job_site_id = job_site.id if job_site else None
     result = await db.execute(
         select(Timesheet).where(
             Timesheet.worker_id == current_user.id,
             Timesheet.week_starting == week_start,
-            Timesheet.client_id == client_id
+            Timesheet.client_id == client_id,
+            Timesheet.job_site_id == job_site_id
         )
     )
     timesheet = result.scalar_one_or_none()
@@ -396,6 +414,7 @@ async def clock_in(
             docket_number=new_docket,
             worker_id=current_user.id,
             client_id=client_id,
+            job_site_id=job_site_id,
             week_starting=week_start,
             week_ending=week_end,
             status=TimesheetStatus.DRAFT
@@ -440,7 +459,7 @@ async def clock_in(
         timesheet_id=timesheet.id,
         day_of_week=get_day_of_week(today),
         entry_date=today,
-        job_site_id=request.job_site_id,
+        job_site_id=request.job_site_id or (job_site.id if job_site else None),
         time_start=effective_clock_in.time(),  # Use effective time (rounded to shift start if early)
         clock_in_time=now,  # Store actual clock-in time for GPS tracking
         clock_in_latitude=request.latitude if request.latitude != 0 else None,

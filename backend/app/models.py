@@ -237,6 +237,9 @@ class Timesheet(Base):
     # Client
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
     
+    # Job site - a docket is per client AND per job site (one job per docket)
+    job_site_id = Column(Integer, ForeignKey("job_sites.id"), nullable=True)
+    
     # Week info
     week_starting = Column(Date, nullable=False)  # Monday of the week
     week_ending = Column(Date, nullable=False)    # Sunday of the week
@@ -542,3 +545,19 @@ class NotificationSettings(Base):
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ==================== WORKER ATTENDANCE (sick / no-show tracking) ====================
+
+class AttendanceEvent(Base):
+    """A recorded sick day or no-show for a worker, used for reliability rating."""
+    __tablename__ = "attendance_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    worker_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    event_type = Column(String(20), nullable=False)  # 'sick' or 'no_show'
+    event_date = Column(Date, nullable=False)
+    note = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    worker = relationship("User", foreign_keys=[worker_id])

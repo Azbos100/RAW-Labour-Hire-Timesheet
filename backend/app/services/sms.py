@@ -12,14 +12,43 @@ from twilio.base.exceptions import TwilioRestException
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")  # Your Twilio phone number
+# Optional alphanumeric Sender ID (e.g. "RAW Labour"). Max 11 chars, must contain a
+# letter. When set, the SMS shows this name as the sender instead of a phone number.
+# NOTE: alphanumeric sender IDs are ONE-WAY only - recipients cannot reply.
+TWILIO_SENDER_ID = os.getenv("TWILIO_SENDER_ID")
 
 # Default company name for messages
 COMPANY_NAME = "RAW Labour Hire"
 
+# Footer for automated, no-reply messages so recipients know how to reach us
+# (alphanumeric sender IDs can't receive replies).
+CONTACT_FOOTER = "Reply not monitored - call or text Josh McPherson 0424 142 040"
+
+
+def brand_message(message: str) -> str:
+    """Make sure an outgoing SMS identifies RAW Labour Hire.
+
+    Alphanumeric sender IDs (showing "RAW Labour" instead of a number) aren't
+    available on every account/route, so the recipient may just see an unknown
+    number. Adding the company name to the body guarantees they know who it's from.
+    Skips adding it if the message already mentions the company.
+    """
+    msg = (message or "").strip()
+    if "raw labour" not in msg.lower():
+        msg = f"{msg}\n- {COMPANY_NAME}"
+    return msg
+
+
+def get_sender() -> Optional[str]:
+    """The 'from' value for outbound SMS: alphanumeric Sender ID if configured,
+    otherwise the Twilio phone number."""
+    return (TWILIO_SENDER_ID.strip() if TWILIO_SENDER_ID and TWILIO_SENDER_ID.strip()
+            else TWILIO_PHONE_NUMBER)
+
 
 def get_twilio_client() -> Optional[Client]:
     """Get Twilio client if credentials are configured"""
-    if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER]):
+    if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN]) or not get_sender():
         print("[SMS] Twilio not configured - missing credentials")
         return None
     
@@ -85,11 +114,25 @@ async def send_sms(to_phone: str, message: str) -> dict:
         }
     
     try:
-        message_obj = client.messages.create(
-            body=message,
-            from_=TWILIO_PHONE_NUMBER,
-            to=formatted_phone
-        )
+        sender = get_sender()
+        try:
+            message_obj = client.messages.create(
+                body=message,
+                from_=sender,
+                to=formatted_phone
+            )
+        except TwilioRestException as e:
+            # If the alphanumeric Sender ID is rejected, fall back to the phone number
+            # so SMS keeps working no matter what.
+            if sender != TWILIO_PHONE_NUMBER and TWILIO_PHONE_NUMBER:
+                print(f"[SMS] Sender '{sender}' rejected ({e.code}); retrying with number.")
+                message_obj = client.messages.create(
+                    body=message,
+                    from_=TWILIO_PHONE_NUMBER,
+                    to=formatted_phone
+                )
+            else:
+                raise
         
         print(f"[SMS] Sent to {formatted_phone}: {message[:50]}...")
         
@@ -124,11 +167,23 @@ def send_sms_sync(to_phone: str, message: str) -> dict:
         return {"success": False, "error": "Invalid phone number"}
 
     try:
-        message_obj = client.messages.create(
-            body=message,
-            from_=TWILIO_PHONE_NUMBER,
-            to=formatted_phone
-        )
+        sender = get_sender()
+        try:
+            message_obj = client.messages.create(
+                body=message,
+                from_=sender,
+                to=formatted_phone
+            )
+        except TwilioRestException as e:
+            if sender != TWILIO_PHONE_NUMBER and TWILIO_PHONE_NUMBER:
+                print(f"[SMS] Sender '{sender}' rejected ({e.code}); retrying with number.")
+                message_obj = client.messages.create(
+                    body=message,
+                    from_=TWILIO_PHONE_NUMBER,
+                    to=formatted_phone
+                )
+            else:
+                raise
         return {"success": True, "message_sid": message_obj.sid, "to": formatted_phone}
     except TwilioRestException as e:
         return {"success": False, "error": str(e)}
@@ -140,19 +195,19 @@ def send_sms_sync(to_phone: str, message: str) -> dict:
 
 def clock_in_reminder_message(worker_name: str) -> str:
     """Generate clock-in reminder message"""
-    return f"Hi {worker_name}, this is a reminder from {COMPANY_NAME} to clock in for your shift. Please open the RAW Timesheet app to clock in."
+    return f"Hi {worker_name}, this is a reminder from {COMPANY_NAME} to clock in for your shift. Please open the RAW Timesheet app to clock in.\n{CONTACT_FOOTER}"
 
 
 def clock_out_reminder_message(worker_name: str) -> str:
     """Generate clock-out reminder message"""
-    return f"Hi {worker_name}, this is a reminder from {COMPANY_NAME} to clock out. Please open the RAW Timesheet app to clock out before leaving site."
+    return f"Hi {worker_name}, this is a reminder from {COMPANY_NAME} to clock out. Please open the RAW Timesheet app to clock out before leaving site.\n{CONTACT_FOOTER}"
 
 
 def timesheet_approved_message(worker_name: str, docket_number: str) -> str:
     """Generate timesheet approval notification"""
-    return f"Hi {worker_name}, your timesheet #{docket_number} has been approved by {COMPANY_NAME}."
+    return f"Hi {worker_name}, your timesheet #{docket_number} has been approved by {COMPANY_NAME}.\n{CONTACT_FOOTER}"
 
 
 def timesheet_rejected_message(worker_name: str, docket_number: str) -> str:
     """Generate timesheet rejection notification"""
-    return f"Hi {worker_name}, your timesheet #{docket_number} needs attention. Please check the RAW Timesheet app for details."
+    return f"Hi {worker_name}, your timesheet #{docket_number} needs attention. Please check the RAW Timesheet app for details.\n{CONTACT_FOOTER}"

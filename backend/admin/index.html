@@ -6,7 +6,28 @@
     <title>RAW Labour Hire - Admin Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
+        /* Tailwind v2.2.19's default build omits the orange & amber palettes, so these
+           utility classes render invisibly (e.g. white-on-white buttons). Re-define the
+           ones used on this page with their standard Tailwind hex values. */
+        .bg-orange-50 { background-color: #fff7ed; }
+        .bg-orange-100 { background-color: #ffedd5; }
+        .bg-orange-600 { background-color: #ea580c; }
+        .hover\:bg-orange-200:hover { background-color: #fed7aa; }
+        .hover\:bg-orange-700:hover { background-color: #c2410c; }
+        .text-orange-500 { color: #f97316; }
+        .text-orange-600 { color: #ea580c; }
+        .text-orange-700 { color: #c2410c; }
+        .hover\:text-orange-800:hover { color: #9a3412; }
+        .bg-amber-50 { background-color: #fffbeb; }
+        .border-amber-200 { border-color: #fde68a; }
+        .border-amber-300 { border-color: #fcd34d; }
+        .text-amber-500 { color: #f59e0b; }
+        .text-amber-600 { color: #d97706; }
+        .text-amber-700 { color: #b45309; }
+        .text-amber-800 { color: #92400e; }
+
         .tab-active { border-bottom: 3px solid #1E3A8A; color: #1E3A8A; }
         .status-draft { background: #F3F4F6; color: #6B7280; }
         .status-submitted { background: #FEF3C7; color: #92400E; }
@@ -200,7 +221,6 @@
                                 <option value="">All Statuses</option>
                                 <option value="submitted" selected>Pending Approval</option>
                                 <option value="approved">Approved</option>
-                                <option value="draft">Draft</option>
                                 <option value="rejected">Rejected</option>
                             </select>
                         </div>
@@ -281,6 +301,17 @@
                         </button>
                     </div>
                 </div>
+                <div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t">
+                    <span class="text-sm text-gray-500"><i class="fas fa-filter mr-1"></i>Filter:</span>
+                    <select id="cal-filter-worker" onchange="applyCalendarFilters()" class="border rounded-lg px-3 py-2 text-sm">
+                        <option value="">All workers</option>
+                    </select>
+                    <select id="cal-filter-client" onchange="applyCalendarFilters()" class="border rounded-lg px-3 py-2 text-sm">
+                        <option value="">All clients</option>
+                    </select>
+                    <button onclick="clearCalendarFilters()" class="px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm font-medium">Clear</button>
+                    <span id="cal-filter-summary" class="text-sm text-blue-600 font-medium ml-auto"></span>
+                </div>
             </div>
 
             <div class="bg-white rounded-xl shadow p-4">
@@ -294,7 +325,13 @@
 
             <!-- Selected day detail -->
             <div id="calendar-day-detail" class="bg-white rounded-xl shadow p-4 mt-6 hidden">
-                <h3 id="calendar-day-title" class="text-lg font-bold text-gray-800 mb-3"></h3>
+                <div class="flex justify-between items-center gap-3 mb-3 flex-wrap">
+                    <h3 id="calendar-day-title" class="text-lg font-bold text-gray-800"></h3>
+                    <button onclick="openCalendarAttendance()" class="bg-yellow-500 text-white px-3 py-2 rounded-lg hover:bg-yellow-600 text-sm font-semibold whitespace-nowrap">
+                        <i class="fas fa-user-clock mr-1"></i>Record Sick / No-Show
+                    </button>
+                </div>
+                <div id="calendar-day-absences" class="mb-3"></div>
                 <div id="calendar-day-list"></div>
             </div>
         </div>
@@ -535,6 +572,24 @@
                         <div class="bg-blue-100 p-3 rounded-full">
                             <i class="fas fa-users text-blue-600"></i>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SWMS & Induction Documents -->
+            <div class="bg-white rounded-xl shadow overflow-hidden mb-6">
+                <div class="p-4 border-b flex justify-between items-center">
+                    <div>
+                        <h2 class="text-lg font-semibold">SWMS &amp; Induction Documents</h2>
+                        <p class="text-sm text-gray-500">Upload SWMS for workers to sign in the app</p>
+                    </div>
+                    <button onclick="openAddSwmsModal()" class="bg-blue-900 text-white px-4 py-2 rounded-lg hover:bg-blue-800 text-sm font-semibold">
+                        <i class="fas fa-plus mr-1"></i>Add SWMS
+                    </button>
+                </div>
+                <div id="swms-documents-list" class="divide-y divide-gray-100">
+                    <div class="px-4 py-8 text-center text-gray-500">
+                        <div class="loader mx-auto mb-2"></div>Loading documents...
                     </div>
                 </div>
             </div>
@@ -823,7 +878,7 @@
                 <div class="bg-white rounded-xl shadow overflow-hidden lg:col-span-2">
                     <div class="p-4 border-b">
                         <h2 class="text-lg font-semibold flex items-center gap-2">
-                            <i class="fas fa-bullhorn text-teal-600"></i>
+                            <i class="fas fa-bullhorn text-green-600"></i>
                             Message Foremen
                         </h2>
                     </div>
@@ -833,7 +888,7 @@
                             (<span id="foremen-count" class="font-semibold">…</span> on file, duplicates by phone removed).
                         </p>
                         <div class="flex gap-2 mb-2">
-                            <button onclick="selectAllForemen()" class="flex-1 bg-teal-100 text-teal-700 py-2 px-3 rounded-lg hover:bg-teal-200 text-sm font-medium">
+                            <button onclick="selectAllForemen()" class="flex-1 bg-green-100 text-green-700 py-2 px-3 rounded-lg hover:bg-green-200 text-sm font-medium">
                                 <i class="fas fa-check-double mr-1"></i>Select All
                             </button>
                             <button onclick="deselectAllForemen()" class="flex-1 bg-gray-100 text-gray-700 py-2 px-3 rounded-lg hover:bg-gray-200 text-sm font-medium">
@@ -843,15 +898,15 @@
                         <div id="foremen-checkboxes" class="max-h-72 overflow-y-auto border rounded-lg p-2 mb-2 bg-gray-50">
                             <p class="text-gray-500 text-sm">Loading foremen…</p>
                         </div>
-                        <div id="foremen-selected-count" class="text-sm text-teal-700 mb-2">0 selected</div>
+                        <div id="foremen-selected-count" class="text-sm text-green-700 mb-2">0 selected</div>
                         <textarea id="foremen-message" rows="4" oninput="updateForemenCharCount()" class="w-full border rounded-lg px-3 py-2 mb-2">Hi if your needing any skilled Labourers or Operators let me know we currently have a few available thanks Josh from RAW Labour Hire!</textarea>
                         <div class="flex items-center justify-between mb-3">
                             <span class="text-xs text-gray-400"><span id="foremen-char-count">0</span> chars</span>
                             <button onclick="document.getElementById('foremen-message').value=''; updateForemenCharCount();" class="text-xs text-gray-500 hover:text-gray-700">Clear message</button>
                         </div>
-                        <button onclick="broadcastToForemen()" id="foremen-send-btn" class="w-full bg-teal-600 text-white py-3 rounded-lg hover:bg-teal-700 flex items-center justify-center gap-2">
+                        <button onclick="broadcastToForemen()" id="foremen-send-btn" class="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 flex items-center justify-center gap-2 text-base font-semibold shadow">
                             <i class="fas fa-paper-plane"></i>
-                            Send to selected foremen
+                            Send SMS to selected foremen
                         </button>
                         <div id="foremen-send-result" class="text-sm mt-3"></div>
                     </div>
@@ -917,6 +972,24 @@
             </div>
             <div id="modal-actions" class="sticky bottom-0 bg-gray-50 border-t px-6 py-4 flex gap-4 justify-end">
                 <!-- Actions loaded dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Worker History / Reliability Modal -->
+    <div id="worker-history-modal" class="modal">
+        <div class="bg-white rounded-2xl shadow-xl max-w-3xl w-full mx-auto my-4">
+            <div class="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
+                <div>
+                    <h2 class="text-xl font-bold" id="wh-title">Worker History</h2>
+                    <p class="text-gray-500 text-sm">Job allocation history &amp; reliability</p>
+                </div>
+                <button onclick="closeModal('worker-history-modal')" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            <div id="wh-content" class="p-6">
+                <div class="py-8 text-center text-gray-500"><div class="loader mx-auto mb-2"></div>Loading…</div>
             </div>
         </div>
     </div>
@@ -1127,7 +1200,7 @@
                     <p class="text-xs text-gray-400 mt-1">Hourly pay paid to the worker (used for MYOB payroll).</p>
                 </div>
                 <div class="border-t pt-4">
-                    <label class="block text-sm font-semibold mb-2"><i class="fas fa-truck text-teal-600 mr-1"></i>Allowances</label>
+                    <label class="block text-sm font-semibold mb-2"><i class="fas fa-truck text-green-600 mr-1"></i>Allowances</label>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <label class="block text-xs text-gray-500 mb-1">Travel ($/day)</label>
@@ -1246,7 +1319,7 @@
                     <p class="text-xs text-gray-400 mt-1">Hourly pay paid to the worker (used for MYOB payroll).</p>
                 </div>
                 <div class="border-t pt-4">
-                    <label class="block text-sm font-semibold mb-2"><i class="fas fa-truck text-teal-600 mr-1"></i>Allowances</label>
+                    <label class="block text-sm font-semibold mb-2"><i class="fas fa-truck text-green-600 mr-1"></i>Allowances</label>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <label class="block text-xs text-gray-500 mb-1">Travel ($/day)</label>
@@ -1677,6 +1750,98 @@
         </div>
     </div>
 
+    <!-- Record Attendance (Sick / No-Show) Modal -->
+    <div id="attendance-modal" class="modal">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4">
+            <div class="border-b px-6 py-4 flex justify-between items-center">
+                <h2 class="text-xl font-bold">Record Sick / No-Show</h2>
+                <button onclick="closeModal('attendance-modal')" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Worker *</label>
+                    <select id="att-worker" class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"></select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+                    <input type="date" id="att-date" class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Type *</label>
+                    <div class="flex gap-3">
+                        <label class="flex-1 flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer">
+                            <input type="radio" name="att-type" value="sick" checked>
+                            <span class="text-sm font-medium">Sick day</span>
+                        </label>
+                        <label class="flex-1 flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer">
+                            <input type="radio" name="att-type" value="no_show">
+                            <span class="text-sm font-medium">No-show</span>
+                        </label>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
+                    <input type="text" id="att-note" placeholder="Reason / job missed" class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+            <div class="bg-gray-50 border-t px-6 py-4 flex gap-3 justify-end">
+                <button onclick="closeModal('attendance-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-100">Cancel</button>
+                <button id="att-submit-btn" onclick="saveCalendarAttendance()" class="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 font-semibold">Save Record</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add SWMS Modal -->
+    <div id="add-swms-modal" class="modal">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
+                <h2 class="text-xl font-bold">Add SWMS / Document</h2>
+                <button onclick="closeModal('add-swms-modal')" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Title *</label>
+                    <input type="text" id="swms-title" placeholder="e.g. Working at Heights SWMS" class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Document Type</label>
+                    <select id="swms-type" class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500">
+                        <option value="swms">SWMS</option>
+                        <option value="induction">Induction</option>
+                        <option value="policy">Policy</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Category (optional)</label>
+                    <input type="text" id="swms-category" placeholder="e.g. Site Safety" class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
+                    <textarea id="swms-description" rows="2" placeholder="Short description shown to workers" class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">PDF File *</label>
+                    <input type="file" id="swms-file" accept="application/pdf,.pdf" class="w-full border rounded-lg px-3 py-2 text-sm">
+                    <p class="text-xs text-gray-500 mt-1">Workers will read and sign this PDF in the app.</p>
+                </div>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="swms-required" checked class="w-4 h-4">
+                    <span class="text-sm text-gray-700">Required (workers must sign to complete induction)</span>
+                </label>
+            </div>
+            <div class="sticky bottom-0 bg-gray-50 border-t px-6 py-4 flex gap-3 justify-end">
+                <button onclick="closeModal('add-swms-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-100">Cancel</button>
+                <button id="swms-submit-btn" onclick="submitSwms()" class="px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800 font-semibold">
+                    <i class="fas fa-upload mr-1"></i>Upload SWMS
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const API_BASE = '/api';
         let allTimesheets = [];
@@ -1976,6 +2141,9 @@
             const groupByWeek = (document.getElementById('group-by-week') || {}).checked;
 
             let rows = allTimesheets;
+            // Hide pure drafts (not submitted yet). Keep drafts that have at least one
+            // submitted day, since those still need approval.
+            rows = rows.filter(ts => ts.status !== 'draft' || (ts.submitted_entries_count || 0) > 0);
             if (weekFilter) rows = rows.filter(ts => ts.week_starting === weekFilter);
 
             if (rows.length === 0) {
@@ -2009,6 +2177,9 @@
                     <td class="px-4 py-3">
                         <button onclick="viewTimesheet(${ts.id})" class="px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-xs font-medium mr-1" title="View & Edit Entries">
                             <i class="fas fa-edit mr-1"></i>Edit
+                        </button>
+                        <button onclick="downloadDocketPdf(${ts.id})" class="px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 text-xs font-medium mr-1" title="Download Docket PDF">
+                            <i class="fas fa-file-pdf mr-1"></i>Docket
                         </button>
                         <button onclick="deleteTimesheet(${ts.id}, '${ts.docket_number}')" class="px-2 py-1 bg-orange-100 text-orange-700 rounded hover:bg-orange-200 text-xs font-medium" title="Archive Timesheet">
                             <i class="fas fa-archive mr-1"></i>Archive
@@ -2091,9 +2262,10 @@
         function updateStats() {
             const now = new Date();
             const dayOfWeek = now.getDay();
-            const daysSinceFriday = (dayOfWeek - 5 + 7) % 7;
+            // Pay week runs Saturday -> Friday, so the week starts on Saturday (getDay()===6)
+            const daysSinceSaturday = (dayOfWeek - 6 + 7) % 7;
             const weekStart = new Date(now);
-            weekStart.setDate(now.getDate() - daysSinceFriday);
+            weekStart.setDate(now.getDate() - daysSinceSaturday);
             weekStart.setHours(0, 0, 0, 0);
             const weekEnd = new Date(weekStart);
             weekEnd.setDate(weekStart.getDate() + 6);
@@ -2101,12 +2273,14 @@
 
             const isInThisPayWeek = (ts) => {
                 if (!ts.week_starting && !ts.week_ending) return false;
-                const tsStart = ts.week_starting ? new Date(ts.week_starting) : null;
-                const tsEnd = ts.week_ending ? new Date(ts.week_ending) : tsStart;
+                // Parse as local midnight (avoid UTC drift from bare YYYY-MM-DD)
+                const tsStart = ts.week_starting ? new Date(ts.week_starting + 'T00:00:00') : null;
+                const tsEnd = ts.week_ending ? new Date(ts.week_ending + 'T00:00:00') : tsStart;
                 return tsEnd >= weekStart && tsStart <= weekEnd;
             };
 
-            const pending = allTimesheets.filter(ts => ts.status === 'submitted').length;
+            // Pending = docket submitted OR a still-draft docket that has submitted days awaiting approval
+            const pending = allTimesheets.filter(ts => ts.status === 'submitted' || (ts.status === 'draft' && (ts.submitted_entries_count || 0) > 0)).length;
             const approvedThisWeek = allTimesheets.filter(ts =>
                 ts.status === 'approved' && isInThisPayWeek(ts)
             ).length;
@@ -2298,9 +2472,12 @@
                 const pendingEntries = (ts.entries || []).filter(e => e.entry_status !== 'approved' && e.entry_status !== 'rejected');
                 const approvedEntries = (ts.entries || []).filter(e => e.entry_status === 'approved');
                 
-                // Cancel button for all states
+                // Cancel + Download buttons for all states
                 const cancelBtn = `<button onclick="closeModal('timesheet-modal')" class="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-100 mr-2">
                     <i class="fas fa-arrow-left mr-2"></i>Cancel
+                </button>
+                <button onclick="downloadDocketPdf(${ts.id})" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 mr-2">
+                    <i class="fas fa-file-pdf mr-2"></i>Download Docket
                 </button>`;
                 
                 let actionsHtml = '';
@@ -2336,6 +2513,263 @@
             } catch (error) {
                 console.error('Error loading timesheet:', error);
                 alert('Error loading timesheet details');
+            }
+        }
+
+        // ==================== DOCKET PDF (RAW docket-book layout) ====================
+        let _rawLogoData = null;
+        async function getRawLogo() {
+            if (_rawLogoData !== null) return _rawLogoData;
+            try {
+                const res = await fetch('/admin/raw-logo.png', { cache: 'force-cache' });
+                const blob = await res.blob();
+                _rawLogoData = await new Promise((resolve) => {
+                    const fr = new FileReader();
+                    fr.onloadend = () => resolve(fr.result);
+                    fr.onerror = () => resolve('');
+                    fr.readAsDataURL(blob);
+                });
+            } catch (e) { _rawLogoData = ''; }
+            return _rawLogoData;
+        }
+        function _fmtClock(v) {
+            if (!v) return '';
+            // Accept "HH:MM:SS", "HH:MM", or full ISO datetime
+            let s = String(v);
+            if (s.includes('T')) { const d = new Date(s); if (!isNaN(d)) return d.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false }); }
+            const m = s.match(/^(\d{1,2}):(\d{2})/);
+            return m ? `${m[1].padStart(2,'0')}:${m[2]}` : s;
+        }
+        function _hrs(v) { const n = parseFloat(v); return (!n || isNaN(n)) ? '' : n.toFixed(2); }
+
+        // Signature pads produce big PNG data URLs (often 1-3MB). Downscale and
+        // re-encode as a small JPEG (white background) so dockets stay well under 1MB.
+        function compressSignatureImage(dataUrl, maxW = 360, quality = 0.6) {
+            return new Promise((resolve) => {
+                try {
+                    const img = new Image();
+                    img.onload = () => {
+                        const srcW = img.width || maxW, srcH = img.height || 120;
+                        const scale = Math.min(1, maxW / srcW);
+                        const w = Math.max(1, Math.round(srcW * scale));
+                        const h = Math.max(1, Math.round(srcH * scale));
+                        const canvas = document.createElement('canvas');
+                        canvas.width = w; canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(0, 0, w, h);
+                        ctx.drawImage(img, 0, 0, w, h);
+                        resolve(canvas.toDataURL('image/jpeg', quality));
+                    };
+                    img.onerror = () => resolve(null);
+                    img.src = dataUrl;
+                } catch (e) { resolve(null); }
+            });
+        }
+
+        async function downloadDocketPdf(id) {
+            try {
+                const response = await authFetch(`${API_BASE}/timesheets/${id}`);
+                const ts = await response.json();
+                if (!window.jspdf || !window.jspdf.jsPDF) { alert('PDF library not loaded, please refresh the page.'); return; }
+                const logoData = await getRawLogo();
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+                const PW = 297, M = 8, R = PW - M; // page width, margins
+                const navy = [30, 58, 138];
+
+                // ---- Helpers ----
+                const line = (x1, y1, x2, y2) => doc.line(x1, y1, x2, y2);
+                const box = (x, y, w, h) => doc.rect(x, y, w, h);
+                const txt = (s, x, y, opt) => doc.text(String(s == null ? '' : s), x, y, opt);
+
+                // ---- Header block ----
+                let y = M;
+                const headerH = 30;
+                box(M, y, R - M, headerH);
+                // Logo cell
+                const logoW = 78;
+                box(M, y, logoW, headerH);
+                if (logoData) {
+                    const liW = 30, liH = liW * 333 / 500; // keep logo aspect ratio
+                    try { doc.addImage(logoData, 'PNG', M + (logoW - liW) / 2, y + 1.5, liW, liH); } catch (e) { /* ignore */ }
+                } else {
+                    doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(0,0,0);
+                    txt('R.A.W', M + logoW/2, y + 13, { align: 'center' });
+                    doc.setFontSize(8); txt('LABOUR HIRE', M + logoW/2, y + 18, { align: 'center' });
+                }
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(0,0,0);
+                txt('12 Hellion crt, Keilor Downs Vic. 3038  PH +61 414 268 338', M + logoW/2, y + 22.5, { align: 'center' });
+                txt('Email: accounts@rawlabourhire.com', M + logoW/2, y + 25.5, { align: 'center' });
+                txt('ABN: 13 097 281 288', M + logoW/2, y + 28.5, { align: 'center' });
+
+                // Client / Order / Job Address cell
+                const cx = M + logoW;
+                const cw = R - cx;
+                line(cx, y + headerH/2, R, y + headerH/2); // split client row / job addr row
+                const orderX = R - 52;
+                line(orderX, y, orderX, y + headerH/2); // order no divider on top row
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(0,0,0);
+                txt('Client :', cx + 3, y + 9);
+                doc.setFont('helvetica', 'normal'); txt(ts.client_name || '', cx + 22, y + 9);
+                doc.setFont('helvetica', 'bold'); txt('Order No:', orderX + 3, y + 9);
+                doc.setTextColor(220, 38, 38); doc.setFontSize(15); doc.setFont('helvetica', 'bold');
+                txt(ts.order_number || '', orderX + 20, y + 10);
+                doc.setTextColor(0,0,0); doc.setFontSize(9);
+                doc.setFont('helvetica', 'bold'); txt('Job Address:', cx + 3, y + headerH/2 + 8);
+                // Assigned job: unique job site name(s) + address from the week's entries
+                const siteMap = new Map();
+                (ts.entries || []).forEach(e => {
+                    if (e.job_site_name) {
+                        const label = e.job_site_address ? `${e.job_site_name} - ${e.job_site_address}` : e.job_site_name;
+                        siteMap.set(e.job_site_name, label);
+                    }
+                });
+                const jobAddr = [...siteMap.values()].join('  |  ');
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+                const jaLines = doc.splitTextToSize(jobAddr, cw - 30);
+                txt(jaLines.slice(0, 2).join(' '), cx + 26, y + headerH/2 + 8);
+
+                // ---- Name / Surname / Docket row ----
+                y += headerH;
+                const nameH = 11;
+                box(M, y, R - M, nameH);
+                const nameW = (R - M) / 3;
+                line(M + nameW, y, M + nameW, y + nameH);
+                line(M + nameW*2, y, M + nameW*2, y + nameH);
+                const parts = (ts.worker_name || '').trim().split(/\s+/);
+                const firstName = parts.shift() || '';
+                const surname = parts.join(' ');
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+                txt('Name:', M + 3, y + 7); doc.setFont('helvetica', 'normal'); txt(firstName, M + 20, y + 7);
+                doc.setFont('helvetica', 'bold'); txt('Surname:', M + nameW + 3, y + 7); doc.setFont('helvetica', 'normal'); txt(surname, M + nameW + 24, y + 7);
+                doc.setFont('helvetica', 'bold'); txt('Docket Number:', M + nameW*2 + 3, y + 7); doc.setFont('helvetica', 'normal'); txt(ts.docket_number || '', M + nameW*2 + 38, y + 7);
+
+                // ---- Time grid ----
+                y += nameH;
+                const cols = [
+                    ['DAY', 15], ['DATE', 23], ['TIME\nSTART', 21], ['TIME\nFINISH', 21],
+                    ['ORD.\nHRS', 17], ['OVER\nTIME', 18], ['First Aid\n/Injury', 22],
+                    ['TOTAL\nHOURS', 19], ['COMMENTS', 62], ['WORKED AS', 30], ['Office\nUse Only', 0]
+                ];
+                // last col fills remaining width
+                let used = cols.reduce((s, c) => s + c[1], 0);
+                cols[cols.length - 1][1] = (R - M) - used;
+                const colX = []; let xx = M; cols.forEach(c => { colX.push(xx); xx += c[1]; });
+                const headH = 12, rowH = 10.2;
+
+                // header row
+                doc.setFillColor(245, 245, 245); doc.rect(M, y, R - M, headH, 'F');
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(0,0,0);
+                cols.forEach((c, i) => {
+                    box(colX[i], y, c[1], headH);
+                    const lines = c[0].split('\n');
+                    const cxc = colX[i] + c[1] / 2;
+                    let ty = y + (lines.length === 2 ? 5 : 7);
+                    lines.forEach(ln => { txt(ln, cxc, ty, { align: 'center' }); ty += 3.4; });
+                });
+
+                // map entries to weekday rows
+                const dayRows = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
+                const jsDayToIdx = { 1:0, 2:1, 3:2, 4:3, 5:4, 6:5, 0:6 }; // Mon..Sun
+                const byDay = {};
+                (ts.entries || []).forEach(e => {
+                    if (!e.entry_date) return;
+                    const idx = jsDayToIdx[new Date(e.entry_date + 'T00:00:00').getDay()];
+                    if (idx != null && !byDay[idx]) byDay[idx] = e; // first entry per day
+                });
+                let tOrd = 0, tOt = 0, tTot = 0;
+                let gy = y + headH;
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+                dayRows.forEach((dn, ri) => {
+                    const e = byDay[ri];
+                    cols.forEach((c, i) => box(colX[i], gy, c[1], rowH));
+                    doc.setFont('helvetica', 'bold'); txt(dn, colX[0] + 3, gy + 6.5); doc.setFont('helvetica', 'normal');
+                    if (e) {
+                        const ord = parseFloat(e.ordinary_hours) || 0;
+                        const ot = parseFloat(e.overtime_hours) || 0;
+                        const tot = parseFloat(e.total_hours) || 0;
+                        tOrd += ord; tOt += ot; tTot += tot;
+                        const dateStr = new Date(e.entry_date + 'T00:00:00').toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: '2-digit' });
+                        txt(dateStr, colX[1] + 2, gy + 6.5);
+                        txt(_fmtClock(e.time_start || e.clock_in_time), colX[2] + c2c(2), gy + 6.5, { align: 'center' });
+                        txt(_fmtClock(e.time_finish || e.clock_out_time), colX[3] + c2c(3), gy + 6.5, { align: 'center' });
+                        txt(_hrs(ord), colX[4] + c2c(4), gy + 6.5, { align: 'center' });
+                        txt(_hrs(ot), colX[5] + c2c(5), gy + 6.5, { align: 'center' });
+                        txt(e.first_aid_injury ? 'YES' : '', colX[6] + c2c(6), gy + 6.5, { align: 'center' });
+                        txt(_hrs(tot), colX[7] + c2c(7), gy + 6.5, { align: 'center' });
+                        const cmt = doc.splitTextToSize(e.comments || '', cols[8][1] - 4);
+                        txt(cmt.slice(0, 2).join(' '), colX[8] + 2, gy + 6.5);
+                        const wa = doc.splitTextToSize(e.worked_as || '', cols[9][1] - 4);
+                        txt(wa.slice(0, 2).join(' '), colX[9] + 2, gy + 6.5);
+                    }
+                    gy += rowH;
+                });
+                function c2c(i) { return cols[i][1] / 2; }
+
+                // totals row
+                cols.forEach((c, i) => box(colX[i], gy, c[1], rowH));
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+                txt('TOTALS', colX[1] + 2, gy + 6.5);
+                txt(_hrs(tOrd), colX[4] + c2c(4), gy + 6.5, { align: 'center' });
+                txt(_hrs(tOt), colX[5] + c2c(5), gy + 6.5, { align: 'center' });
+                txt(_hrs(tTot), colX[7] + c2c(7), gy + 6.5, { align: 'center' });
+                gy += rowH;
+
+                // ---- Foreman sign-off (captured per-day on the GPS docket entries) ----
+                // Prefer timesheet-level signoff; otherwise use the latest signed entry.
+                let sup = { name: ts.supervisor_name || '', contact: ts.supervisor_contact || '', sig: ts.supervisor_signature || '' };
+                if (!sup.sig && !sup.name) {
+                    const signed = (ts.entries || [])
+                        .filter(e => e.supervisor_signature || e.supervisor_name)
+                        .sort((a, b) => (a.entry_date < b.entry_date ? 1 : -1));
+                    if (signed.length) sup = { name: signed[0].supervisor_name || '', contact: signed[0].supervisor_contact || '', sig: signed[0].supervisor_signature || '' };
+                }
+
+                // ---- Supervisor statement ----
+                const barH = 6;
+                doc.setFillColor(navy[0], navy[1], navy[2]); doc.rect(M, gy, R - M, barH, 'F');
+                doc.setTextColor(255,255,255); doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+                txt('SUPERVISOR STATEMENT -  Timesheets CANNOT be processed until this has been signed by supervisor', M + (R-M)/2, gy + 4.2, { align: 'center' });
+                doc.setTextColor(0,0,0);
+                let sy = gy + barH + 6;
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+                txt('I confirm that this employee has worked the hours as above. Please invoice client and pay employee for these hours.', M + 2, sy);
+                sy += 7;
+                const injuryLabel = 'I have been notified of the above first aid /injury incident.   Please Circle';
+                txt(injuryLabel, M + 2, sy);
+                const injuryLabelEndX = M + 2 + doc.getTextWidth(injuryLabel);
+                const inj = (ts.injury_reported || 'n/a').toLowerCase();
+                doc.setFont('helvetica', 'bold');
+                const yesX = injuryLabelEndX + 6, noX = yesX + 14, naX = noX + 12;
+                txt('YES', yesX, sy); txt('NO', noX, sy); txt('N/A', naX, sy);
+                if (inj === 'yes') doc.ellipse(yesX + 3, sy - 1, 6, 3);
+                else if (inj === 'no') doc.ellipse(noX + 2.5, sy - 1, 5, 3);
+                else doc.ellipse(naX + 3, sy - 1, 6, 3);
+                doc.setFont('helvetica', 'normal');
+                sy += 12;
+                doc.setFont('helvetica', 'bold'); txt('Supervisors Name :', M + 2, sy); doc.setFont('helvetica', 'normal');
+                txt(sup.name || '', M + 36, sy);
+                line(M + 34, sy + 1, M + 95, sy + 1);
+                doc.setFont('helvetica', 'bold'); txt('Supervisors Signature', M + 110, sy); doc.setFont('helvetica', 'normal');
+                line(M + 145, sy + 1, M + 205, sy + 1);
+                doc.setFont('helvetica', 'bold'); txt('Contact Number', M + 215, sy); doc.setFont('helvetica', 'normal');
+                txt(sup.contact || '', M + 246, sy);
+                line(M + 244, sy + 1, R - 2, sy + 1);
+                // signature image (compressed to keep the docket well under 1MB)
+                if (sup.sig && String(sup.sig).startsWith('data:image')) {
+                    const sigSmall = await compressSignatureImage(sup.sig);
+                    try {
+                        if (sigSmall) doc.addImage(sigSmall, 'JPEG', M + 148, sy - 13, 50, 13);
+                        else doc.addImage(sup.sig, 'PNG', M + 148, sy - 13, 50, 13);
+                    } catch (e) { /* ignore */ }
+                }
+
+                const safeName = (ts.worker_name || 'worker').replace(/[^a-z0-9]+/gi, '_');
+                doc.save(`Docket_${ts.docket_number || id}_${safeName}.pdf`);
+            } catch (error) {
+                console.error('Error generating docket PDF:', error);
+                alert('Error generating docket PDF');
             }
         }
 
@@ -2437,11 +2871,20 @@
             document.getElementById('edit-unpaid-break').value = unpaidBreak;
             document.getElementById('edit-paid-break').value = paidBreak;
             
+            // Clock times are stored/returned as local (Melbourne) datetimes like
+            // "2026-06-21T08:00:00". Split the string directly so we never convert to
+            // UTC (which would roll a morning time back to the previous day).
+            const splitLocalDateTime = (dt) => {
+                const s = String(dt);
+                const [d, t] = s.includes('T') ? s.split('T') : [s, ''];
+                return { date: d || '', time: (t || '').slice(0, 5) };
+            };
+
             // Parse clock in datetime
             if (clockInTime && clockInTime !== 'null') {
-                const clockIn = new Date(clockInTime);
-                document.getElementById('edit-clock-in-date').value = clockIn.toISOString().split('T')[0];
-                document.getElementById('edit-clock-in-time').value = clockIn.toTimeString().slice(0, 5);
+                const ci = splitLocalDateTime(clockInTime);
+                document.getElementById('edit-clock-in-date').value = ci.date;
+                document.getElementById('edit-clock-in-time').value = ci.time;
             } else {
                 document.getElementById('edit-clock-in-date').value = entryDate || '';
                 document.getElementById('edit-clock-in-time').value = '';
@@ -2449,9 +2892,9 @@
             
             // Parse clock out datetime
             if (clockOutTime && clockOutTime !== 'null') {
-                const clockOut = new Date(clockOutTime);
-                document.getElementById('edit-clock-out-date').value = clockOut.toISOString().split('T')[0];
-                document.getElementById('edit-clock-out-time').value = clockOut.toTimeString().slice(0, 5);
+                const co = splitLocalDateTime(clockOutTime);
+                document.getElementById('edit-clock-out-date').value = co.date;
+                document.getElementById('edit-clock-out-time').value = co.time;
             } else {
                 document.getElementById('edit-clock-out-date').value = '';
                 document.getElementById('edit-clock-out-time').value = '';
@@ -2698,7 +3141,7 @@
                 <tr class="hover:bg-gray-50">
                     <td class="px-4 py-3">
                         <div class="flex items-center gap-2">
-                            <div class="font-medium">${w.first_name} ${w.surname}</div>
+                            <button onclick="openWorkerHistory(${w.id})" class="font-medium text-blue-700 hover:text-blue-900 hover:underline text-left" title="View allocation history & reliability">${w.first_name} ${w.surname}</button>
                             ${pushStatusHtml}
                         </div>
                         <div class="text-xs text-gray-500">${w.email}</div>
@@ -2706,7 +3149,7 @@
                             ? `<div class="text-xs text-green-700 mt-0.5"><i class="fas fa-dollar-sign mr-1"></i>$${(w.base_pay_rate||0).toFixed(2)} ord · $${(w.overtime_pay_rate||0).toFixed(2)} OT</div>`
                             : `<div class="text-xs text-amber-600 mt-0.5"><i class="fas fa-exclamation-triangle mr-1"></i>No pay rate set</div>`}
                         ${(w.travel_allowance > 0 || w.demo_allowance > 0)
-                            ? `<div class="text-xs text-teal-600 mt-0.5"><i class="fas fa-truck mr-1"></i>${w.travel_allowance > 0 ? '$' + (w.travel_allowance||0).toFixed(2) + '/day travel' : ''}${(w.travel_allowance > 0 && w.demo_allowance > 0) ? ' · ' : ''}${w.demo_allowance > 0 ? '$' + (w.demo_allowance||0).toFixed(2) + '/hr demo' : ''}</div>`
+                            ? `<div class="text-xs text-green-600 mt-0.5"><i class="fas fa-truck mr-1"></i>${w.travel_allowance > 0 ? '$' + (w.travel_allowance||0).toFixed(2) + '/day travel' : ''}${(w.travel_allowance > 0 && w.demo_allowance > 0) ? ' · ' : ''}${w.demo_allowance > 0 ? '$' + (w.demo_allowance||0).toFixed(2) + '/hr demo' : ''}</div>`
                             : ''}
                     </td>
                     <td class="px-4 py-3">${w.phone || '-'}</td>
@@ -2821,7 +3264,7 @@
             document.getElementById('assign-worker-name').textContent = workerName;
             
             // Set default date to the preset (e.g. next day from Allocation) or today
-            const today = new Date().toISOString().split('T')[0];
+            const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Melbourne' });
             document.getElementById('assign-job-date').value = presetDate || today;
             
             // Populate job site dropdown with GPS status
@@ -3062,6 +3505,117 @@
             }
         }
 
+        // ==================== WORKER HISTORY & RELIABILITY ====================
+        let whWorkerId = null;
+
+        async function openWorkerHistory(id) {
+            whWorkerId = id;
+            openModal('worker-history-modal');
+            document.getElementById('wh-content').innerHTML = '<div class="py-8 text-center text-gray-500"><div class="loader mx-auto mb-2"></div>Loading…</div>';
+            try {
+                const res = await authFetch(`${API_BASE}/users/admin/workers/${id}/history`);
+                const data = await res.json();
+                renderWorkerHistory(data);
+            } catch (e) {
+                console.error(e);
+                document.getElementById('wh-content').innerHTML = '<p class="text-red-500 text-center py-6">Error loading history</p>';
+            }
+        }
+
+        function renderWorkerHistory(data) {
+            document.getElementById('wh-title').textContent = data.worker.name;
+            const a = data.attendance || { sick_count: 0, no_show_count: 0, events: [] };
+            const ns = a.no_show_count, sk = a.sick_count;
+            let rating, ratingClass;
+            if (ns === 0 && sk <= 1) { rating = 'Excellent'; ratingClass = 'bg-green-100 text-green-700'; }
+            else if (ns <= 1 && sk <= 3) { rating = 'Good'; ratingClass = 'bg-blue-100 text-blue-700'; }
+            else if (ns <= 3) { rating = 'Fair'; ratingClass = 'bg-yellow-100 text-yellow-700'; }
+            else { rating = 'Poor'; ratingClass = 'bg-red-100 text-red-700'; }
+
+            const eventsHtml = (a.events || []).length === 0
+                ? '<p class="text-gray-400 text-sm">No sick days or no-shows recorded.</p>'
+                : a.events.map(e => `
+                    <div class="flex items-center justify-between text-sm py-1.5 border-b border-gray-100">
+                        <div>
+                            <span class="px-2 py-0.5 rounded text-xs font-medium ${e.event_type === 'no_show' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}">
+                                ${e.event_type === 'no_show' ? 'No-Show' : 'Sick'}
+                            </span>
+                            <span class="ml-2 text-gray-700">${formatDate(e.event_date)}</span>
+                            ${e.note ? `<span class="ml-2 text-gray-500 italic">${e.note}</span>` : ''}
+                        </div>
+                        <button onclick="deleteAttendance(${e.id})" class="text-gray-400 hover:text-red-600" title="Remove"><i class="fas fa-times"></i></button>
+                    </div>`).join('');
+
+            const allocs = data.allocations || [];
+            const allocHtml = allocs.length === 0
+                ? '<p class="text-gray-400 text-sm">No job allocations yet.</p>'
+                : `<div class="overflow-x-auto"><table class="w-full text-sm">
+                    <thead class="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase">
+                        <tr><th class="px-3 py-2">Week</th><th class="px-3 py-2">Client</th><th class="px-3 py-2">Job Site</th><th class="px-3 py-2 text-right">Hours</th><th class="px-3 py-2">Status</th><th class="px-3 py-2">Docket</th></tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        ${allocs.map(al => `
+                            <tr class="hover:bg-gray-50 ${al.archived ? 'opacity-60' : ''}">
+                                <td class="px-3 py-2 whitespace-nowrap">${formatDate(al.week_starting)} - ${formatDate(al.week_ending)}</td>
+                                <td class="px-3 py-2">${al.client_name || '-'}</td>
+                                <td class="px-3 py-2">${al.job_site_name || '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium">${(al.total_hours || 0).toFixed(1)}h</td>
+                                <td class="px-3 py-2"><span class="px-2 py-0.5 rounded-full text-xs font-medium status-${al.status}">${al.status}</span>${al.archived ? ' <span class="text-xs text-gray-400">(archived)</span>' : ''}</td>
+                                <td class="px-3 py-2"><button onclick="closeModal('worker-history-modal'); viewTimesheet(${al.timesheet_id})" class="text-blue-600 hover:underline font-mono">#${al.docket_number}</button></td>
+                            </tr>`).join('')}
+                    </tbody></table></div>`;
+
+            document.getElementById('wh-content').innerHTML = `
+                <div class="mb-6">
+                    <div class="flex items-center gap-3 mb-3">
+                        <h3 class="font-semibold">Reliability</h3>
+                        <span class="px-2 py-1 rounded-full text-xs font-bold ${ratingClass}">${rating}</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 mb-3">
+                        <div class="bg-orange-50 rounded-lg p-4 text-center">
+                            <div class="text-3xl font-bold text-orange-700">${sk}</div>
+                            <div class="text-sm text-gray-600">Sick days</div>
+                            <button onclick="markAttendance('sick')" class="mt-2 px-3 py-1 bg-orange-600 text-white rounded text-xs hover:bg-orange-700"><i class="fas fa-plus mr-1"></i>Mark Sick</button>
+                        </div>
+                        <div class="bg-red-50 rounded-lg p-4 text-center">
+                            <div class="text-3xl font-bold text-red-700">${ns}</div>
+                            <div class="text-sm text-gray-600">No-shows</div>
+                            <button onclick="markAttendance('no_show')" class="mt-2 px-3 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700"><i class="fas fa-plus mr-1"></i>Mark No-Show</button>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-3">${eventsHtml}</div>
+                </div>
+                <h3 class="font-semibold mb-3">Job Allocation History <span class="text-gray-400 font-normal text-sm">(${allocs.length})</span></h3>
+                ${allocHtml}
+            `;
+        }
+
+        async function markAttendance(type) {
+            if (!whWorkerId) return;
+            const label = type === 'sick' ? 'sick day' : 'no-show';
+            const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Melbourne' });
+            const d = prompt(`Date of ${label} (YYYY-MM-DD):`, today);
+            if (!d) return;
+            const note = prompt('Optional note (reason / job missed):', '') || '';
+            try {
+                const res = await authFetch(`${API_BASE}/users/admin/workers/${whWorkerId}/attendance`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event_type: type, event_date: d, note })
+                });
+                if (res.ok) { openWorkerHistory(whWorkerId); }
+                else { const e = await res.json(); alert(e.detail || 'Error recording'); }
+            } catch (e) { alert('Error recording'); }
+        }
+
+        async function deleteAttendance(eventId) {
+            if (!whWorkerId) return;
+            if (!confirm('Remove this record?')) return;
+            try {
+                await authFetch(`${API_BASE}/users/admin/workers/${whWorkerId}/attendance/${eventId}`, { method: 'DELETE' });
+                openWorkerHistory(whWorkerId);
+            } catch (e) { alert('Error removing record'); }
+        }
+
         async function viewWorker(id) {
             // Find worker in allWorkers array
             const worker = allWorkers.find(w => w.id === id);
@@ -3229,7 +3783,7 @@
                                 ? `<div class="mt-1 text-xs text-blue-700"><i class="fas fa-file-invoice-dollar mr-1"></i>Bill: $${(c.hourly_billing_rate||0).toFixed(2)} ord · $${(c.overtime_billing_rate||0).toFixed(2)} OT · $${(c.weekend_billing_rate||0).toFixed(2)} wknd · $${(c.night_billing_rate||0).toFixed(2)} night</div>`
                                 : `<div class="mt-1 text-xs text-amber-600"><i class="fas fa-exclamation-triangle mr-1"></i>No billing rates set</div>`}
                             ${(c.travel_charge_per_day > 0 || c.tool_hire_per_day > 0)
-                                ? `<div class="text-xs text-teal-600"><i class="fas fa-truck mr-1"></i>${c.travel_charge_per_day > 0 ? 'Travel: $' + (c.travel_charge_per_day||0).toFixed(2) + '/day' : ''}${(c.travel_charge_per_day > 0 && c.tool_hire_per_day > 0) ? ' · ' : ''}${c.tool_hire_per_day > 0 ? 'Tools: $' + (c.tool_hire_per_day||0).toFixed(2) + '/day' : ''} per worker</div>`
+                                ? `<div class="text-xs text-green-600"><i class="fas fa-truck mr-1"></i>${c.travel_charge_per_day > 0 ? 'Travel: $' + (c.travel_charge_per_day||0).toFixed(2) + '/day' : ''}${(c.travel_charge_per_day > 0 && c.tool_hire_per_day > 0) ? ' · ' : ''}${c.tool_hire_per_day > 0 ? 'Tools: $' + (c.tool_hire_per_day||0).toFixed(2) + '/day' : ''} per worker</div>`
                                 : ''}
                         </div>
                         <div class="flex items-center gap-2">
@@ -3837,9 +4391,14 @@
                             <h3 class="font-medium">${t.ticket_type_name || 'Unknown Type'}</h3>
                             <p class="text-sm text-gray-500">${t.user_name || 'Unknown Worker'}</p>
                         </div>
-                        <span class="px-2 py-1 rounded-full text-xs font-medium ${getTicketStatusClass(t.status)}">
-                            ${(t.status || 'pending').charAt(0).toUpperCase() + (t.status || 'pending').slice(1)}
-                        </span>
+                        <div class="flex items-center gap-2">
+                            <span class="px-2 py-1 rounded-full text-xs font-medium ${getTicketStatusClass(t.status)}">
+                                ${(t.status || 'pending').charAt(0).toUpperCase() + (t.status || 'pending').slice(1)}
+                            </span>
+                            <button onclick="event.stopPropagation(); deleteTicket(${t.id})" class="text-gray-300 hover:text-red-600 p-1" title="Delete ticket">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="text-sm text-gray-500 space-y-1">
                         ${t.ticket_number ? `<p><i class="fas fa-hashtag mr-1"></i>${t.ticket_number}</p>` : ''}
@@ -3988,11 +4547,30 @@
             const ticket = allTickets.find(t => t.id === id);
             if (!ticket) return;
 
+            await ensureTicketTypesLoaded();
+
             document.getElementById('ticket-modal-title').textContent = ticket.ticket_type_name || 'Ticket Details';
             document.getElementById('ticket-modal-worker').textContent = ticket.user_name || 'Unknown Worker';
 
+            const typeOptions = [...allTicketTypes]
+                .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                .map(tt => `<option value="${tt.id}" ${tt.id === ticket.ticket_type_id ? 'selected' : ''}>${tt.name}</option>`)
+                .join('');
+
             document.getElementById('ticket-modal-content').innerHTML = `
                 <div class="space-y-4">
+                    <div class="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                        <p class="text-sm font-medium text-gray-700 mb-2"><i class="fas fa-tag mr-1 text-blue-600"></i>Type / Category</p>
+                        <div class="flex gap-2">
+                            <select id="edit-ticket-type" class="flex-1 border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500">
+                                ${typeOptions || `<option value="${ticket.ticket_type_id}">${ticket.ticket_type_name || 'Unknown'}</option>`}
+                            </select>
+                            <button onclick="saveTicketType(${ticket.id})" class="px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800 text-sm font-semibold whitespace-nowrap">
+                                <i class="fas fa-save mr-1"></i>Save
+                            </button>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">Re-assign this ticket to its correct category.</p>
+                    </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <p class="text-sm text-gray-500">Ticket Number</p>
@@ -4043,9 +4621,9 @@
             `;
 
             // Actions based on status
-            let actionsHtml = '';
+            let statusActions = '';
             if (ticket.status === 'pending') {
-                actionsHtml = `
+                statusActions = `
                     <button onclick="rejectTicket(${ticket.id})" class="px-4 py-2 border border-red-500 text-red-500 rounded-lg hover:bg-red-50">
                         <i class="fas fa-times mr-2"></i>Reject
                     </button>
@@ -4054,25 +4632,53 @@
                     </button>
                 `;
             } else if (ticket.status === 'verified') {
-                actionsHtml = `<span class="text-green-600"><i class="fas fa-check-circle mr-2"></i>Verified</span>`;
+                statusActions = `<span class="text-green-600 self-center"><i class="fas fa-check-circle mr-2"></i>Verified</span>`;
             } else if (ticket.status === 'rejected') {
-                actionsHtml = `
-                    <span class="text-red-600"><i class="fas fa-times-circle mr-2"></i>Rejected</span>
-                    <button onclick="deleteTicket(${ticket.id})" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 ml-4">
-                        <i class="fas fa-trash mr-2"></i>Delete
-                    </button>
-                `;
+                statusActions = `<span class="text-red-600 self-center"><i class="fas fa-times-circle mr-2"></i>Rejected</span>`;
             } else if (ticket.status === 'expired') {
-                actionsHtml = `
-                    <span class="text-orange-600"><i class="fas fa-clock mr-2"></i>Expired</span>
-                    <button onclick="deleteTicket(${ticket.id})" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 ml-4">
-                        <i class="fas fa-trash mr-2"></i>Delete
-                    </button>
-                `;
+                statusActions = `<span class="text-orange-600 self-center"><i class="fas fa-clock mr-2"></i>Expired</span>`;
             }
-            document.getElementById('ticket-modal-actions').innerHTML = actionsHtml;
+            // Delete is always available
+            const deleteAction = `
+                <button onclick="deleteTicket(${ticket.id})" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
+                    <i class="fas fa-trash mr-2"></i>Delete
+                </button>
+            `;
+            document.getElementById('ticket-modal-actions').innerHTML = `
+                <div class="mr-auto">${deleteAction}</div>
+                ${statusActions}
+            `;
 
             openModal('ticket-modal');
+        }
+
+        async function saveTicketType(id) {
+            const select = document.getElementById('edit-ticket-type');
+            if (!select) return;
+            const newTypeId = parseInt(select.value);
+            const ticket = allTickets.find(t => t.id === id);
+            if (!newTypeId || (ticket && newTypeId === ticket.ticket_type_id)) {
+                alert('Pick a different category to change it.');
+                return;
+            }
+            try {
+                const response = await authFetch(`${API_BASE}/tickets/admin/${id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticket_type_id: newTypeId })
+                });
+                if (response.ok) {
+                    closeModal('ticket-modal');
+                    await loadTickets();
+                    alert('Ticket category updated');
+                } else {
+                    const data = await response.json().catch(() => ({}));
+                    alert(data.detail || 'Error updating category');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error updating category');
+            }
         }
 
         async function verifyTicket(id) {
@@ -4140,6 +4746,7 @@
         // ==================== INDUCTIONS ====================
 
         async function loadInductions() {
+            loadSwmsDocuments();
             try {
                 const response = await authFetch(`${API_BASE}/induction/admin/all-status`);
                 const data = await response.json();
@@ -4150,6 +4757,129 @@
                 console.error('Error loading inductions:', error);
                 document.getElementById('inductions-table').innerHTML = 
                     `<tr><td colspan="4" class="px-4 py-8 text-center text-red-500">Error loading inductions</td></tr>`;
+            }
+        }
+
+        let allSwmsDocuments = [];
+
+        async function loadSwmsDocuments() {
+            const container = document.getElementById('swms-documents-list');
+            try {
+                const response = await authFetch(`${API_BASE}/induction/documents`);
+                const data = await response.json();
+                allSwmsDocuments = data.documents || [];
+                renderSwmsDocuments();
+            } catch (error) {
+                console.error('Error loading documents:', error);
+                container.innerHTML = `<div class="px-4 py-6 text-center text-red-500">Error loading documents</div>`;
+            }
+        }
+
+        const SWMS_TYPE_BADGES = {
+            swms: 'bg-blue-100 text-blue-700',
+            induction: 'bg-purple-100 text-purple-700',
+            policy: 'bg-gray-100 text-gray-700'
+        };
+
+        function renderSwmsDocuments() {
+            const container = document.getElementById('swms-documents-list');
+            if (!allSwmsDocuments.length) {
+                container.innerHTML = `<div class="px-4 py-8 text-center text-gray-500">No documents yet. Click "Add SWMS" to upload one.</div>`;
+                return;
+            }
+            container.innerHTML = allSwmsDocuments.map(doc => {
+                const badge = SWMS_TYPE_BADGES[doc.document_type] || 'bg-gray-100 text-gray-700';
+                const viewBtn = doc.pdf_url
+                    ? `<a href="${doc.pdf_url}" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-sm font-medium"><i class="fas fa-file-pdf mr-1"></i>View PDF</a>`
+                    : `<span class="text-gray-400 text-sm">Text only</span>`;
+                return `
+                <div class="px-4 py-3 flex items-center justify-between gap-3 hover:bg-gray-50">
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-medium">${doc.title}</span>
+                            <span class="px-2 py-0.5 rounded-full text-xs font-medium ${badge}">${(doc.document_type || '').toUpperCase()}</span>
+                            ${doc.is_required ? '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Required</span>' : ''}
+                        </div>
+                        ${doc.category ? `<div class="text-sm text-gray-500">${doc.category}</div>` : ''}
+                        ${doc.description ? `<div class="text-sm text-gray-500">${doc.description}</div>` : ''}
+                    </div>
+                    <div class="flex items-center gap-4 shrink-0">
+                        ${viewBtn}
+                        <button onclick="deleteSwmsDocument(${doc.id}, '${(doc.title || '').replace(/'/g, "\\'")}')" class="text-red-500 hover:text-red-700 text-sm" title="Remove document">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function openAddSwmsModal() {
+            document.getElementById('swms-title').value = '';
+            document.getElementById('swms-type').value = 'swms';
+            document.getElementById('swms-category').value = '';
+            document.getElementById('swms-description').value = '';
+            document.getElementById('swms-file').value = '';
+            document.getElementById('swms-required').checked = true;
+            openModal('add-swms-modal');
+        }
+
+        async function submitSwms() {
+            const title = document.getElementById('swms-title').value.trim();
+            const fileInput = document.getElementById('swms-file');
+            const file = fileInput.files[0];
+
+            if (!title) { alert('Please enter a title'); return; }
+            if (!file) { alert('Please choose a PDF file'); return; }
+            if (!file.name.toLowerCase().endsWith('.pdf')) { alert('Only PDF files are allowed'); return; }
+
+            const formData = new FormData();
+            formData.append('title', title);
+            formData.append('pdf_file', file);
+            formData.append('document_type', document.getElementById('swms-type').value);
+            formData.append('category', document.getElementById('swms-category').value.trim());
+            formData.append('description', document.getElementById('swms-description').value.trim());
+            formData.append('is_required', document.getElementById('swms-required').checked ? 'true' : 'false');
+
+            const btn = document.getElementById('swms-submit-btn');
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Uploading...';
+            try {
+                const token = localStorage.getItem('adminToken');
+                const response = await fetch(`${API_BASE}/induction/admin/documents/upload-pdf`, {
+                    method: 'POST',
+                    headers: { 'Authorization': token ? `Bearer ${token}` : '' },
+                    body: formData
+                });
+                if (response.ok) {
+                    closeModal('add-swms-modal');
+                    await loadInductions();
+                    alert('SWMS uploaded successfully');
+                } else {
+                    const data = await response.json().catch(() => ({}));
+                    alert(data.detail || 'Error uploading SWMS');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error uploading SWMS');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
+        }
+
+        async function deleteSwmsDocument(docId, title) {
+            if (!confirm(`Remove "${title}"? Workers will no longer see this document. Existing signatures are kept.`)) return;
+            try {
+                const response = await authFetch(`${API_BASE}/induction/admin/documents/${docId}`, { method: 'DELETE' });
+                if (response.ok) {
+                    await loadInductions();
+                } else {
+                    alert('Error removing document');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error removing document');
             }
         }
 
@@ -4203,17 +4933,36 @@
                 const response = await authFetch(`${API_BASE}/induction/admin/user/${userId}/details`);
                 const data = await response.json();
                 
-                const docsHtml = data.documents.map(doc => `
-                    <div class="flex justify-between items-center p-3 border-b">
-                        <div>
-                            <p class="font-medium">${doc.title}</p>
-                            <p class="text-sm text-gray-500">${doc.document_type}${doc.is_required ? ' (Required)' : ''}</p>
+                const docsHtml = data.documents.map(doc => {
+                    const isSigned = doc.status === 'signed';
+                    const signedDate = doc.signed_at
+                        ? new Date(doc.signed_at).toLocaleString('en-AU', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        : null;
+                    const pdfLink = doc.pdf_url
+                        ? `<a href="${doc.pdf_url}" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-sm font-medium"><i class="fas fa-file-pdf mr-1"></i>View SWMS</a>`
+                        : '';
+                    const signedBlock = isSigned ? `
+                        <div class="mt-2 bg-gray-50 rounded-lg p-3">
+                            <p class="text-xs text-gray-500 mb-1">Signed${signedDate ? ' on ' + signedDate : ''}</p>
+                            ${doc.signature ? `<img src="${doc.signature}" alt="Signature" class="bg-white border rounded max-h-24" />` : '<p class="text-sm text-gray-400">No signature image stored</p>'}
+                        </div>` : '';
+                    return `
+                    <div class="p-3 border-b">
+                        <div class="flex justify-between items-center gap-3">
+                            <div class="min-w-0">
+                                <p class="font-medium">${doc.title}</p>
+                                <p class="text-sm text-gray-500">${doc.document_type}${doc.is_required ? ' (Required)' : ''}</p>
+                            </div>
+                            <div class="flex items-center gap-3 shrink-0">
+                                ${pdfLink}
+                                <span class="px-2 py-1 rounded-full text-xs font-medium ${isSigned ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}">
+                                    ${isSigned ? 'Signed' : 'Pending'}
+                                </span>
+                            </div>
                         </div>
-                        <span class="px-2 py-1 rounded-full text-xs font-medium ${doc.status === 'signed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}">
-                            ${doc.status === 'signed' ? 'Signed' : 'Pending'}
-                        </span>
-                    </div>
-                `).join('');
+                        ${signedBlock}
+                    </div>`;
+                }).join('');
                 
                 document.getElementById('ticket-modal-title').textContent = 'Induction Progress';
                 document.getElementById('ticket-modal-worker').textContent = data.user.name;
@@ -4523,7 +5272,7 @@
                 resultEl.textContent = 'Error sending: ' + e.message;
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send to selected foremen';
+                btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send SMS to selected foremen';
             }
         }
 
@@ -4841,6 +5590,14 @@
 
         let calYear = null, calMonth = null; // month is 1-12
         let calendarData = {};
+        let calAbsenceData = {};
+        let calFilterWorker = '', calFilterClient = '';
+
+        function calDayAbsences(dateStr) {
+            let events = calAbsenceData[dateStr] || [];
+            if (calFilterWorker) events = events.filter(e => String(e.worker_id) === String(calFilterWorker));
+            return events;
+        }
 
         function initCalendar() {
             if (calYear === null) {
@@ -4848,7 +5605,48 @@
                 calYear = now.getFullYear();
                 calMonth = now.getMonth() + 1;
             }
+            populateCalendarFilters();
             loadCalendar();
+        }
+
+        function populateCalendarFilters() {
+            const ws = document.getElementById('cal-filter-worker');
+            const cs = document.getElementById('cal-filter-client');
+            if (ws && allWorkers.length) {
+                ws.innerHTML = '<option value="">All workers</option>' +
+                    [...allWorkers].sort((a, b) => (`${a.first_name} ${a.surname}`).localeCompare(`${b.first_name} ${b.surname}`))
+                        .map(w => `<option value="${w.id}" ${String(w.id) === String(calFilterWorker) ? 'selected' : ''}>${w.first_name} ${w.surname}</option>`).join('');
+            }
+            if (cs && allClients.length) {
+                cs.innerHTML = '<option value="">All clients</option>' +
+                    [...allClients].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                        .map(c => `<option value="${c.name}" ${c.name === calFilterClient ? 'selected' : ''}>${c.name}</option>`).join('');
+            }
+        }
+
+        function applyCalendarFilters() {
+            calFilterWorker = document.getElementById('cal-filter-worker').value;
+            calFilterClient = document.getElementById('cal-filter-client').value;
+            renderCalendar();
+            document.getElementById('calendar-day-detail').classList.add('hidden');
+        }
+
+        function clearCalendarFilters() {
+            calFilterWorker = ''; calFilterClient = '';
+            document.getElementById('cal-filter-worker').value = '';
+            document.getElementById('cal-filter-client').value = '';
+            renderCalendar();
+            document.getElementById('calendar-day-detail').classList.add('hidden');
+        }
+
+        function calMatch(w) {
+            if (calFilterWorker && String(w.worker_id) !== String(calFilterWorker)) return false;
+            if (calFilterClient && (w.client_name || '') !== calFilterClient) return false;
+            return true;
+        }
+
+        function calDayWorkers(dateStr) {
+            return (calendarData[dateStr] || []).filter(calMatch);
         }
 
         function calendarToday() {
@@ -4878,9 +5676,14 @@
             document.getElementById('calendar-grid').innerHTML =
                 `<div class="col-span-7 py-12 text-center text-gray-500"><div class="loader mx-auto mb-2"></div>Loading…</div>`;
             try {
-                const response = await authFetch(`${API_BASE}/clock/admin/calendar?year=${calYear}&month=${calMonth}`);
+                const [response, absRes] = await Promise.all([
+                    authFetch(`${API_BASE}/clock/admin/calendar?year=${calYear}&month=${calMonth}`),
+                    authFetch(`${API_BASE}/users/admin/attendance/month?year=${calYear}&month=${calMonth}`).catch(() => null)
+                ]);
                 const data = await response.json();
                 calendarData = data.days || {};
+                calAbsenceData = (absRes && absRes.ok) ? ((await absRes.json()).days || {}) : {};
+                populateCalendarFilters();
                 renderCalendar();
             } catch (error) {
                 console.error('Error loading calendar:', error);
@@ -4896,7 +5699,7 @@
             // Pay week starts Saturday. JS getDay(): Sun=0..Sat=6. Column index where Sat=0.
             const colOf = (jsDay) => (jsDay + 1) % 7; // Sat->0, Sun->1, ... Fri->6
             const leadBlanks = colOf(firstOfMonth.getDay());
-            const todayStr = new Date().toISOString().slice(0, 10);
+            const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Melbourne' });
 
             let cells = '';
             for (let i = 0; i < leadBlanks; i++) {
@@ -4904,27 +5707,57 @@
             }
             for (let d = 1; d <= daysInMonth; d++) {
                 const dateStr = `${calYear}-${String(calMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                const workers = calendarData[dateStr] || [];
+                const workers = calDayWorkers(dateStr);
                 const uniqueWorkers = new Set(workers.map(w => w.worker_id)).size;
                 const openCount = workers.filter(w => w.is_open).length;
                 const isToday = dateStr === todayStr;
                 const countBadge = uniqueWorkers > 0
                     ? `<span class="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-semibold ${openCount > 0 ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}">${uniqueWorkers} <i class="fas fa-user"></i>${openCount > 0 ? ' · ' + openCount + ' on site' : ''}</span>`
                     : '';
+                const absences = calDayAbsences(dateStr);
+                const absenceBadge = absences.length
+                    ? `<span class="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700" title="${absences.map(a => a.worker_name + ' (' + (a.event_type === 'sick' ? 'Sick' : 'No-show') + ')').join(', ').replace(/"/g, '')}"><i class="fas fa-user-slash"></i> ${absences.length}</span>`
+                    : '';
                 cells += `
                     <div onclick="showCalendarDay('${dateStr}')" class="min-h-[84px] rounded-lg border ${isToday ? 'border-blue-500 border-2' : 'border-gray-100'} p-2 cursor-pointer hover:bg-blue-50 transition ${uniqueWorkers > 0 ? '' : 'bg-white'}">
                         <div class="text-sm font-semibold text-gray-700">${d}</div>
                         ${countBadge}
+                        ${absenceBadge}
                     </div>`;
             }
             grid.innerHTML = cells;
+
+            // Filter summary banner
+            const summary = document.getElementById('cal-filter-summary');
+            if (summary) {
+                const parts = [];
+                if (calFilterWorker) {
+                    const w = allWorkers.find(x => String(x.id) === String(calFilterWorker));
+                    if (w) parts.push(`${w.first_name} ${w.surname}`);
+                }
+                if (calFilterClient) parts.push(calFilterClient);
+                if (parts.length) {
+                    let totalDays = 0;
+                    for (let d = 1; d <= daysInMonth; d++) {
+                        const ds = `${calYear}-${String(calMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                        if (calDayWorkers(ds).length) totalDays++;
+                    }
+                    summary.textContent = `Showing: ${parts.join(' · ')} — ${totalDays} day${totalDays === 1 ? '' : 's'} this month`;
+                } else {
+                    summary.textContent = '';
+                }
+            }
         }
 
+        let calSelectedDate = null;
+
         function showCalendarDay(dateStr) {
-            const workers = calendarData[dateStr] || [];
+            calSelectedDate = dateStr;
+            const workers = calDayWorkers(dateStr);
             const detail = document.getElementById('calendar-day-detail');
             const title = document.getElementById('calendar-day-title');
             const list = document.getElementById('calendar-day-list');
+            loadDayAbsences(dateStr);
             const niceDate = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
             const uniqueWorkers = new Set(workers.map(w => w.worker_id)).size;
             title.textContent = `${niceDate} — ${uniqueWorkers} worker${uniqueWorkers === 1 ? '' : 's'}`;
@@ -4962,6 +5795,101 @@
             }
             detail.classList.remove('hidden');
             detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        const ATT_LABEL = { sick: 'Sick', no_show: 'No-Show' };
+
+        async function refreshAbsenceMarkers() {
+            try {
+                const res = await authFetch(`${API_BASE}/users/admin/attendance/month?year=${calYear}&month=${calMonth}`);
+                if (res.ok) {
+                    calAbsenceData = (await res.json()).days || {};
+                    renderCalendar();
+                }
+            } catch (e) { /* non-critical */ }
+        }
+
+        async function loadDayAbsences(dateStr) {
+            const box = document.getElementById('calendar-day-absences');
+            if (!box) return;
+            box.innerHTML = '';
+            try {
+                const res = await authFetch(`${API_BASE}/users/admin/attendance?day=${dateStr}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                let events = data.events || [];
+                if (calFilterWorker) events = events.filter(e => String(e.worker_id) === String(calFilterWorker));
+                if (!events.length) return;
+                box.innerHTML = `
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                        <p class="text-xs font-semibold text-yellow-800 uppercase mb-2">Absences this day</p>
+                        <div class="space-y-1">
+                            ${events.map(e => `
+                                <div class="flex items-center justify-between gap-2 text-sm">
+                                    <div>
+                                        <span class="font-medium">${e.worker_name}</span>
+                                        <span class="px-2 py-0.5 rounded-full text-xs font-medium ${e.event_type === 'sick' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'}">${ATT_LABEL[e.event_type] || e.event_type}</span>
+                                        ${e.note ? `<span class="text-gray-500">— ${e.note}</span>` : ''}
+                                    </div>
+                                    <button onclick="removeDayAbsence(${e.worker_id}, ${e.id})" class="text-red-400 hover:text-red-600 text-xs" title="Remove"><i class="fas fa-times"></i></button>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>`;
+            } catch (e) { /* non-critical */ }
+        }
+
+        async function removeDayAbsence(workerId, eventId) {
+            if (!confirm('Remove this absence record?')) return;
+            try {
+                await authFetch(`${API_BASE}/users/admin/workers/${workerId}/attendance/${eventId}`, { method: 'DELETE' });
+                if (calSelectedDate) loadDayAbsences(calSelectedDate);
+                refreshAbsenceMarkers();
+            } catch (e) { alert('Error removing record'); }
+        }
+
+        function openCalendarAttendance() {
+            const sel = document.getElementById('att-worker');
+            sel.innerHTML = '<option value="">Select worker…</option>' +
+                [...allWorkers].sort((a, b) => (`${a.first_name} ${a.surname}`).localeCompare(`${b.first_name} ${b.surname}`))
+                    .map(w => `<option value="${w.id}" ${String(w.id) === String(calFilterWorker) ? 'selected' : ''}>${w.first_name} ${w.surname}</option>`).join('');
+            document.getElementById('att-date').value = calSelectedDate || new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Melbourne' });
+            document.querySelector('input[name="att-type"][value="sick"]').checked = true;
+            document.getElementById('att-note').value = '';
+            openModal('attendance-modal');
+        }
+
+        async function saveCalendarAttendance() {
+            const workerId = document.getElementById('att-worker').value;
+            const eventDate = document.getElementById('att-date').value;
+            const eventType = document.querySelector('input[name="att-type"]:checked').value;
+            const note = document.getElementById('att-note').value.trim();
+            if (!workerId) { alert('Please select a worker'); return; }
+            if (!eventDate) { alert('Please choose a date'); return; }
+
+            const btn = document.getElementById('att-submit-btn');
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Saving…';
+            try {
+                const res = await authFetch(`${API_BASE}/users/admin/workers/${workerId}/attendance`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event_type: eventType, event_date: eventDate, note })
+                });
+                if (res.ok) {
+                    closeModal('attendance-modal');
+                    if (calSelectedDate) loadDayAbsences(calSelectedDate);
+                    refreshAbsenceMarkers();
+                } else {
+                    const e = await res.json().catch(() => ({}));
+                    alert(e.detail || 'Error recording');
+                }
+            } catch (e) {
+                alert('Error recording');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
         }
 
         // ==================== ON SITE / MANUAL CLOCK-OUT ====================
@@ -5351,7 +6279,10 @@
 
         function formatDate(dateStr) {
             if (!dateStr) return '-';
-            const date = new Date(dateStr);
+            // A bare YYYY-MM-DD is parsed by JS as UTC midnight, which can render as the
+            // previous day in some timezones. Force local midnight so the day never shifts.
+            const s = String(dateStr);
+            const date = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + 'T00:00:00') : new Date(s);
             return date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
         }
 

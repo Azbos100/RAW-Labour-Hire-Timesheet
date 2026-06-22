@@ -120,6 +120,32 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Migration note (archived_at): {e}")
         
+        # Per-job docket: a timesheet is per client AND per job site
+        try:
+            await conn.execute(text("""
+                ALTER TABLE timesheets ADD COLUMN IF NOT EXISTS job_site_id INTEGER;
+            """))
+        except Exception as e:
+            print(f"Migration note (timesheet job_site_id): {e}")
+        
+        # Worker attendance (sick / no-show) tracking table
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS attendance_events (
+                    id SERIAL PRIMARY KEY,
+                    worker_id INTEGER NOT NULL REFERENCES users(id),
+                    event_type VARCHAR(20) NOT NULL,
+                    event_date DATE NOT NULL,
+                    note TEXT,
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_attendance_worker ON attendance_events(worker_id);
+            """))
+        except Exception as e:
+            print(f"Migration note (attendance_events): {e}")
+        
         # Break tracking columns for timesheet entries
         try:
             await conn.execute(text("""

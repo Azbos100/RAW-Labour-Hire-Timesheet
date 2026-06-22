@@ -4,7 +4,7 @@ RAW Labour Hire - Timesheets API
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from pydantic import BaseModel
 from datetime import datetime, date, timedelta
 from typing import Optional, List
@@ -36,7 +36,16 @@ async def get_all_timesheets_admin(
     """Get all active (non-archived) timesheets for admin dashboard"""
     query = select(Timesheet).where(Timesheet.archived_at.is_(None)).order_by(Timesheet.week_starting.desc())
     
-    if status:
+    if status == 'submitted':
+        # "Pending Approval" = docket submitted OR any day-entry submitted (even if the
+        # docket itself is still draft because the worker submitted per-day).
+        sub = select(TimesheetEntry.timesheet_id).where(
+            TimesheetEntry.entry_status == 'submitted'
+        ).distinct()
+        query = query.where(
+            (Timesheet.status == TimesheetStatus.SUBMITTED) | (Timesheet.id.in_(sub))
+        )
+    elif status:
         query = query.where(Timesheet.status == TimesheetStatus(status))
     if worker_id:
         query = query.where(Timesheet.worker_id == worker_id)
@@ -55,6 +64,16 @@ async def get_all_timesheets_admin(
         client_result = await db.execute(select(Client).where(Client.id == ts.client_id))
         client = client_result.scalar_one_or_none()
         
+        # Count submitted (pending-approval) day entries so the dashboard can keep
+        # showing a docket that is still 'draft' overall but has days awaiting approval.
+        submitted_entries_result = await db.execute(
+            select(func.count(TimesheetEntry.id)).where(
+                TimesheetEntry.timesheet_id == ts.id,
+                TimesheetEntry.entry_status == 'submitted'
+            )
+        )
+        submitted_entries = submitted_entries_result.scalar() or 0
+        
         response_data.append({
             "id": ts.id,
             "docket_number": ts.docket_number,
@@ -72,6 +91,7 @@ async def get_all_timesheets_admin(
             "supervisor_contact": ts.supervisor_contact,
             "supervisor_signature": ts.supervisor_signature,
             "submitted_at": ts.submitted_at.isoformat() if ts.submitted_at else None,
+            "submitted_entries_count": submitted_entries,
         })
     
     return {"timesheets": response_data}
@@ -430,10 +450,12 @@ async def get_timesheet(
     for e in entries:
         # Get job site name if job_site_id exists
         job_site_name = None
+        job_site_address = None
         if e.job_site_id:
             job_site_result = await db.execute(select(JobSite).where(JobSite.id == e.job_site_id))
             job_site = job_site_result.scalar_one_or_none()
             job_site_name = job_site.name if job_site else None
+            job_site_address = job_site.address if job_site else None
         
         entries_data.append({
             "id": e.id,
@@ -462,6 +484,7 @@ async def get_timesheet(
             # Status and supervisor
             "entry_status": e.entry_status or "draft",
             "job_site_name": job_site_name,
+            "job_site_address": job_site_address,
             "company_name": e.host_company_name,
             "host_company_name": e.host_company_name,
             "supervisor_name": e.supervisor_name,

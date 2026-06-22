@@ -311,9 +311,12 @@ async def get_user_induction_details(
         doc_details.append({
             "document_id": doc.id,
             "title": doc.title,
+            "description": doc.description,
             "document_type": doc.document_type,
             "category": doc.category,
             "is_required": doc.is_required,
+            "pdf_filename": doc.pdf_filename,
+            "pdf_url": f"/api/induction/pdf/{doc.pdf_filename}" if doc.pdf_filename else None,
             "status": signed.status if signed else "pending",
             "signed_at": signed.signed_at.isoformat() if signed and signed.signed_at else None,
             "signature": signed.signature if signed else None,

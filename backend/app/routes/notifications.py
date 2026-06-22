@@ -18,6 +18,7 @@ from ..services.sms import (
     send_sms,
     send_sms_sync,
     format_phone_number,
+    brand_message,
     clock_in_reminder_message,
     clock_out_reminder_message,
     timesheet_approved_message,
@@ -30,7 +31,7 @@ router = APIRouter()
 @router.get("/test-sms/{phone}")
 async def test_sms(phone: str):
     """Test SMS sending - debug endpoint"""
-    from ..services.sms import send_sms, format_phone_number, TWILIO_ACCOUNT_SID, TWILIO_PHONE_NUMBER
+    from ..services.sms import send_sms, format_phone_number, TWILIO_ACCOUNT_SID, TWILIO_PHONE_NUMBER, get_sender
     
     formatted = format_phone_number(phone)
     
@@ -41,6 +42,7 @@ async def test_sms(phone: str):
         "formatted_phone": formatted,
         "twilio_configured": bool(TWILIO_ACCOUNT_SID),
         "twilio_from_number": TWILIO_PHONE_NUMBER,
+        "twilio_sender": get_sender(),
         "result": result
     }
 
@@ -210,7 +212,7 @@ async def send_sms_to_worker(
     if not worker.phone:
         raise HTTPException(status_code=400, detail="Worker has no phone number")
     
-    sms_result = await send_sms(worker.phone, data.message)
+    sms_result = await send_sms(worker.phone, brand_message(data.message))
     
     if sms_result["success"]:
         return {"message": "SMS sent successfully", "to": worker.phone}
@@ -263,9 +265,9 @@ async def broadcast_to_foremen(
     db: AsyncSession = Depends(get_db)
 ):
     """Send a one-off SMS to selected (or all) active foremen / site contacts."""
-    message = (data.message or "").strip()
-    if not message:
+    if not (data.message or "").strip():
         raise HTTPException(status_code=400, detail="Message is empty")
+    message = brand_message((data.message or "").strip())
 
     recipients = _dedupe_foremen(await _foreman_rows(db))
 

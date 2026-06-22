@@ -4,14 +4,14 @@ RAW Labour Hire - Users API (Admin)
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from pydantic import BaseModel
 from typing import Optional
 from datetime import date, datetime
 import secrets
 
 from ..database import get_db
-from ..models import User, UserRole, JobSite, TimesheetEntry
+from ..models import User, UserRole, JobSite, TimesheetEntry, Timesheet, Client, AttendanceEvent
 from .auth import get_current_user, verify_admin_auth, get_password_hash
 
 router = APIRouter()
@@ -349,9 +349,12 @@ async def create_worker(
     admin: dict = Depends(verify_admin_auth)
 ):
     """Create a new worker"""
-    # Check if email already exists
-    existing = await db.execute(select(User).where(User.email == worker.email))
-    if existing.scalar_one_or_none():
+    # Check if email already exists (case-insensitive)
+    email_clean = (worker.email or "").strip()
+    existing = await db.execute(
+        select(User).where(func.lower(User.email) == email_clean.lower())
+    )
+    if existing.scalars().first():
         raise HTTPException(status_code=400, detail="Email already registered")
     
     # Generate a random password (worker will need to reset)
@@ -463,6 +466,193 @@ async def deactivate_worker_admin(
     await db.commit()
     
     return {"message": "Worker deactivated"}
+
+
+class AttendanceCreate(BaseModel):
+    event_type: str  # 'sick' or 'no_show'
+    event_date: Optional[date] = None
+    note: Optional[str] = None
+
+
+@router.get("/admin/workers/{worker_id}/history")
+async def get_worker_history(
+    worker_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(verify_admin_auth)
+):
+    """Worker job-allocation history (dockets) + sick/no-show attendance summary."""
+    result = await db.execute(select(User).where(User.id == worker_id))
+    worker = result.scalar_one_or_none()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+
+    # Job allocation history: all dockets for this worker (incl. archived), newest first
+    ts_rows = await db.execute(
+        select(Timesheet, Client, JobSite)
+        .outerjoin(Client, Timesheet.client_id == Client.id)
+        .outerjoin(JobSite, Timesheet.job_site_id == JobSite.id)
+        .where(Timesheet.worker_id == worker_id)
+        .order_by(Timesheet.week_starting.desc(), Timesheet.id.desc())
+    )
+    allocations = []
+    for ts, client, js in ts_rows.all():
+        allocations.append({
+            "timesheet_id": ts.id,
+            "docket_number": ts.docket_number,
+            "client_name": client.name if client else None,
+            "job_site_name": js.name if js else None,
+            "week_starting": ts.week_starting.isoformat() if ts.week_starting else None,
+            "week_ending": ts.week_ending.isoformat() if ts.week_ending else None,
+            "status": ts.status.value if hasattr(ts.status, "value") else str(ts.status),
+            "total_hours": ts.total_hours or 0,
+            "archived": ts.archived_at is not None,
+        })
+
+    # Attendance events
+    ev_rows = await db.execute(
+        select(AttendanceEvent)
+        .where(AttendanceEvent.worker_id == worker_id)
+        .order_by(AttendanceEvent.event_date.desc(), AttendanceEvent.id.desc())
+    )
+    events = ev_rows.scalars().all()
+    sick = sum(1 for e in events if e.event_type == "sick")
+    no_show = sum(1 for e in events if e.event_type == "no_show")
+
+    return {
+        "worker": {"id": worker.id, "name": f"{worker.first_name} {worker.surname}"},
+        "attendance": {
+            "sick_count": sick,
+            "no_show_count": no_show,
+            "events": [
+                {
+                    "id": e.id,
+                    "event_type": e.event_type,
+                    "event_date": e.event_date.isoformat() if e.event_date else None,
+                    "note": e.note,
+                    "created_at": e.created_at.isoformat() if e.created_at else None,
+                }
+                for e in events
+            ],
+        },
+        "allocations": allocations,
+    }
+
+
+@router.post("/admin/workers/{worker_id}/attendance")
+async def add_attendance_event(
+    worker_id: int,
+    data: AttendanceCreate,
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(verify_admin_auth)
+):
+    """Record a sick day or no-show for a worker."""
+    if data.event_type not in ("sick", "no_show"):
+        raise HTTPException(status_code=400, detail="event_type must be 'sick' or 'no_show'")
+    result = await db.execute(select(User).where(User.id == worker_id))
+    worker = result.scalar_one_or_none()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+
+    event = AttendanceEvent(
+        worker_id=worker_id,
+        event_type=data.event_type,
+        event_date=data.event_date or date.today(),
+        note=(data.note or "").strip() or None,
+    )
+    db.add(event)
+    await db.commit()
+    await db.refresh(event)
+    return {"message": "Recorded", "id": event.id}
+
+
+@router.delete("/admin/workers/{worker_id}/attendance/{event_id}")
+async def delete_attendance_event(
+    worker_id: int,
+    event_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(verify_admin_auth)
+):
+    """Remove a wrongly-recorded attendance event."""
+    result = await db.execute(
+        select(AttendanceEvent).where(
+            AttendanceEvent.id == event_id,
+            AttendanceEvent.worker_id == worker_id,
+        )
+    )
+    event = result.scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    await db.delete(event)
+    await db.commit()
+    return {"message": "Deleted"}
+
+
+@router.get("/admin/attendance")
+async def list_attendance_by_date(
+    day: str,
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(verify_admin_auth)
+):
+    """List sick/no-show events for a specific date (all workers)."""
+    try:
+        target = date.fromisoformat(day)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid date (expected YYYY-MM-DD)")
+
+    result = await db.execute(
+        select(AttendanceEvent, User)
+        .join(User, AttendanceEvent.worker_id == User.id)
+        .where(AttendanceEvent.event_date == target)
+        .order_by(User.surname, User.first_name)
+    )
+    rows = result.all()
+    return {
+        "events": [
+            {
+                "id": ev.id,
+                "worker_id": ev.worker_id,
+                "worker_name": f"{u.first_name} {u.surname}",
+                "event_type": ev.event_type,
+                "note": ev.note,
+            }
+            for ev, u in rows
+        ]
+    }
+
+
+@router.get("/admin/attendance/month")
+async def list_attendance_by_month(
+    year: int,
+    month: int,
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(verify_admin_auth)
+):
+    """Sick/no-show events for a whole month, grouped by date (for calendar markers)."""
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="Invalid month")
+
+    start = date(year, month, 1)
+    end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+
+    result = await db.execute(
+        select(AttendanceEvent, User)
+        .join(User, AttendanceEvent.worker_id == User.id)
+        .where(AttendanceEvent.event_date >= start, AttendanceEvent.event_date < end)
+        .order_by(AttendanceEvent.event_date, User.surname, User.first_name)
+    )
+    rows = result.all()
+
+    days: dict = {}
+    for ev, u in rows:
+        key = ev.event_date.isoformat()
+        days.setdefault(key, []).append({
+            "id": ev.id,
+            "worker_id": ev.worker_id,
+            "worker_name": f"{u.first_name} {u.surname}",
+            "event_type": ev.event_type,
+            "note": ev.note,
+        })
+    return {"days": days}
 
 
 @router.post("/admin/workers/{worker_id}/reset-password")
@@ -610,7 +800,7 @@ async def assign_worker_to_job(
 ):
     """Assign a worker to a job site"""
     from ..services.push_notifications import send_push_notification
-    from ..services.sms import send_sms
+    from ..services.sms import send_sms, CONTACT_FOOTER
     
     result = await db.execute(select(User).where(User.id == worker_id))
     worker = result.scalar_one_or_none()
@@ -649,7 +839,7 @@ async def assign_worker_to_job(
         
         # Send SMS notification to worker (always, if they have a phone)
         if worker.phone:
-            sms_message = f"RAW Labour Hire: You've been assigned to {job_site.name} on {date_str} at {time_str}. Address: {job_site.address or 'TBC'}.{contact_str} Open the app to accept."
+            sms_message = f"RAW Labour Hire: You've been assigned to {job_site.name} on {date_str} at {time_str}. Address: {job_site.address or 'TBC'}.{contact_str} Open the app to accept.\n{CONTACT_FOOTER}"
             
             async def send_assignment_sms():
                 result = await send_sms(worker.phone, sms_message)
@@ -726,7 +916,7 @@ async def assign_workers_bulk(
     background_tasks: BackgroundTasks = None
 ):
     """Assign multiple workers to a job site"""
-    from ..services.sms import send_sms
+    from ..services.sms import send_sms, CONTACT_FOOTER
     from ..services.push_notifications import send_push_notification
     
     # Verify job site exists
@@ -756,7 +946,7 @@ async def assign_workers_bulk(
         
         # Send SMS notification
         if worker.phone:
-            sms_message = f"RAW Labour Hire: You've been assigned to {job_site.name} on {date_str} at {time_str}. Address: {job_site.address or 'TBC'}. Open the app to accept."
+            sms_message = f"RAW Labour Hire: You've been assigned to {job_site.name} on {date_str} at {time_str}. Address: {job_site.address or 'TBC'}. Open the app to accept.\n{CONTACT_FOOTER}"
             
             async def send_worker_sms(phone=worker.phone, msg=sms_message):
                 await send_sms(phone, msg)

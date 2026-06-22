@@ -5,7 +5,7 @@ RAW Labour Hire - Authentication API
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
 from typing import Optional
@@ -187,9 +187,12 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
             detail="Password must be 72 characters or fewer"
         )
 
-    # Check if email exists
-    result = await db.execute(select(User).where(User.email == user_data.email))
-    if result.scalar_one_or_none():
+    # Check if email exists (case-insensitive, so Foo@x.com and foo@x.com clash)
+    email_clean = (user_data.email or "").strip()
+    result = await db.execute(
+        select(User).where(func.lower(User.email) == email_clean.lower())
+    )
+    if result.scalars().first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
@@ -227,8 +230,14 @@ async def login(
 ):
     """Login and get access token"""
     ip = _check_login_throttle(request)
-    result = await db.execute(select(User).where(User.email == form_data.username))
-    user = result.scalar_one_or_none()
+    # Case-insensitive email match; prefer an active account if duplicates exist
+    username = (form_data.username or "").strip()
+    result = await db.execute(
+        select(User)
+        .where(func.lower(User.email) == username.lower())
+        .order_by(User.is_active.desc(), User.id.desc())
+    )
+    user = result.scalars().first()
     
     if not user or not verify_password(form_data.password, user.hashed_password):
         _record_login_failure(ip)
@@ -464,8 +473,13 @@ async def request_password_reset(
     db: AsyncSession = Depends(get_db)
 ):
     """Send a password reset code via SMS if the user exists"""
-    result = await db.execute(select(User).where(User.email == data.email))
-    user = result.scalar_one_or_none()
+    email_clean = (data.email or "").strip()
+    result = await db.execute(
+        select(User)
+        .where(func.lower(User.email) == email_clean.lower())
+        .order_by(User.is_active.desc(), User.id.desc())
+    )
+    user = result.scalars().first()
 
     if not user:
         return {"message": "If an account exists, a reset code has been sent via SMS."}
