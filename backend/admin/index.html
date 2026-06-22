@@ -80,8 +80,8 @@
                 window.location.href = '/admin/login.html';
                 return;
             }
-            // Verify token with server
-            fetch(window.location.origin + '/api/auth/admin/verify?token=' + encodeURIComponent(token))
+            // Verify token with server (send in header, never in the URL)
+            fetch(window.location.origin + '/api/auth/admin/verify', { headers: { 'Authorization': 'Bearer ' + token } })
                 .then(response => {
                     if (!response.ok) {
                         localStorage.removeItem('adminToken');
@@ -4388,13 +4388,12 @@
                     searchAddress += ', Australia';
                 }
                 
-                // Use OpenStreetMap Nominatim API (free, no API key required)
+                // Use OpenStreetMap Nominatim API (free, no API key required).
+                // Must be a plain fetch with NO auth/custom headers, otherwise the
+                // browser sends a CORS preflight that Nominatim rejects (and a 401
+                // from a third party would bounce the admin to the login screen).
                 const encodedAddress = encodeURIComponent(searchAddress);
-                const response = await authFetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodedAddress}&limit=5&countrycodes=au`, {
-                    headers: {
-                        'User-Agent': 'RAW-Labour-Hire-Admin/1.0'
-                    }
-                });
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodedAddress}&limit=5&countrycodes=au`);
                 const results = await response.json();
                 
                 if (results && results.length > 0) {

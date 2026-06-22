@@ -273,12 +273,13 @@ async def client_billing(
 @router.get("/worker-totals")
 async def worker_totals(
     week_ending: Optional[str] = None,
+    client_id: Optional[int] = None,
     approved_only: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
     """Worker -> total hours for the week (cross-check against billing)."""
     ws, we = _resolve_week(week_ending)
-    rows = await _fetch_rows(db, ws, we, None, approved_only)
+    rows = await _fetch_rows(db, ws, we, client_id, approved_only)
 
     workers = {}
     grand = _zero()
@@ -302,12 +303,13 @@ async def worker_totals(
 @router.get("/myob-payroll")
 async def myob_payroll(
     week_ending: Optional[str] = None,
+    client_id: Optional[int] = None,
     approved_only: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
     """Worker -> Shift_Type -> Role -> summed hours (payroll entry)."""
     ws, we = _resolve_week(week_ending)
-    rows = await _fetch_rows(db, ws, we, None, approved_only)
+    rows = await _fetch_rows(db, ws, we, client_id, approved_only)
 
     groups = {}
     grand = _zero()

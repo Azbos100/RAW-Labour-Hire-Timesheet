@@ -2,7 +2,7 @@
 RAW Labour Hire - Authentication API
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -19,6 +19,7 @@ from ..database import get_db
 from ..models import User, UserRole
 from ..email import send_password_reset_email
 from ..services.sms import send_sms
+from ..pii_crypto import encrypt_pii, decrypt_pii
 
 router = APIRouter()
 
@@ -141,6 +142,27 @@ def _record_login_failure(ip: str) -> None:
 def _record_login_success(ip: str) -> None:
     _login_fails.pop(ip, None)
     _login_locked.pop(ip, None)
+
+
+# Generic per-IP sliding-window rate limiter (used for password-reset endpoints
+# to stop SMS-bombing and brute-forcing of the reset code).
+_rl_hits: dict = {}
+
+
+def _rate_limit(request: Request, bucket: str, max_calls: int, window: int) -> None:
+    ip = _client_ip(request)
+    now = _time.time()
+    key = (bucket, ip)
+    hits = [t for t in _rl_hits.get(key, []) if now - t < window]
+    if len(hits) >= max_calls:
+        retry = int(window - (now - hits[0])) if hits else window
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please wait a few minutes and try again.",
+            headers={"Retry-After": str(max(retry, 1))},
+        )
+    hits.append(now)
+    _rl_hits[key] = hits
 
 
 # === Helper Functions ===
@@ -369,10 +391,10 @@ def user_to_dict(user: User) -> dict:
         "emergency_contact_phone": user.emergency_contact_phone,
         "emergency_contact_relationship": user.emergency_contact_relationship,
         # Bank details
-        "bank_account_name": user.bank_account_name,
-        "bank_bsb": user.bank_bsb,
-        "bank_account_number": user.bank_account_number,
-        "tax_file_number": user.tax_file_number,
+        "bank_account_name": decrypt_pii(user.bank_account_name),
+        "bank_bsb": decrypt_pii(user.bank_bsb),
+        "bank_account_number": decrypt_pii(user.bank_account_number),
+        "tax_file_number": decrypt_pii(user.tax_file_number),
         # Employment
         "employment_type": user.employment_type,
         "is_active": user.is_active,
@@ -436,13 +458,13 @@ async def update_profile(
     
     # Bank details
     if data.bank_account_name is not None:
-        user.bank_account_name = data.bank_account_name.strip() if data.bank_account_name else None
+        user.bank_account_name = encrypt_pii(data.bank_account_name.strip()) if data.bank_account_name else None
     if data.bank_bsb is not None:
-        user.bank_bsb = data.bank_bsb.strip() if data.bank_bsb else None
+        user.bank_bsb = encrypt_pii(data.bank_bsb.strip()) if data.bank_bsb else None
     if data.bank_account_number is not None:
-        user.bank_account_number = data.bank_account_number.strip() if data.bank_account_number else None
+        user.bank_account_number = encrypt_pii(data.bank_account_number.strip()) if data.bank_account_number else None
     if data.tax_file_number is not None:
-        user.tax_file_number = data.tax_file_number.strip() if data.tax_file_number else None
+        user.tax_file_number = encrypt_pii(data.tax_file_number.strip()) if data.tax_file_number else None
     
     # Employment
     if data.employment_type is not None:
@@ -505,9 +527,12 @@ async def change_password(
 async def request_password_reset(
     data: PasswordResetRequest,
     background_tasks: BackgroundTasks,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """Send a password reset code via SMS if the user exists"""
+    # Cap reset requests per IP to prevent SMS-bombing / cost abuse.
+    _rate_limit(request, "pwreset_req", max_calls=5, window=900)
     email_clean = (data.email or "").strip()
     result = await db.execute(
         select(User)
@@ -547,9 +572,12 @@ async def request_password_reset(
 @router.post("/password-reset/confirm")
 async def confirm_password_reset(
     data: PasswordResetConfirm,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """Confirm a password reset using a token"""
+    # Cap confirm attempts per IP to make brute-forcing the 6-digit code infeasible.
+    _rate_limit(request, "pwreset_confirm", max_calls=10, window=900)
     new_password = data.new_password.strip()
     if len(new_password) < 6:
         raise HTTPException(
@@ -633,14 +661,26 @@ async def admin_login(data: AdminLogin, request: Request):
 
 
 @router.get("/admin/verify")
-async def verify_admin_token(token: str):
-    """Verify admin token is valid"""
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_sub": False})
-        if payload.get("type") == "admin":
-            return {"valid": True, "username": payload.get("sub")}
-    except JWTError:
-        pass
+async def verify_admin_token(authorization: Optional[str] = Header(None), token: Optional[str] = None):
+    """Verify admin token is valid.
+
+    Prefers the Authorization: Bearer header so the token never lands in URLs /
+    access logs. The legacy ?token= query param is still accepted for backward
+    compatibility with older cached dashboards.
+    """
+    tok = None
+    if authorization and authorization.lower().startswith("bearer "):
+        tok = authorization.split(" ", 1)[1].strip()
+    elif token:
+        tok = token
+
+    if tok:
+        try:
+            payload = jwt.decode(tok, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_sub": False})
+            if payload.get("type") == "admin":
+                return {"valid": True, "username": payload.get("sub")}
+        except JWTError:
+            pass
     
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

@@ -140,8 +140,8 @@
         (function() {
             const token = localStorage.getItem('adminToken');
             if (token) {
-                // Verify token is still valid
-                fetch(window.location.origin + '/api/auth/admin/verify?token=' + encodeURIComponent(token))
+                // Verify token is still valid (send in header, never in the URL)
+                fetch(window.location.origin + '/api/auth/admin/verify', { headers: { 'Authorization': 'Bearer ' + token } })
                     .then(response => {
                         if (response.ok) {
                             window.location.href = '/admin/index.html';

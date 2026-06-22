@@ -13,6 +13,7 @@ import secrets
 from ..database import get_db
 from ..models import User, UserRole, JobSite, TimesheetEntry, Timesheet, Client, AttendanceEvent
 from .auth import get_current_user, verify_admin_auth, get_password_hash
+from ..pii_crypto import encrypt_pii, decrypt_pii
 
 router = APIRouter()
 
@@ -50,10 +51,10 @@ async def get_user_profile(
         "emergency_contact_phone": u.emergency_contact_phone,
         "emergency_contact_relationship": u.emergency_contact_relationship,
         # Bank details
-        "bank_account_name": u.bank_account_name,
-        "bank_bsb": u.bank_bsb,
-        "bank_account_number": u.bank_account_number,
-        "tax_file_number": u.tax_file_number,
+        "bank_account_name": decrypt_pii(u.bank_account_name),
+        "bank_bsb": decrypt_pii(u.bank_bsb),
+        "bank_account_number": decrypt_pii(u.bank_account_number),
+        "tax_file_number": decrypt_pii(u.tax_file_number),
         # Employment
         "employment_type": u.employment_type or "casual",
         "is_active": u.is_active,
@@ -263,10 +264,10 @@ async def list_all_workers(
             "emergency_contact_name": u.emergency_contact_name,
             "emergency_contact_phone": u.emergency_contact_phone,
             "emergency_contact_relationship": u.emergency_contact_relationship,
-            "bank_account_name": u.bank_account_name,
-            "bank_bsb": u.bank_bsb,
-            "bank_account_number": u.bank_account_number,
-            "tax_file_number": u.tax_file_number,
+            "bank_account_name": decrypt_pii(u.bank_account_name),
+            "bank_bsb": decrypt_pii(u.bank_bsb),
+            "bank_account_number": decrypt_pii(u.bank_account_number),
+            "tax_file_number": decrypt_pii(u.tax_file_number),
             "base_pay_rate": u.base_pay_rate or 0,
             "overtime_pay_rate": u.overtime_pay_rate or 0,
             "weekend_pay_rate": u.weekend_pay_rate or 0,
@@ -328,10 +329,10 @@ async def get_worker(
         "emergency_contact_name": u.emergency_contact_name,
         "emergency_contact_phone": u.emergency_contact_phone,
         "emergency_contact_relationship": u.emergency_contact_relationship,
-        "bank_account_name": u.bank_account_name,
-        "bank_bsb": u.bank_bsb,
-        "bank_account_number": u.bank_account_number,
-        "tax_file_number": u.tax_file_number,
+        "bank_account_name": decrypt_pii(u.bank_account_name),
+        "bank_bsb": decrypt_pii(u.bank_bsb),
+        "bank_account_number": decrypt_pii(u.bank_account_number),
+        "tax_file_number": decrypt_pii(u.tax_file_number),
         "base_pay_rate": u.base_pay_rate or 0,
         "overtime_pay_rate": u.overtime_pay_rate or 0,
         "weekend_pay_rate": u.weekend_pay_rate or 0,
@@ -378,10 +379,10 @@ async def create_worker(
         emergency_contact_name=worker.emergency_contact_name,
         emergency_contact_phone=worker.emergency_contact_phone,
         emergency_contact_relationship=worker.emergency_contact_relationship,
-        bank_account_name=worker.bank_account_name,
-        bank_bsb=worker.bank_bsb,
-        bank_account_number=worker.bank_account_number,
-        tax_file_number=worker.tax_file_number,
+        bank_account_name=encrypt_pii(worker.bank_account_name),
+        bank_bsb=encrypt_pii(worker.bank_bsb),
+        bank_account_number=encrypt_pii(worker.bank_account_number),
+        tax_file_number=encrypt_pii(worker.tax_file_number),
         base_pay_rate=worker.base_pay_rate or 0,
         overtime_pay_rate=worker.overtime_pay_rate or 0,
         weekend_pay_rate=worker.weekend_pay_rate or 0,
@@ -419,11 +420,17 @@ async def update_worker(
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
     
-    # Update only provided fields
-    update_data = worker_data.dict(exclude_unset=True, exclude_none=True)
+    # Update only the fields the client actually sent. We intentionally do NOT
+    # exclude None here: a field present in the payload with a null value means
+    # the admin cleared it, so it should be blanked (omitted fields are still
+    # left untouched via exclude_unset).
+    update_data = worker_data.dict(exclude_unset=True)
+    _pii_fields = {"bank_account_name", "bank_bsb", "bank_account_number", "tax_file_number"}
     for field, value in update_data.items():
         if field == "role":
-            setattr(worker, field, UserRole(value))
+            setattr(worker, field, UserRole(value) if value else worker.role)
+        elif field in _pii_fields:
+            setattr(worker, field, encrypt_pii(value))
         else:
             setattr(worker, field, value)
     
@@ -1135,19 +1142,26 @@ async def force_clock_out_worker(
     closed_count = 0
     affected_timesheets = set()
     
+    from .clock import calculate_hours
+
+    now_naive = now_melb.replace(tzinfo=None)
     for entry in open_entries:
         # Set clock out to current time
-        entry.clock_out_time = now_melb.replace(tzinfo=None)
+        entry.clock_out_time = now_naive
         entry.clock_out_address = "Force clocked out by admin"
         
-        # Calculate hours
+        # Calculate hours using the same rules as a normal clock-out
+        # (unpaid break deduction for 4h+ shifts, ordinary/overtime split at 8h).
         if entry.clock_in_time:
-            clock_in_aware = MELBOURNE_TZ.localize(entry.clock_in_time)
-            diff = now_melb - clock_in_aware
-            total_hours = diff.total_seconds() / 3600
-            entry.total_hours = round(max(0, total_hours), 2)
-            entry.ordinary_hours = min(entry.total_hours, 8)
-            entry.overtime_hours = max(0, entry.total_hours - 8)
+            unpaid_break = entry.unpaid_break_minutes if entry.unpaid_break_minutes is not None else 30
+            ordinary_hours, overtime_hours, gross_hours = calculate_hours(
+                entry.clock_in_time, now_naive, unpaid_break
+            )
+            entry.gross_hours = gross_hours
+            entry.ordinary_hours = ordinary_hours
+            entry.overtime_hours = overtime_hours
+            entry.total_hours = round(ordinary_hours + overtime_hours, 2)
+            entry.time_finish = now_naive.time()
         
         affected_timesheets.add(entry.timesheet_id)
         closed_count += 1

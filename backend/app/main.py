@@ -218,6 +218,46 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Migration note (allowances): {e}")
 
+        # Widen PII columns so they can hold encrypted ciphertext
+        try:
+            for col in ("bank_account_name", "bank_bsb", "bank_account_number", "tax_file_number"):
+                await conn.execute(text(f"ALTER TABLE users ALTER COLUMN {col} TYPE VARCHAR(255);"))
+        except Exception as e:
+            print(f"Migration note (PII column widen): {e}")
+
+    # One-time (idempotent) encryption of existing plaintext PII at rest.
+    # encrypt_pii() is a no-op on values that are already encrypted, so this is
+    # safe to run on every startup.
+    from .pii_crypto import is_configured as _pii_configured, encrypt_pii as _encrypt_pii
+    if _pii_configured():
+        async with AsyncSessionLocal() as session:
+            try:
+                from sqlalchemy import or_
+                from .models import User
+                rows = (await session.execute(
+                    select(User).where(
+                        or_(
+                            User.tax_file_number.isnot(None),
+                            User.bank_account_number.isnot(None),
+                            User.bank_bsb.isnot(None),
+                            User.bank_account_name.isnot(None),
+                        )
+                    )
+                )).scalars().all()
+                changed = 0
+                for u in rows:
+                    for col in ("bank_account_name", "bank_bsb", "bank_account_number", "tax_file_number"):
+                        cur = getattr(u, col)
+                        new = _encrypt_pii(cur)
+                        if new != cur:
+                            setattr(u, col, new)
+                            changed = 1
+                if changed:
+                    await session.commit()
+                    print("Migration note (PII encryption): existing rows encrypted")
+            except Exception as e:
+                print(f"Migration note (PII encryption): {e}")
+
     # Seed a default client/job site if none exist
     async with AsyncSessionLocal() as session:
         result = await session.execute(

@@ -62,13 +62,13 @@ class User(Base):
     emergency_contact_phone = Column(String(20))
     emergency_contact_relationship = Column(String(50))
     
-    # Bank Details for Payment
-    bank_account_name = Column(String(100))
-    bank_bsb = Column(String(10))
-    bank_account_number = Column(String(20))
+    # Bank Details for Payment (encrypted at rest — widened to hold ciphertext)
+    bank_account_name = Column(String(255))
+    bank_bsb = Column(String(255))
+    bank_account_number = Column(String(255))
     
-    # Tax
-    tax_file_number = Column(String(20))
+    # Tax (encrypted at rest)
+    tax_file_number = Column(String(255))
     
     # Employment Type
     employment_type = Column(String(20), default="casual")  # casual, full_time, part_time
