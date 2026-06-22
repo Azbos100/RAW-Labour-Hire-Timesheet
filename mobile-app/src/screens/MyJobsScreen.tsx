@@ -60,9 +60,44 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
         clockAPI.getStatus(user.id),
         assignmentAPI.getAssignment(user.id),
       ]);
-      setClockStatus(clockRes.data);
-      setCurrentJob(assignRes.data.current_job || null);
-      setUpcomingJobs(assignRes.data.upcoming_jobs || []);
+      const clockData = clockRes.data;
+      const assignData = assignRes.data;
+
+      let current: JobAssignment | null = assignData.current_job || null;
+      let upcoming: JobAssignment[] = assignData.upcoming_jobs || [];
+      if (!upcoming.length && assignData.assignment) {
+        upcoming = [assignData.assignment];
+      }
+
+      // Belt-and-braces: if the API didn't send current_job but we're clocked in,
+      // build a "today" card from the active clock-in so Wed doesn't disappear when
+      // Thu is also allocated.
+      if (!current && clockData?.is_clocked_in) {
+        const todayMel = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Melbourne' });
+        current = {
+          job_site_id: 0,
+          job_site_name: clockData.clock_in_address?.split(',')[0]?.trim() || 'Current job site',
+          job_site_address: clockData.clock_in_address || '',
+          assignment_date: todayMel,
+          start_time: clockData.clock_in_time || null,
+          assigned_at: null,
+          accepted: true,
+          is_current: true,
+        };
+      }
+
+      // Don't list the same site+day twice in upcoming when it's already "current".
+      if (current) {
+        upcoming = upcoming.filter(j => !(
+          j.job_site_id === current!.job_site_id
+          && j.assignment_date === current!.assignment_date
+          && j.accepted === true
+        ));
+      }
+
+      setClockStatus(clockData);
+      setCurrentJob(current);
+      setUpcomingJobs(upcoming);
     } catch (error) {
       console.warn('Error fetching data:', error);
     } finally {
@@ -111,17 +146,21 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
     });
   };
 
-  const formatTime = (isoString?: string) => {
-    if (!isoString) return '--:--';
-    let dateString = isoString;
-    if (!isoString.endsWith('Z') && !isoString.includes('+') && !isoString.includes('-', 10)) {
-      dateString = isoString + 'Z';
+  const formatTime = (value?: string | null) => {
+    if (!value) return '--:--';
+    // Backend sends clock-in as plain HH:MM for current job cards
+    if (/^\d{1,2}:\d{2}$/.test(value)) return value;
+    let dateString = value;
+    if (!value.endsWith('Z') && !value.includes('+') && !value.includes('-', 10)) {
+      dateString = value + 'Z';
     }
     const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return value;
     return date.toLocaleTimeString('en-AU', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true,
+      timeZone: 'Australia/Melbourne',
     });
   };
 
@@ -175,8 +214,9 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
           <View style={styles.detailRow}>
             <Ionicons name="calendar-outline" size={18} color="#6B7280" />
             <Text style={styles.detailText}>
-              {isCurrent ? `Today · since ${formatTime(job.start_time || undefined)}` : formatDate(job.assignment_date)}
-              {!isCurrent && job.start_time ? ` at ${job.start_time}` : ''}
+              {formatDate(job.assignment_date)}
+              {isCurrent ? ' · On site now' : job.start_time ? ` at ${job.start_time}` : ''}
+              {isCurrent && job.start_time ? ` · since ${formatTime(job.start_time)}` : ''}
             </Text>
           </View>
         </View>
