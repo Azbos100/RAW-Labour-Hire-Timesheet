@@ -191,6 +191,67 @@ async def reject_timesheet(
     return {"message": "Timesheet rejected", "status": "rejected"}
 
 
+class SubmitOnBehalfRequest(BaseModel):
+    supervisor_name: Optional[str] = None
+    supervisor_contact: Optional[str] = None
+    host_company_name: Optional[str] = None
+
+
+@router.post("/admin/{timesheet_id}/submit-on-behalf")
+async def admin_submit_on_behalf(
+    timesheet_id: int,
+    request: SubmitOnBehalfRequest = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Admin submits a clocked-but-unsent docket on the worker's behalf.
+
+    Used when a worker clocked out but never completed the supervisor-signature
+    step, leaving the docket as a draft that never reached Pending Approval. This
+    marks all un-submitted day-entries as submitted (recording that admin did it)
+    and moves the docket into Pending Approval so it can be approved normally.
+    """
+    result = await db.execute(select(Timesheet).where(Timesheet.id == timesheet_id))
+    timesheet = result.scalar_one_or_none()
+    if not timesheet:
+        raise HTTPException(status_code=404, detail="Timesheet not found")
+
+    entries_result = await db.execute(
+        select(TimesheetEntry).where(TimesheetEntry.timesheet_id == timesheet_id)
+    )
+    entries = entries_result.scalars().all()
+
+    req = request or SubmitOnBehalfRequest()
+    submitted_count = 0
+    for entry in entries:
+        if entry.entry_status in ("submitted", "approved"):
+            continue
+        entry.entry_status = "submitted"
+        entry.submitted_at = datetime.utcnow()
+        if req.host_company_name:
+            entry.host_company_name = req.host_company_name
+        entry.supervisor_name = req.supervisor_name or "Submitted by admin"
+        if req.supervisor_contact:
+            entry.supervisor_contact = req.supervisor_contact
+        submitted_count += 1
+
+    if submitted_count == 0:
+        raise HTTPException(status_code=400, detail="No un-submitted entries on this docket")
+
+    if timesheet.status == TimesheetStatus.DRAFT:
+        timesheet.status = TimesheetStatus.SUBMITTED
+    if not timesheet.submitted_at:
+        timesheet.submitted_at = datetime.utcnow()
+
+    await db.commit()
+
+    return {
+        "message": "Timesheet submitted on behalf of worker",
+        "docket_number": timesheet.docket_number,
+        "status": timesheet.status.value,
+        "entries_submitted": submitted_count,
+    }
+
+
 @router.delete("/{timesheet_id}")
 async def archive_timesheet(
     timesheet_id: int,
