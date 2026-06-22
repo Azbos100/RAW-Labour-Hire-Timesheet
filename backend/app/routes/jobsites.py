@@ -4,13 +4,13 @@ RAW Labour Hire - Job Sites API
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update, func
 from pydantic import BaseModel
 from typing import Optional, List
 import json
 
 from ..database import get_db
-from ..models import Client, JobSite
+from ..models import Client, JobSite, User, Timesheet, TimesheetEntry
 
 router = APIRouter()
 
@@ -178,14 +178,45 @@ async def delete_job_site(
     site_id: int,
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete a job site permanently"""
+    """Delete a job site.
+
+    A job site can be referenced by currently-assigned workers and by historical
+    timesheets/entries. We first unassign any workers pointing at this site, then:
+      - If the site has NO timesheet history, hard-delete it.
+      - If it DOES have history, soft-delete it (is_active=False) so existing
+        dockets keep their job-site link instead of breaking foreign keys.
+    """
     result = await db.execute(select(JobSite).where(JobSite.id == site_id))
     site = result.scalar_one_or_none()
-    
+
     if not site:
         raise HTTPException(status_code=404, detail="Job site not found")
-    
+
+    # Unassign any workers currently assigned to this site (clears the FK).
+    await db.execute(
+        update(User)
+        .where(User.assigned_job_site_id == site_id)
+        .values(assigned_job_site_id=None)
+    )
+
+    # Is the site referenced by any timesheet history?
+    ts_count = await db.execute(
+        select(func.count(Timesheet.id)).where(Timesheet.job_site_id == site_id)
+    )
+    entry_count = await db.execute(
+        select(func.count(TimesheetEntry.id)).where(TimesheetEntry.job_site_id == site_id)
+    )
+    has_history = (ts_count.scalar() or 0) > 0 or (entry_count.scalar() or 0) > 0
+
+    if has_history:
+        # Preserve history: archive instead of hard delete.
+        site.is_active = False
+        await db.commit()
+        return {
+            "message": "Job site archived (it has timesheet history, so it was deactivated rather than deleted).",
+            "archived": True,
+        }
+
     await db.delete(site)
     await db.commit()
-    
-    return {"message": "Job site deleted"}
+    return {"message": "Job site deleted", "archived": False}

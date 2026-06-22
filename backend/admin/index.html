@@ -4246,15 +4246,16 @@
         }
 
         async function deleteJobSite(id, name) {
-            if (!confirm(`Are you sure you want to DELETE job site "${name}"?\n\nThis action cannot be undone!`)) return;
+            if (!confirm(`Are you sure you want to DELETE job site "${name}"?\n\nAny workers assigned to it will be unassigned. If it has timesheet history it will be archived (set Inactive) instead of deleted, so past dockets stay intact.`)) return;
             
             try {
                 const response = await authFetch(`${API_BASE}/jobsites/${id}`, {
                     method: 'DELETE'
                 });
                 if (response.ok) {
+                    const data = await response.json();
                     await loadJobSites();
-                    alert('Job site deleted');
+                    alert(data.message || 'Job site deleted');
                 } else {
                     const data = await response.json();
                     alert(data.detail || 'Error deleting job site');
