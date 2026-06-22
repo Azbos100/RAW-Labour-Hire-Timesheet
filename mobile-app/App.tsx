@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Alert } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as Notifications from 'expo-notifications';
+import * as Updates from 'expo-updates';
 import { 
   addNotificationReceivedListener, 
   addNotificationResponseReceivedListener,
@@ -213,6 +214,21 @@ export default function App() {
     // Register the Android notification channel on launch so the app appears in
     // the phone's notification settings and is toggle-able (no permission needed).
     ensureAndroidNotificationChannel();
+
+    // Pull the latest JS bundle on launch (OTA). Without this, some builds only
+    // download an update in the background and don't show it until a 2nd restart.
+    (async () => {
+      if (__DEV__ || !Updates.isEnabled) return;
+      try {
+        const result = await Updates.checkForUpdateAsync();
+        if (result.isAvailable) {
+          await Updates.fetchUpdateAsync();
+          await Updates.reloadAsync();
+        }
+      } catch (e) {
+        console.log('[Updates] check failed:', e);
+      }
+    })();
 
     // Listen for incoming notifications while app is in foreground
     notificationListener.current = addNotificationReceivedListener((notification) => {
