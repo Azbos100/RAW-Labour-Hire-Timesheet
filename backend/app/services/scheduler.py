@@ -4,7 +4,7 @@ Sends clock-in/out reminders at configured times
 """
 
 import asyncio
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
@@ -61,6 +61,74 @@ async def auto_archive_prior_pay_week():
             print(f"[Scheduler] Auto-archive result: {result}")
     except Exception as e:
         print(f"[Scheduler] Error during auto-archive: {e}")
+
+
+async def notify_unaccepted_allocations():
+    """Push Joshua McPherson the workers who haven't accepted tomorrow's jobs.
+
+    Runs Mon-Fri at 18:15 Melbourne time. "Haven't accepted" = assigned for
+    tomorrow with assignment_accepted still pending (None) or declined (False).
+    """
+    from ..database import AsyncSessionLocal
+    from sqlalchemy import select, func, or_
+    from ..models import User
+    from .push_notifications import send_push_notification
+
+    tomorrow = (datetime.now(TIMEZONE) + timedelta(days=1)).date()
+    print(f"[Scheduler] Running unaccepted-allocation notice for {tomorrow}")
+
+    try:
+        async with AsyncSessionLocal() as db:
+            # Recipient: Joshua McPherson (look up live so we always use his
+            # latest push token).
+            recipient = (await db.execute(
+                select(User).where(
+                    func.lower(User.first_name) == "joshua",
+                    func.lower(User.surname) == "mcpherson",
+                )
+            )).scalars().first()
+
+            if not recipient:
+                print("[Scheduler] Joshua McPherson not found; skipping notice")
+                return
+            if not recipient.push_token:
+                print("[Scheduler] Joshua McPherson has no push token; skipping notice")
+                return
+
+            # Active workers assigned for tomorrow who haven't accepted yet.
+            rows = (await db.execute(
+                select(User).where(
+                    User.is_active == True,  # noqa: E712
+                    User.assigned_job_site_id.isnot(None),
+                    User.assignment_date == tomorrow,
+                    or_(
+                        User.assignment_accepted.is_(None),
+                        User.assignment_accepted.is_(False),
+                    ),
+                ).order_by(User.surname, User.first_name)
+            )).scalars().all()
+
+            date_label = tomorrow.strftime("%a %d %b")
+            if rows:
+                lines = []
+                for w in rows:
+                    status = "declined" if w.assignment_accepted is False else "pending"
+                    lines.append(f"{w.first_name} {w.surname} ({status})")
+                title = f"{len(rows)} not accepted for tomorrow"
+                body = f"{date_label} — not accepted:\n" + "\n".join(lines)
+            else:
+                title = "All jobs accepted for tomorrow"
+                body = f"All allocated workers have accepted their jobs for {date_label}."
+
+            result = await send_push_notification(
+                recipient.push_token,
+                title,
+                body,
+                {"type": "allocation_acceptance_summary", "date": tomorrow.isoformat()},
+            )
+            print(f"[Scheduler] Unaccepted-allocation notice result: {result}")
+    except Exception as e:
+        print(f"[Scheduler] Error sending unaccepted-allocation notice: {e}")
 
 
 def _parse_reminder_time(value):
@@ -146,10 +214,21 @@ def setup_scheduler():
         name='Weekly Auto-Archive (Prior Pay Week)'
     )
 
+    # Unaccepted-allocation notice: push to Joshua McPherson Mon-Fri at 6:15 PM
+    # with the workers who haven't accepted tomorrow's jobs.
+    scheduler.add_job(
+        notify_unaccepted_allocations,
+        CronTrigger(hour=18, minute=15, day_of_week='mon-fri', timezone=TIMEZONE),
+        id='unaccepted_allocations_notice',
+        replace_existing=True,
+        name='Unaccepted Allocations Notice (Joshua McPherson)'
+    )
+
     print("[Scheduler] Initial reminders scheduled (defaults):")
     print("  - Clock-in reminder: 6:55 AM AEST/AEDT (Mon-Fri)")
     print("  - Clock-out reminder: 3:30 PM AEST/AEDT (Mon-Fri)")
     print("  - Weekly auto-archive: 7:00 AM AEST/AEDT (Fri)")
+    print("  - Unaccepted allocations notice: 6:15 PM AEST/AEDT (Mon-Fri) -> Joshua McPherson")
 
 
 def update_clock_in_time(hour: int, minute: int):
