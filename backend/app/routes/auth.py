@@ -25,7 +25,7 @@ router = APIRouter()
 # Security config - use environment variables in production
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "raw-labour-hire-dev-key-change-in-production-abc123xyz")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 week
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 90  # 90 days (field workers rarely log out)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")

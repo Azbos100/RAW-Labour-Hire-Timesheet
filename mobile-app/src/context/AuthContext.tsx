@@ -42,6 +42,43 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const TOKEN_KEY = 'raw_auth_token';
 const USER_KEY = 'raw_user_data';
 
+// Minimal, dependency-free base64url decode (JWT payloads are ASCII JSON).
+function base64UrlDecode(input: string): string {
+  try {
+    if (typeof (global as any).atob === 'function') {
+      let b64 = input.replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      return (global as any).atob(b64);
+    }
+  } catch {}
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let str = input.replace(/-/g, '+').replace(/_/g, '/').replace(/=+$/, '');
+  let output = '';
+  for (let bc = 0, bs = 0, i = 0; i < str.length; i++) {
+    const idx = chars.indexOf(str.charAt(i));
+    if (idx === -1) continue;
+    bs = bc % 4 ? bs * 64 + idx : idx;
+    if (bc++ % 4) output += String.fromCharCode(255 & (bs >> ((-2 * bc) & 6)));
+  }
+  return output;
+}
+
+// Returns true if the JWT is missing/malformed or its `exp` is in the past.
+// Used on launch so a stale token never leaves the user on a broken screen.
+function isTokenExpired(jwt: string | null): boolean {
+  if (!jwt) return true;
+  try {
+    const part = jwt.split('.')[1];
+    if (!part) return false; // can't tell — let the server decide
+    const payload = JSON.parse(base64UrlDecode(part));
+    if (typeof payload.exp !== 'number') return false;
+    // 60s leeway for clock skew.
+    return payload.exp * 1000 < Date.now() - 60000;
+  } catch {
+    return false; // decode failed — let the server (401 handler) decide
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -79,9 +116,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const storedUser = await SecureStore.getItemAsync(USER_KEY);
 
       if (storedToken && storedUser) {
-        setToken(storedToken);
-        setUser(JSON.parse(storedUser));
-        setAuthToken(storedToken);
+        // If the saved token has already expired, don't restore a dead session
+        // (which would leave the user on a broken screen where every call 401s).
+        // Clear it and send them straight to the login screen instead.
+        if (isTokenExpired(storedToken)) {
+          await SecureStore.deleteItemAsync(TOKEN_KEY);
+          await SecureStore.deleteItemAsync(USER_KEY);
+          setAuthToken(null);
+        } else {
+          setToken(storedToken);
+          setUser(JSON.parse(storedUser));
+          setAuthToken(storedToken);
+        }
       }
     } catch (error) {
       console.error('Error loading auth:', error);
