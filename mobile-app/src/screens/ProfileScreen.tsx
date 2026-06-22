@@ -23,6 +23,12 @@ import * as Application from 'expo-application';
 import { COLORS } from '../constants/colors';
 import { useAuth } from '../context/AuthContext';
 import { profileAPI } from '../services/api';
+import {
+  areNotificationsEnabled,
+  requestNotificationPermission,
+  openAppNotificationSettings,
+  ensureAndroidNotificationChannel,
+} from '../services/notifications';
 
 // Real app version + build number read from the installed binary, e.g. "Version 1.0.0 (21)".
 const APP_VERSION = `Version ${Application.nativeApplicationVersion ?? '1.0.0'}${
@@ -247,6 +253,37 @@ export default function ProfileScreen() {
   };
 
   // Password handlers
+  const handleNotifications = async () => {
+    await ensureAndroidNotificationChannel();
+
+    if (await areNotificationsEnabled()) {
+      Alert.alert(
+        'Notifications On',
+        'Notifications are already enabled for RAW Timesheet. You can fine-tune them in your phone settings.',
+        [
+          { text: 'Open Settings', onPress: () => openAppNotificationSettings() },
+          { text: 'OK', style: 'cancel' },
+        ]
+      );
+      return;
+    }
+
+    const status = await requestNotificationPermission();
+    if (status === 'granted') {
+      Alert.alert('Notifications Enabled', 'You will now receive job alerts and reminders.');
+    } else {
+      // OS won't show the prompt again — guide them to settings.
+      Alert.alert(
+        'Enable Notifications',
+        'Notifications are turned off. Tap "Open Settings", then turn on Notifications for RAW Timesheet.',
+        [
+          { text: 'Open Settings', onPress: () => openAppNotificationSettings() },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+    }
+  };
+
   const handleChangePassword = () => {
     setCurrentPassword('');
     setNewPassword('');
@@ -487,8 +524,8 @@ export default function ProfileScreen() {
           <MenuItem
             icon="notifications-outline"
             title="Notifications"
-            subtitle="Push notifications enabled"
-            onPress={() => Alert.alert('Notifications', 'Use device settings to manage notifications.')}
+            subtitle="Enable job alerts & reminders"
+            onPress={handleNotifications}
           />
         </View>
       </View>

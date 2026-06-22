@@ -3,9 +3,10 @@
  * Manages user login state and token storage
  */
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { Alert } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import api, { setAuthToken } from '../services/api';
+import api, { setAuthToken, setUnauthorizedHandler } from '../services/api';
 import { registerForPushNotificationsAsync, savePushToken } from '../services/notifications';
 
 interface User {
@@ -45,10 +46,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // Tracks whether a session is currently active, for the 401 handler closure.
+  const hasSessionRef = useRef(false);
+
+  useEffect(() => {
+    hasSessionRef.current = !!token;
+  }, [token]);
 
   // Load stored auth on app start
   useEffect(() => {
     loadStoredAuth();
+  }, []);
+
+  // Force a clean re-login whenever the server rejects our token (e.g. it
+  // expired after a week). Without this the app would silently loop on 401s.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      if (hasSessionRef.current) {
+        Alert.alert(
+          'Session expired',
+          'Please log in again to continue.'
+        );
+      }
+      logout();
+    });
+    return () => setUnauthorizedHandler(null);
   }, []);
 
   const loadStoredAuth = async () => {

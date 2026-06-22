@@ -15,7 +15,8 @@ import * as Notifications from 'expo-notifications';
 import { 
   addNotificationReceivedListener, 
   addNotificationResponseReceivedListener,
-  removeNotificationSubscription 
+  removeNotificationSubscription,
+  ensureAndroidNotificationChannel
 } from './src/services/notifications';
 
 // Screens
@@ -209,6 +210,10 @@ export default function App() {
   const responseListener = useRef<Notifications.Subscription>();
 
   useEffect(() => {
+    // Register the Android notification channel on launch so the app appears in
+    // the phone's notification settings and is toggle-able (no permission needed).
+    ensureAndroidNotificationChannel();
+
     // Listen for incoming notifications while app is in foreground
     notificationListener.current = addNotificationReceivedListener((notification) => {
       console.log('Notification received:', notification);

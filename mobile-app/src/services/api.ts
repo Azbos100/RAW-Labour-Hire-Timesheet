@@ -9,6 +9,16 @@ import Constants from 'expo-constants';
 // Store token in module scope - this persists across requests
 let authToken: string | null = null;
 
+// Callback invoked when the server rejects our token (expired/invalid).
+// AuthContext registers this so the app can force a clean re-login.
+let onUnauthorized: (() => void) | null = null;
+// Debounce so a burst of simultaneous 401s only triggers one logout.
+let handlingUnauthorized = false;
+
+export const setUnauthorizedHandler = (handler: (() => void) | null) => {
+  onUnauthorized = handler;
+};
+
 // API base URL - update this for production
 const getDevBaseUrl = () => {
   const hostUri =
@@ -66,8 +76,20 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      console.log('[API] Unauthorized - token may be expired or missing');
+    const status = error.response?.status;
+    const url: string = error.config?.url || '';
+    // Don't force logout on the login/register calls themselves - a 401 there
+    // just means wrong credentials and the screen handles its own error message.
+    const isAuthEndpoint =
+      url.includes('/auth/login') || url.includes('/auth/register');
+
+    if (status === 401 && !isAuthEndpoint) {
+      console.log('[API] Unauthorized - session expired, forcing re-login');
+      authToken = null;
+      if (onUnauthorized && !handlingUnauthorized) {
+        handlingUnauthorized = true;
+        onUnauthorized();
+      }
     }
     return Promise.reject(error);
   }
@@ -78,6 +100,10 @@ export default api;
 // Helper to set auth token - stores in module variable
 export const setAuthToken = (token: string | null) => {
   authToken = token;
+  // A new valid token means a fresh session - re-arm the 401 handler.
+  if (token) {
+    handlingUnauthorized = false;
+  }
   console.log(`[API] Auth token ${token ? 'SET' : 'CLEARED'}`);
 };
 

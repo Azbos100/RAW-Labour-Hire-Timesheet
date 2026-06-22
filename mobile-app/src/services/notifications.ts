@@ -6,7 +6,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+import { Platform, Linking } from 'react-native';
 import api from './api';
 
 // Configure notification handler
@@ -19,10 +19,66 @@ Notifications.setNotificationHandler({
 });
 
 /**
+ * Create the Android notification channel.
+ *
+ * IMPORTANT: this does NOT require notification permission and should run on app
+ * start. On many Android phones (e.g. Samsung) an app only appears under
+ * Settings > Notifications once it has registered a channel, so creating it
+ * early is what makes "RAW Timesheet" show up and become toggle-able.
+ */
+export async function ensureAndroidNotificationChannel(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'Job Alerts & Reminders',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#EA580C',
+    });
+  } catch (error) {
+    console.warn('Failed to set notification channel:', error);
+  }
+}
+
+/**
+ * Whether notifications are currently allowed by the OS.
+ */
+export async function areNotificationsEnabled(): Promise<boolean> {
+  const { status } = await Notifications.getPermissionsAsync();
+  return status === 'granted';
+}
+
+/**
+ * Ask the OS for notification permission. Returns the final status.
+ */
+export async function requestNotificationPermission(): Promise<string> {
+  const { status: existing } = await Notifications.getPermissionsAsync();
+  if (existing === 'granted') return 'granted';
+  const { status } = await Notifications.requestPermissionsAsync();
+  return status;
+}
+
+/**
+ * Open this app's system settings page so the user can enable notifications
+ * manually (used when the OS won't show the prompt again).
+ */
+export async function openAppNotificationSettings(): Promise<void> {
+  try {
+    await Linking.openSettings();
+  } catch (error) {
+    console.warn('Failed to open app settings:', error);
+  }
+}
+
+/**
  * Register for push notifications and get the Expo push token
  */
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
   let token: string | null = null;
+
+  // Create the Android channel first so the app shows up in notification
+  // settings even before/without permission being granted.
+  await ensureAndroidNotificationChannel();
 
   // Must be a physical device
   if (!Device.isDevice) {
@@ -56,16 +112,6 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   } catch (error) {
     console.error('Error getting push token:', error);
     return null;
-  }
-
-  // Android-specific: Set notification channel
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'Default',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#EA580C',
-    });
   }
 
   return token;
