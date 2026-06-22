@@ -122,6 +122,10 @@ class User(Base):
     
     # Push Notifications
     push_token = Column(String(255))  # Expo push token for notifications
+
+    # Last time the worker was active in the mobile app (any authenticated request).
+    # Used by the admin Workers tab to show who has installed/is using the app.
+    last_active = Column(DateTime, nullable=True)
     
     # Relationships
     timesheets = relationship(

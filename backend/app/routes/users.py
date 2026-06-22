@@ -293,7 +293,9 @@ async def list_all_workers(
             "is_clocked_in": clock_in_status is not None,
             "clock_in_info": clock_in_status,
             # Push notification status
-            "has_push_token": bool(u.push_token)
+            "has_push_token": bool(u.push_token),
+            # App usage: when the worker was last active in the mobile app
+            "last_active": u.last_active.isoformat() if getattr(u, "last_active", None) else None
         })
     
     return {"workers": workers_data}

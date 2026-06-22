@@ -167,6 +167,18 @@ async def get_current_user(
     
     if user is None:
         raise credentials_exception
+
+    # Record app activity (throttled to ~once every 15 min to avoid writing on every
+    # request). Wrapped so a failure here can never block authentication.
+    try:
+        now = datetime.utcnow()
+        last = getattr(user, "last_active", None)
+        if last is None or (now - last) > timedelta(minutes=15):
+            user.last_active = now
+            await db.commit()
+    except Exception:
+        await db.rollback()
+
     return user
 
 

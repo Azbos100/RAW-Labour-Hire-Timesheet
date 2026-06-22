@@ -637,12 +637,13 @@
                                 <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Assigned Job</th>
                                 <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Accepted</th>
                                 <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Clock Status</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">App</th>
                                 <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Status</th>
                                 <th class="px-4 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="workers-table" class="divide-y divide-gray-100">
-                            <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">
+                            <tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">
                                 <div class="loader mx-auto mb-2"></div>Loading workers...
                             </td></tr>
                         </tbody>
@@ -3086,7 +3087,7 @@
             const tbody = document.getElementById('workers-table');
             
             if (allWorkers.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">No workers found</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">No workers found</td></tr>`;
                 return;
             }
 
@@ -3118,6 +3119,28 @@
                 let pushStatusHtml = w.has_push_token 
                     ? '<span class="text-green-500" title="Push notifications enabled"><i class="fas fa-bell"></i></span>'
                     : '<span class="text-gray-300" title="Push notifications NOT enabled - worker needs to allow notifications in app"><i class="fas fa-bell-slash"></i></span>';
+
+                // App installed / last active status
+                let appStatusHtml;
+                if (w.last_active) {
+                    const la = new Date(w.last_active.endsWith('Z') || w.last_active.includes('+') ? w.last_active : w.last_active + 'Z');
+                    const mins = Math.floor((Date.now() - la.getTime()) / 60000);
+                    let rel, color;
+                    if (mins < 60) { rel = mins <= 1 ? 'just now' : mins + ' min ago'; }
+                    else if (mins < 1440) { const h = Math.floor(mins/60); rel = h + (h === 1 ? ' hr ago' : ' hrs ago'); }
+                    else { const d = Math.floor(mins/1440); rel = d + (d === 1 ? ' day ago' : ' days ago'); }
+                    const days = mins / 1440;
+                    color = days <= 7 ? 'text-green-600' : (days <= 30 ? 'text-amber-600' : 'text-gray-500');
+                    const exact = la.toLocaleString('en-AU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+                    appStatusHtml = `<div class="flex items-center gap-1.5 ${color}" title="Last active: ${exact}">
+                            <i class="fas fa-mobile-alt"></i>
+                            <span class="text-xs font-medium">${rel}</span>
+                        </div>`;
+                } else if (w.has_push_token) {
+                    appStatusHtml = '<span class="text-xs text-amber-600" title="App installed (push enabled) but no recent activity recorded yet"><i class="fas fa-mobile-alt mr-1"></i>Installed</span>';
+                } else {
+                    appStatusHtml = '<span class="text-xs text-gray-400" title="No app activity detected"><i class="fas fa-mobile-alt mr-1"></i>Not installed</span>';
+                }
                 
                 // Acceptance status
                 let acceptedHtml = '<span class="text-gray-400">-</span>';
@@ -3156,6 +3179,7 @@
                     <td class="px-4 py-3">${assignedJobHtml}</td>
                     <td class="px-4 py-3">${acceptedHtml}</td>
                     <td class="px-4 py-3">${clockStatusHtml}</td>
+                    <td class="px-4 py-3">${appStatusHtml}</td>
                     <td class="px-4 py-3">
                         <span class="px-2 py-1 rounded-full text-xs font-medium ${w.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
                             ${w.is_active ? 'Active' : 'Inactive'}

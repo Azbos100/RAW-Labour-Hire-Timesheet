@@ -81,6 +81,9 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("""
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS works_sunday BOOLEAN DEFAULT FALSE;
             """))
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active TIMESTAMP;
+            """))
         except Exception as e:
             print(f"Migration note (shift schedule): {e}")
 
