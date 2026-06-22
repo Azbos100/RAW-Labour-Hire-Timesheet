@@ -28,6 +28,8 @@ import {
   requestNotificationPermission,
   openAppNotificationSettings,
   ensureAndroidNotificationChannel,
+  registerForPushNotificationsAsync,
+  savePushToken,
 } from '../services/notifications';
 
 // Real app version + build number read from the installed binary, e.g. "Version 1.0.0 (21)".
@@ -252,35 +254,59 @@ export default function ProfileScreen() {
     }
   };
 
-  // Password handlers
+  // Re-register this device for push notifications and save a fresh token to the
+  // server. This fixes the "grey bell" case: a worker can have notifications ON at
+  // the OS level but the server never received their push token (e.g. token wasn't
+  // saved at login), so admin sends never reach them.
+  const registerAndSaveToken = async (): Promise<boolean> => {
+    const token = await registerForPushNotificationsAsync();
+    if (token && user?.id) {
+      return await savePushToken(user.id, token);
+    }
+    return false;
+  };
+
   const handleNotifications = async () => {
     await ensureAndroidNotificationChannel();
 
-    if (await areNotificationsEnabled()) {
-      Alert.alert(
-        'Notifications On',
-        'Notifications are already enabled for RAW Timesheet. You can fine-tune them in your phone settings.',
-        [
-          { text: 'Open Settings', onPress: () => openAppNotificationSettings() },
-          { text: 'OK', style: 'cancel' },
-        ]
-      );
-      return;
+    const enabled = await areNotificationsEnabled();
+    if (!enabled) {
+      const status = await requestNotificationPermission();
+      if (status !== 'granted') {
+        // OS won't show the prompt again — guide them to settings.
+        Alert.alert(
+          'Enable Notifications',
+          'Notifications are turned off. Tap "Open Settings", then turn on Notifications for RAW Timesheet.',
+          [
+            { text: 'Open Settings', onPress: () => openAppNotificationSettings() },
+            { text: 'Cancel', style: 'cancel' },
+          ]
+        );
+        return;
+      }
     }
 
-    const status = await requestNotificationPermission();
-    if (status === 'granted') {
-      Alert.alert('Notifications Enabled', 'You will now receive job alerts and reminders.');
-    } else {
-      // OS won't show the prompt again — guide them to settings.
-      Alert.alert(
-        'Enable Notifications',
-        'Notifications are turned off. Tap "Open Settings", then turn on Notifications for RAW Timesheet.',
-        [
-          { text: 'Open Settings', onPress: () => openAppNotificationSettings() },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
+    // Permission is granted — make sure the server has our latest push token.
+    setSaving(true);
+    try {
+      const saved = await registerAndSaveToken();
+      if (saved) {
+        Alert.alert(
+          'Notifications Connected',
+          'This device is now registered. You will receive job alerts and reminders.'
+        );
+      } else {
+        Alert.alert(
+          'Almost There',
+          'Notifications are enabled on your phone, but we could not register this device with RAW just now. Please check your internet connection and tap Notifications again.',
+          [
+            { text: 'Open Settings', onPress: () => openAppNotificationSettings() },
+            { text: 'OK', style: 'cancel' },
+          ]
+        );
+      }
+    } finally {
+      setSaving(false);
     }
   };
 

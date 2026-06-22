@@ -45,6 +45,16 @@ async def get_all_timesheets_admin(
         query = query.where(
             (Timesheet.status == TimesheetStatus.SUBMITTED) | (Timesheet.id.in_(sub))
         )
+    elif status == 'not_submitted':
+        # "Clocked but not sent" = draft docket that has NO submitted day-entries.
+        # These are timesheets where the worker clocked out but never completed the
+        # supervisor-signature submission, so they never appear under Pending Approval.
+        sub = select(TimesheetEntry.timesheet_id).where(
+            TimesheetEntry.entry_status == 'submitted'
+        ).distinct()
+        query = query.where(
+            (Timesheet.status == TimesheetStatus.DRAFT) & (~Timesheet.id.in_(sub))
+        )
     elif status:
         query = query.where(Timesheet.status == TimesheetStatus(status))
     if worker_id:

@@ -344,6 +344,16 @@ export default function TimesheetDetailScreen({ navigation, route }: TimesheetDe
                     </Text>
                   </View>
                 )}
+                {entry.entry_status !== 'submitted' && entry.entry_status !== 'approved' && (
+                  <TouchableOpacity
+                    style={styles.sendToAdminButton}
+                    activeOpacity={0.8}
+                    onPress={() => openEntrySubmit(entry)}
+                  >
+                    <Ionicons name="paper-plane" size={16} color="#FFFFFF" />
+                    <Text style={styles.sendToAdminButtonText}>Send to Admin</Text>
+                  </TouchableOpacity>
+                )}
               </TouchableOpacity>
             ))
           )}
@@ -663,6 +673,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.primary,
     fontWeight: '500',
+  },
+  sendToAdminButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+    paddingVertical: 12,
+    marginTop: 12,
+  },
+  sendToAdminButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
   entryCompany: {
     fontSize: 13,
