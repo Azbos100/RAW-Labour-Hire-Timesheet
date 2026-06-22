@@ -113,9 +113,14 @@ async def load_settings_from_db():
 
 def setup_scheduler():
     """Setup the scheduler with default jobs (will be updated from DB later)"""
+    # NOTE: pass the coroutine functions DIRECTLY (not wrapped in a lambda that
+    # calls asyncio.create_task). AsyncIOScheduler awaits coroutine jobs on the
+    # event loop; a plain lambda runs on a worker thread with no running loop, so
+    # asyncio.create_task() raised "no running event loop" and the reminder never
+    # actually ran.
     # Default: Clock-in reminder at 6:55 AM Melbourne time on weekdays
     scheduler.add_job(
-        lambda: asyncio.create_task(check_clock_in_reminders()),
+        check_clock_in_reminders,
         CronTrigger(hour=6, minute=55, day_of_week='mon-fri', timezone=TIMEZONE),
         id='clock_in_reminder',
         replace_existing=True,
@@ -124,7 +129,7 @@ def setup_scheduler():
     
     # Default: Clock-out reminder at 3:30 PM Melbourne time on weekdays
     scheduler.add_job(
-        lambda: asyncio.create_task(check_clock_out_reminders()),
+        check_clock_out_reminders,
         CronTrigger(hour=15, minute=30, day_of_week='mon-fri', timezone=TIMEZONE),
         id='clock_out_reminder',
         replace_existing=True,
@@ -134,7 +139,7 @@ def setup_scheduler():
     # Weekly auto-archive: Every Friday at 7:00 AM Melbourne time
     # Archives approved timesheets from the prior pay week (Fri→Thu).
     scheduler.add_job(
-        lambda: asyncio.create_task(auto_archive_prior_pay_week()),
+        auto_archive_prior_pay_week,
         CronTrigger(hour=7, minute=0, day_of_week='fri', timezone=TIMEZONE),
         id='weekly_auto_archive',
         replace_existing=True,
