@@ -33,7 +33,7 @@
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#1E3A8A"
       },
-      "package": "com.rawlabourhire.timesheet",
+      "package": "com.rawlabourhire.rawtimesheet",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
