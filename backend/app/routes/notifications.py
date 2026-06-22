@@ -119,8 +119,36 @@ class NotificationSettingsUpdate(BaseModel):
     clock_out_reminder_enabled: bool = True
     clock_out_reminder_time: str = "17:00"  # HH:MM format
     sms_enabled: bool = True
+    # Unaccepted-jobs notice (Mon-Fri)
     allocation_notice_enabled: bool = True
-    allocation_notice_recipient_id: Optional[int] = None
+    allocation_notice_time: str = "18:15"
+    allocation_notice_recipient_ids: List[int] = []
+    allocation_notice_extra_phones: Optional[str] = None
+    # Daily roster digest (every day)
+    roster_digest_enabled: bool = True
+    roster_digest_time: str = "19:00"
+    roster_digest_recipient_ids: List[int] = []
+    roster_digest_extra_phones: Optional[str] = None
+
+
+def _ids_to_csv(ids) -> Optional[str]:
+    if not ids:
+        return None
+    return ",".join(str(int(i)) for i in ids)
+
+
+def _csv_to_ids(value) -> List[int]:
+    if not value:
+        return []
+    out = []
+    for part in str(value).split(","):
+        part = part.strip()
+        if part:
+            try:
+                out.append(int(part))
+            except ValueError:
+                pass
+    return out
 
 
 class SendSMSRequest(BaseModel):
@@ -147,7 +175,13 @@ async def get_notification_settings(
             "clock_out_reminder_time": "17:00",
             "sms_enabled": True,
             "allocation_notice_enabled": True,
-            "allocation_notice_recipient_id": None,
+            "allocation_notice_time": "18:15",
+            "allocation_notice_recipient_ids": [],
+            "allocation_notice_extra_phones": "",
+            "roster_digest_enabled": True,
+            "roster_digest_time": "19:00",
+            "roster_digest_recipient_ids": [],
+            "roster_digest_extra_phones": "",
         }
     
     return {
@@ -157,7 +191,13 @@ async def get_notification_settings(
         "clock_out_reminder_time": settings.clock_out_reminder_time.strftime("%H:%M") if settings.clock_out_reminder_time else "17:00",
         "sms_enabled": settings.sms_enabled,
         "allocation_notice_enabled": settings.allocation_notice_enabled,
-        "allocation_notice_recipient_id": settings.allocation_notice_recipient_id,
+        "allocation_notice_time": settings.allocation_notice_time.strftime("%H:%M") if settings.allocation_notice_time else "18:15",
+        "allocation_notice_recipient_ids": _csv_to_ids(settings.allocation_notice_recipient_ids),
+        "allocation_notice_extra_phones": settings.allocation_notice_extra_phones or "",
+        "roster_digest_enabled": settings.roster_digest_enabled if settings.roster_digest_enabled is not None else True,
+        "roster_digest_time": settings.roster_digest_time.strftime("%H:%M") if settings.roster_digest_time else "19:00",
+        "roster_digest_recipient_ids": _csv_to_ids(settings.roster_digest_recipient_ids),
+        "roster_digest_extra_phones": settings.roster_digest_extra_phones or "",
     }
 
 
@@ -173,6 +213,10 @@ async def update_notification_settings(
     # Parse times
     clock_in_time = datetime.strptime(data.clock_in_reminder_time, "%H:%M").time()
     clock_out_time = datetime.strptime(data.clock_out_reminder_time, "%H:%M").time()
+    allocation_time = datetime.strptime(data.allocation_notice_time, "%H:%M").time()
+    roster_time = datetime.strptime(data.roster_digest_time, "%H:%M").time()
+    allocation_ids_csv = _ids_to_csv(data.allocation_notice_recipient_ids)
+    roster_ids_csv = _ids_to_csv(data.roster_digest_recipient_ids)
     
     if not settings:
         settings = NotificationSettings(
@@ -181,8 +225,6 @@ async def update_notification_settings(
             clock_out_reminder_enabled=data.clock_out_reminder_enabled,
             clock_out_reminder_time=clock_out_time,
             sms_enabled=data.sms_enabled,
-            allocation_notice_enabled=data.allocation_notice_enabled,
-            allocation_notice_recipient_id=data.allocation_notice_recipient_id,
         )
         db.add(settings)
     else:
@@ -191,16 +233,30 @@ async def update_notification_settings(
         settings.clock_out_reminder_enabled = data.clock_out_reminder_enabled
         settings.clock_out_reminder_time = clock_out_time
         settings.sms_enabled = data.sms_enabled
-        settings.allocation_notice_enabled = data.allocation_notice_enabled
-        settings.allocation_notice_recipient_id = data.allocation_notice_recipient_id
+
+    # Unaccepted-jobs notice
+    settings.allocation_notice_enabled = data.allocation_notice_enabled
+    settings.allocation_notice_time = allocation_time
+    settings.allocation_notice_recipient_ids = allocation_ids_csv
+    settings.allocation_notice_extra_phones = (data.allocation_notice_extra_phones or "").strip() or None
+    # Daily roster digest
+    settings.roster_digest_enabled = data.roster_digest_enabled
+    settings.roster_digest_time = roster_time
+    settings.roster_digest_recipient_ids = roster_ids_csv
+    settings.roster_digest_extra_phones = (data.roster_digest_extra_phones or "").strip() or None
     
     await db.commit()
     
     # Update the scheduler with new times
     try:
-        from ..services.scheduler import update_clock_in_time, update_clock_out_time
+        from ..services.scheduler import (
+            update_clock_in_time, update_clock_out_time,
+            update_allocation_notice_time, update_roster_digest_time,
+        )
         update_clock_in_time(clock_in_time.hour, clock_in_time.minute)
         update_clock_out_time(clock_out_time.hour, clock_out_time.minute)
+        update_allocation_notice_time(allocation_time.hour, allocation_time.minute)
+        update_roster_digest_time(roster_time.hour, roster_time.minute)
     except Exception as e:
         print(f"[Notifications] Error updating scheduler: {e}")
     

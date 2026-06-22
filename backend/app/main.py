@@ -52,6 +52,15 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Migration note (overtime_mode): {e}")
         
+        # Archived flag: hides "deleted" workers from the directory while keeping
+        # their payroll history.
+        try:
+            await conn.execute(text("""
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE;
+            """))
+        except Exception as e:
+            print(f"Migration note (users.is_archived): {e}")
+
         # Add shift schedule columns to users table
         try:
             await conn.execute(text("""
@@ -218,13 +227,26 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Migration note (allowances): {e}")
 
-        # Allocation-acceptance notice settings
+        # Allocation-acceptance notice + daily roster digest settings
         try:
+            for stmt in (
+                "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS allocation_notice_enabled BOOLEAN DEFAULT TRUE;",
+                "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS allocation_notice_recipient_id INTEGER;",
+                "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS allocation_notice_time TIME;",
+                "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS allocation_notice_recipient_ids TEXT;",
+                "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS allocation_notice_extra_phones TEXT;",
+                "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS roster_digest_enabled BOOLEAN DEFAULT TRUE;",
+                "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS roster_digest_time TIME;",
+                "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS roster_digest_recipient_ids TEXT;",
+                "ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS roster_digest_extra_phones TEXT;",
+            ):
+                await conn.execute(text(stmt))
+            # Fold any legacy single recipient into the new CSV column
             await conn.execute(text("""
-                ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS allocation_notice_enabled BOOLEAN DEFAULT TRUE;
-            """))
-            await conn.execute(text("""
-                ALTER TABLE notification_settings ADD COLUMN IF NOT EXISTS allocation_notice_recipient_id INTEGER;
+                UPDATE notification_settings
+                SET allocation_notice_recipient_ids = CAST(allocation_notice_recipient_id AS TEXT)
+                WHERE allocation_notice_recipient_ids IS NULL
+                  AND allocation_notice_recipient_id IS NOT NULL;
             """))
         except Exception as e:
             print(f"Migration note (allocation notice settings): {e}")
@@ -657,6 +679,39 @@ _ADMIN_METHOD_PATHS = (
 # only act on its OWN id (admin endpoints live under /api/users/admin/...).
 _OWN_USER_PATH = _auth_re.compile(r"^/api/users/(\d+)(?:/.*)?$")
 
+# --- "Last active" tracking -------------------------------------------------
+# Every authenticated worker request flows through the middleware below, so this
+# is the one reliable place to record app activity (the old per-route
+# get_current_user hook stopped firing once worker routes moved to reading the
+# token from request.state). Throttled in-memory so we only write to the DB
+# ~once every 15 min per user instead of on every request.
+from datetime import datetime as _dt, timedelta as _td
+_LAST_ACTIVE_WRITES: dict[int, "_dt"] = {}
+_LAST_ACTIVE_THROTTLE = _td(minutes=15)
+
+
+async def _touch_last_active(sub) -> None:
+    try:
+        uid = int(sub)
+    except (TypeError, ValueError):
+        return
+    now = _dt.utcnow()
+    prev = _LAST_ACTIVE_WRITES.get(uid)
+    if prev is not None and (now - prev) < _LAST_ACTIVE_THROTTLE:
+        return
+    _LAST_ACTIVE_WRITES[uid] = now  # mark first so a DB hiccup can't cause a write storm
+    try:
+        from .database import AsyncSessionLocal
+        from .models import User
+        from sqlalchemy import update as _sa_update
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                _sa_update(User).where(User.id == uid).values(last_active=now)
+            )
+            await session.commit()
+    except Exception:
+        pass  # best-effort telemetry; never block the request
+
 
 def _auth_is_public(path: str) -> bool:
     if path in _PUBLIC_EXACT:
@@ -709,6 +764,11 @@ async def require_authentication(request: Request, call_next):
     # Expose identity to downstream routes (rate redaction / ownership checks).
     request.state.is_admin = is_admin
     request.state.token_sub = sub
+
+    # Record app activity for workers (throttled). This powers the admin "last
+    # active on app" column.
+    if not is_admin and sub is not None:
+        await _touch_last_active(sub)
 
     if _auth_requires_admin(method, path) and not is_admin:
         return _auth_deny("Admin privileges required", status_code=403)

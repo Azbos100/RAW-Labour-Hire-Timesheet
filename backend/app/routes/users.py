@@ -4,14 +4,17 @@ RAW Labour Hire - Users API (Admin)
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update, delete
 from pydantic import BaseModel
 from typing import Optional
 from datetime import date, datetime
 import secrets
 
 from ..database import get_db
-from ..models import User, UserRole, JobSite, TimesheetEntry, Timesheet, Client, AttendanceEvent
+from ..models import (
+    User, UserRole, JobSite, TimesheetEntry, Timesheet, Client, AttendanceEvent,
+    UserTicket, UserInduction, MYOBExport, NotificationSettings,
+)
 from .auth import get_current_user, verify_admin_auth, get_password_hash
 from ..pii_crypto import encrypt_pii, decrypt_pii
 
@@ -169,7 +172,7 @@ async def list_all_workers(
     """List all workers for admin dashboard with assignment and clock-in status"""
     from sqlalchemy.orm import selectinload
     
-    query = select(User)
+    query = select(User).where(User.is_archived.isnot(True))
     if active_only:
         query = query.where(User.is_active == True)
     
@@ -475,6 +478,67 @@ async def deactivate_worker_admin(
     await db.commit()
     
     return {"message": "Worker deactivated"}
+
+
+@router.delete("/admin/workers/{worker_id}")
+async def delete_worker_admin(
+    worker_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(verify_admin_auth)
+):
+    """Remove a worker from the Workers directory.
+
+    Only allowed for deactivated workers. If the worker has NO payroll history we
+    hard-delete them (and their tickets/inductions/attendance). If they DO have
+    timesheets we can't drop the row without destroying that history, so instead
+    we archive them: they disappear from the directory while their timesheets
+    stay fully intact.
+    """
+    result = await db.execute(select(User).where(User.id == worker_id))
+    worker = result.scalar_one_or_none()
+
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+
+    if worker.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail="Deactivate the worker before removing them.",
+        )
+
+    # If there is payroll history, archive (hide) rather than hard-delete so the
+    # timesheets that reference this worker stay intact.
+    ts_count = await db.scalar(
+        select(func.count()).select_from(Timesheet).where(Timesheet.worker_id == worker_id)
+    )
+    if ts_count and ts_count > 0:
+        worker.is_archived = True
+        worker.is_active = False
+        await db.commit()
+        return {
+            "message": (
+                f"{worker.first_name} {worker.surname} removed from the workers list. "
+                f"Their {ts_count} timesheet(s) are kept for payroll records."
+            ),
+            "archived": True,
+        }
+
+    # No payroll history -> safe to hard delete.
+    # Clear nullable references that point at this user.
+    await db.execute(update(Timesheet).where(Timesheet.supervisor_id == worker_id).values(supervisor_id=None))
+    await db.execute(update(UserTicket).where(UserTicket.verified_by == worker_id).values(verified_by=None))
+    await db.execute(update(MYOBExport).where(MYOBExport.exported_by == worker_id).values(exported_by=None))
+    await db.execute(update(NotificationSettings).where(NotificationSettings.allocation_notice_recipient_id == worker_id).values(allocation_notice_recipient_id=None))
+
+    # Delete records owned solely by this worker.
+    await db.execute(delete(UserTicket).where(UserTicket.user_id == worker_id))
+    await db.execute(delete(UserInduction).where(UserInduction.user_id == worker_id))
+    await db.execute(delete(AttendanceEvent).where(AttendanceEvent.worker_id == worker_id))
+
+    await db.delete(worker)
+    await db.commit()
+
+    return {"message": "Worker permanently deleted", "archived": False}
 
 
 class AttendanceCreate(BaseModel):

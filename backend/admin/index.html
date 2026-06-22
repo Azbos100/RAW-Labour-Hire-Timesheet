@@ -625,9 +625,15 @@
             <div class="bg-white rounded-xl shadow overflow-hidden">
                 <div class="p-4 border-b flex justify-between items-center">
                     <h2 class="text-lg font-semibold">Workers Directory</h2>
-                    <button onclick="openAddWorkerModal()" class="bg-blue-900 text-white px-4 py-2 rounded-lg hover:bg-blue-800">
-                        <i class="fas fa-plus mr-2"></i>Add Worker
-                    </button>
+                    <div class="flex items-center gap-4">
+                        <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                            <input type="checkbox" id="show-inactive-workers" onchange="renderWorkers()" class="rounded">
+                            Show inactive
+                        </label>
+                        <button onclick="openAddWorkerModal()" class="bg-blue-900 text-white px-4 py-2 rounded-lg hover:bg-blue-800">
+                            <i class="fas fa-plus mr-2"></i>Add Worker
+                        </button>
+                    </div>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full">
@@ -809,7 +815,7 @@
                             <div class="flex items-center justify-between mb-4">
                                 <div>
                                     <p class="font-medium">Unaccepted Jobs Notice</p>
-                                    <p class="text-sm text-gray-500">Mon–Fri 6:15 PM: alerts the chosen person with workers who haven't accepted tomorrow's jobs (push, SMS fallback)</p>
+                                    <p class="text-sm text-gray-500">Mon–Fri: alerts the chosen people with workers who haven't accepted tomorrow's jobs (push, SMS fallback)</p>
                                 </div>
                                 <div class="flex items-center gap-3">
                                     <div id="allocation-notice-enabled" onclick="toggleSwitch('allocation-notice-enabled')" class="toggle-switch" style="width:48px;height:26px;background:#D1D5DB;border-radius:13px;cursor:pointer;padding:3px;box-sizing:border-box;display:flex;align-items:center;">
@@ -818,11 +824,45 @@
                                     <span id="allocation-notice-enabled-label" class="text-sm font-bold text-red-600">OFF</span>
                                 </div>
                             </div>
+                            <div class="flex items-center gap-2 mb-3">
+                                <label class="text-sm text-gray-500">Send at:</label>
+                                <input type="time" id="allocation-notice-time" value="18:15" class="border rounded-lg px-3 py-2">
+                            </div>
+                            <div class="mb-3">
+                                <label class="text-sm text-gray-500 block mb-1">Send to (hold Ctrl/Cmd to pick more than one):</label>
+                                <select id="allocation-notice-recipients" multiple size="5" class="border rounded-lg px-3 py-2 w-full"></select>
+                                <p class="text-xs text-gray-400 mt-1">If none selected, defaults to Joshua McPherson.</p>
+                            </div>
                             <div class="flex items-center gap-2">
-                                <label class="text-sm text-gray-500">Send to:</label>
-                                <select id="allocation-notice-recipient" class="border rounded-lg px-3 py-2 flex-1">
-                                    <option value="">Default (Joshua McPherson)</option>
-                                </select>
+                                <label class="text-sm text-gray-500 whitespace-nowrap">Extra SMS numbers:</label>
+                                <input type="text" id="allocation-notice-phones" placeholder="e.g. 0412 345 678, 0498 765 432" class="border rounded-lg px-3 py-2 flex-1">
+                            </div>
+                        </div>
+
+                        <div class="border-t pt-4">
+                            <div class="flex items-center justify-between mb-4">
+                                <div>
+                                    <p class="font-medium">Daily Roster Digest</p>
+                                    <p class="text-sm text-gray-500">Every day: full list of who's out (allocated) and who's still available for tomorrow (push, SMS fallback)</p>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <div id="roster-digest-enabled" onclick="toggleSwitch('roster-digest-enabled')" class="toggle-switch" style="width:48px;height:26px;background:#D1D5DB;border-radius:13px;cursor:pointer;padding:3px;box-sizing:border-box;display:flex;align-items:center;">
+                                        <div class="toggle-slider" style="width:20px;height:20px;background:white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:transform 0.2s ease;transform:translateX(0);"></div>
+                                    </div>
+                                    <span id="roster-digest-enabled-label" class="text-sm font-bold text-red-600">OFF</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 mb-3">
+                                <label class="text-sm text-gray-500">Send at:</label>
+                                <input type="time" id="roster-digest-time" value="19:00" class="border rounded-lg px-3 py-2">
+                            </div>
+                            <div class="mb-3">
+                                <label class="text-sm text-gray-500 block mb-1">Send to (hold Ctrl/Cmd to pick more than one):</label>
+                                <select id="roster-digest-recipients" multiple size="5" class="border rounded-lg px-3 py-2 w-full"></select>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <label class="text-sm text-gray-500 whitespace-nowrap">Extra SMS numbers:</label>
+                                <input type="text" id="roster-digest-phones" placeholder="your mobile, e.g. 0412 345 678" class="border rounded-lg px-3 py-2 flex-1">
                             </div>
                         </div>
                         
@@ -3171,14 +3211,22 @@
 
         function renderWorkers() {
             const tbody = document.getElementById('workers-table');
-            
-            if (allWorkers.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">No workers found</td></tr>`;
+
+            // Hide inactive workers by default to keep the list tidy; the "Show
+            // inactive" toggle brings them back so they can be reactivated/removed.
+            const showInactive = document.getElementById('show-inactive-workers')?.checked;
+            const visibleWorkers = (allWorkers || []).filter(w => showInactive || w.is_active);
+
+            if (visibleWorkers.length === 0) {
+                const msg = allWorkers && allWorkers.length > 0 && !showInactive
+                    ? 'No active workers. Tick "Show inactive" to see deactivated workers.'
+                    : 'No workers found';
+                tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">${msg}</td></tr>`;
                 return;
             }
 
             // Sort workers alphabetically by first name, then surname
-            const sortedWorkers = [...allWorkers].sort((a, b) => {
+            const sortedWorkers = [...visibleWorkers].sort((a, b) => {
                 const nameA = `${a.first_name} ${a.surname}`.toLowerCase();
                 const nameB = `${b.first_name} ${b.surname}`.toLowerCase();
                 return nameA.localeCompare(nameB);
@@ -3281,18 +3329,24 @@
                         <button onclick="editSchedule(${w.id}, workerName(${w.id}))" class="text-purple-600 hover:text-purple-800 mr-2" title="Shift Schedule">
                             <i class="fas fa-clock"></i>
                         </button>
+                        <button onclick="resetWorkerPassword(${w.id}, workerName(${w.id}))" class="text-teal-600 hover:text-teal-800 mr-2" title="Reset Password">
+                            <i class="fas fa-key"></i>
+                        </button>
                         ${w.is_clocked_in ? `
                             <button onclick="forceClockOut(${w.id}, workerName(${w.id}))" class="text-yellow-600 hover:text-yellow-800 mr-2" title="Force Clock Out">
                                 <i class="fas fa-sign-out-alt"></i>
                             </button>
                         ` : ''}
                         ${w.is_active ? `
-                            <button onclick="deactivateWorker(${w.id})" class="text-red-600 hover:text-red-800" title="Deactivate">
-                                <i class="fas fa-user-slash"></i>
+                            <button onclick="deactivateWorker(${w.id})" class="text-green-600 hover:text-green-800" title="Active — click to deactivate">
+                                <i class="fas fa-user-check"></i>
                             </button>
                         ` : `
-                            <button onclick="activateWorker(${w.id})" class="text-green-600 hover:text-green-800" title="Activate">
-                                <i class="fas fa-user-check"></i>
+                            <button onclick="activateWorker(${w.id})" class="text-red-600 hover:text-red-800 mr-2" title="Inactive — click to reactivate">
+                                <i class="fas fa-user-slash"></i>
+                            </button>
+                            <button onclick="deleteWorker(${w.id}, workerName(${w.id}))" class="text-red-700 hover:text-red-900" title="Delete permanently">
+                                <i class="fas fa-trash"></i>
                             </button>
                         `}
                     </td>
@@ -3819,6 +3873,39 @@
                 await loadWorkers();
             } catch (error) {
                 alert('Error deactivating worker');
+            }
+        }
+
+        async function deleteWorker(id, name) {
+            if (!confirm(`Permanently delete ${name} from the system?\n\nThis cannot be undone. It only works if they have no timesheet/payroll history — otherwise they stay deactivated.`)) return;
+            try {
+                const response = await authFetch(`${API_BASE}/users/admin/workers/${id}`, { method: 'DELETE' });
+                const result = await response.json().catch(() => ({}));
+                if (response.ok) {
+                    alert(result.message || 'Worker permanently deleted');
+                    await loadWorkers();
+                } else {
+                    alert(result.detail || 'Error deleting worker');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error deleting worker');
+            }
+        }
+
+        async function resetWorkerPassword(id, name) {
+            if (!confirm(`Reset password for ${name}?\n\nThis generates a new temporary password you can give them directly (handy when SMS isn't reaching their phone). Their current password will stop working.`)) return;
+            try {
+                const response = await authFetch(`${API_BASE}/users/admin/workers/${id}/reset-password`, { method: 'POST' });
+                const result = await response.json();
+                if (response.ok) {
+                    window.prompt(`Temporary password for ${name} — copy it and share it with them. They can change it in the app under Profile.`, result.temp_password);
+                } else {
+                    alert(result.detail || 'Error resetting password');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error resetting password');
             }
         }
 
@@ -5143,14 +5230,24 @@
             return document.getElementById(id).classList.contains('active');
         }
 
-        let allocationNoticeRecipientId = '';
+        let allocationNoticeRecipientIds = [];
+        let rosterDigestRecipientIds = [];
+        function fillRecipientSelect(selectId, selectedIds) {
+            const sel = document.getElementById(selectId);
+            if (!sel) return;
+            const ids = (selectedIds || []).map(String);
+            sel.innerHTML = (allWorkers || []).filter(w => w.is_active)
+                .map(w => `<option value="${w.id}">${esc(w.first_name)} ${esc(w.surname)}</option>`).join('');
+            Array.from(sel.options).forEach(opt => { opt.selected = ids.includes(opt.value); });
+        }
+        function getSelectedRecipientIds(selectId) {
+            const sel = document.getElementById(selectId);
+            if (!sel) return [];
+            return Array.from(sel.selectedOptions).map(o => parseInt(o.value)).filter(n => !isNaN(n));
+        }
         function populateAllocationRecipient() {
-            const recSel = document.getElementById('allocation-notice-recipient');
-            if (!recSel) return;
-            recSel.innerHTML = '<option value="">Default (Joshua McPherson)</option>' +
-                (allWorkers || []).filter(w => w.is_active)
-                    .map(w => `<option value="${w.id}">${esc(w.first_name)} ${esc(w.surname)}</option>`).join('');
-            recSel.value = allocationNoticeRecipientId || '';
+            fillRecipientSelect('allocation-notice-recipients', allocationNoticeRecipientIds);
+            fillRecipientSelect('roster-digest-recipients', rosterDigestRecipientIds);
         }
 
         async function loadNotificationSettings() {
@@ -5164,7 +5261,13 @@
                 setToggle('clock-out-enabled', data.clock_out_reminder_enabled);
                 document.getElementById('clock-out-time').value = data.clock_out_reminder_time;
                 setToggle('allocation-notice-enabled', data.allocation_notice_enabled !== false);
-                allocationNoticeRecipientId = data.allocation_notice_recipient_id != null ? String(data.allocation_notice_recipient_id) : '';
+                if (data.allocation_notice_time) document.getElementById('allocation-notice-time').value = data.allocation_notice_time;
+                allocationNoticeRecipientIds = data.allocation_notice_recipient_ids || [];
+                document.getElementById('allocation-notice-phones').value = data.allocation_notice_extra_phones || '';
+                setToggle('roster-digest-enabled', data.roster_digest_enabled !== false);
+                if (data.roster_digest_time) document.getElementById('roster-digest-time').value = data.roster_digest_time;
+                rosterDigestRecipientIds = data.roster_digest_recipient_ids || [];
+                document.getElementById('roster-digest-phones').value = data.roster_digest_extra_phones || '';
                 populateAllocationRecipient();
                 
                 // Load scheduler status
@@ -5400,7 +5503,6 @@
         }
 
         async function saveNotificationSettings() {
-            const recVal = document.getElementById('allocation-notice-recipient').value;
             const data = {
                 sms_enabled: getToggleValue('sms-enabled'),
                 clock_in_reminder_enabled: getToggleValue('clock-in-enabled'),
@@ -5408,7 +5510,13 @@
                 clock_out_reminder_enabled: getToggleValue('clock-out-enabled'),
                 clock_out_reminder_time: document.getElementById('clock-out-time').value,
                 allocation_notice_enabled: getToggleValue('allocation-notice-enabled'),
-                allocation_notice_recipient_id: recVal ? parseInt(recVal) : null
+                allocation_notice_time: document.getElementById('allocation-notice-time').value,
+                allocation_notice_recipient_ids: getSelectedRecipientIds('allocation-notice-recipients'),
+                allocation_notice_extra_phones: document.getElementById('allocation-notice-phones').value,
+                roster_digest_enabled: getToggleValue('roster-digest-enabled'),
+                roster_digest_time: document.getElementById('roster-digest-time').value,
+                roster_digest_recipient_ids: getSelectedRecipientIds('roster-digest-recipients'),
+                roster_digest_extra_phones: document.getElementById('roster-digest-phones').value
             };
 
             try {

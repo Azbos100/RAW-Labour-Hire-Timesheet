@@ -63,17 +63,83 @@ async def auto_archive_prior_pay_week():
         print(f"[Scheduler] Error during auto-archive: {e}")
 
 
-async def notify_unaccepted_allocations():
-    """Push Joshua McPherson the workers who haven't accepted tomorrow's jobs.
+def _parse_csv_ids(value):
+    """CSV string of user ids -> list[int] (tolerant of blanks/garbage)."""
+    if not value:
+        return []
+    out = []
+    for part in str(value).split(','):
+        part = part.strip()
+        if part:
+            try:
+                out.append(int(part))
+            except ValueError:
+                pass
+    return out
 
-    Runs Mon-Fri at 18:15 Melbourne time. "Haven't accepted" = assigned for
-    tomorrow with assignment_accepted still pending (None) or declined (False).
+
+def _parse_csv_phones(value):
+    """CSV string of phone numbers -> list[str] (trimmed, blanks dropped)."""
+    if not value:
+        return []
+    return [p.strip() for p in str(value).split(',') if p.strip()]
+
+
+async def _deliver_notice(db, recipient_ids, extra_phones, title, body, data, sms_enabled, notice_label):
+    """Send a notice to a set of worker recipients (push, SMS fallback) plus a
+    set of raw phone numbers (SMS only). Looked up live so we always use the
+    latest token/phone for each worker.
+    """
+    from sqlalchemy import select
+    from ..models import User
+    from .push_notifications import send_push_notification
+    from .sms import send_sms
+
+    sms_body = f"RAW: {title}. {body}"
+
+    recipients = []
+    if recipient_ids:
+        recipients = (await db.execute(
+            select(User).where(User.id.in_(recipient_ids))
+        )).scalars().all()
+
+    sent = 0
+    for r in recipients:
+        if r.push_token:
+            result = await send_push_notification(r.push_token, title, body, data)
+            print(f"[Scheduler] {notice_label} push -> {r.first_name} {r.surname}: {result}")
+            sent += 1
+        elif r.phone and sms_enabled:
+            result = await send_sms(r.phone, sms_body)
+            print(f"[Scheduler] {notice_label} SMS -> {r.first_name} {r.surname}: {result}")
+            sent += 1
+        else:
+            print(f"[Scheduler] {notice_label}: {r.first_name} {r.surname} has no push token / usable SMS; skipped")
+
+    if sms_enabled:
+        for phone in extra_phones:
+            result = await send_sms(phone, sms_body)
+            print(f"[Scheduler] {notice_label} SMS -> {phone}: {result}")
+            sent += 1
+    elif extra_phones:
+        print(f"[Scheduler] {notice_label}: SMS disabled; skipped {len(extra_phones)} extra number(s)")
+
+    if sent == 0:
+        print(f"[Scheduler] {notice_label}: no deliverable recipients")
+    return sent
+
+
+async def notify_unaccepted_allocations():
+    """Notify the chosen people of workers who haven't accepted tomorrow's jobs.
+
+    Runs Mon-Fri at the configured time (default 18:15). "Haven't accepted" =
+    assigned for tomorrow with assignment_accepted still pending (None) or
+    declined (False). Recipients are the configured workers + extra phones; if
+    none are configured it defaults to Joshua McPherson.
     """
     from ..database import AsyncSessionLocal
     from sqlalchemy import select, func, or_
     from ..models import User, NotificationSettings
-    from .push_notifications import send_push_notification
-    from .sms import send_sms
 
     tomorrow = (datetime.now(TIMEZONE) + timedelta(days=1)).date()
     print(f"[Scheduler] Running unaccepted-allocation notice for {tomorrow}")
@@ -86,24 +152,22 @@ async def notify_unaccepted_allocations():
                 return
             sms_enabled = settings.sms_enabled if settings else True
 
-            # Recipient: configured worker if set, otherwise default to Joshua
-            # McPherson (looked up live so we always use the latest token/phone).
-            recipient = None
-            if settings and settings.allocation_notice_recipient_id:
-                recipient = (await db.execute(
-                    select(User).where(User.id == settings.allocation_notice_recipient_id)
-                )).scalars().first()
-            if not recipient:
-                recipient = (await db.execute(
+            recipient_ids = _parse_csv_ids(settings.allocation_notice_recipient_ids) if settings else []
+            extra_phones = _parse_csv_phones(settings.allocation_notice_extra_phones) if settings else []
+
+            # Default to Joshua McPherson when nobody is configured.
+            if not recipient_ids and not extra_phones:
+                josh = (await db.execute(
                     select(User).where(
                         func.lower(User.first_name) == "joshua",
                         func.lower(User.surname) == "mcpherson",
                     )
                 )).scalars().first()
-
-            if not recipient:
-                print("[Scheduler] No allocation-notice recipient found; skipping")
-                return
+                if josh:
+                    recipient_ids = [josh.id]
+                else:
+                    print("[Scheduler] No allocation-notice recipient configured and no Joshua McPherson; skipping")
+                    return
 
             # Active workers assigned for tomorrow who haven't accepted yet.
             rows = (await db.execute(
@@ -130,24 +194,72 @@ async def notify_unaccepted_allocations():
                 title = "All jobs accepted for tomorrow"
                 body = f"All allocated workers have accepted their jobs for {date_label}."
 
-            # Push if we have a token; otherwise fall back to SMS so the notice
-            # still gets through even without push notifications set up.
-            if recipient.push_token:
-                result = await send_push_notification(
-                    recipient.push_token,
-                    title,
-                    body,
-                    {"type": "allocation_acceptance_summary", "date": tomorrow.isoformat()},
-                )
-                print(f"[Scheduler] Allocation notice push result: {result}")
-            elif recipient.phone and sms_enabled:
-                sms_body = f"RAW: {title}. " + ("; ".join(lines) if rows else body)
-                result = await send_sms(recipient.phone, sms_body)
-                print(f"[Scheduler] Allocation notice SMS result: {result}")
-            else:
-                print("[Scheduler] Recipient has no push token and no usable SMS; skipping")
+            await _deliver_notice(
+                db, recipient_ids, extra_phones, title, body,
+                {"type": "allocation_acceptance_summary", "date": tomorrow.isoformat()},
+                sms_enabled, "Allocation notice",
+            )
     except Exception as e:
         print(f"[Scheduler] Error sending unaccepted-allocation notice: {e}")
+
+
+async def send_roster_digest():
+    """Send a daily roster digest: who's out (allocated) vs who's still
+    available (unallocated) for the next day. Runs every day at the configured
+    time (default 19:00) to the configured recipients + extra phones.
+    """
+    from ..database import AsyncSessionLocal
+    from sqlalchemy import select
+    from ..models import User, NotificationSettings, UserRole
+
+    tomorrow = (datetime.now(TIMEZONE) + timedelta(days=1)).date()
+    print(f"[Scheduler] Running roster digest for {tomorrow}")
+
+    try:
+        async with AsyncSessionLocal() as db:
+            settings = (await db.execute(select(NotificationSettings).limit(1))).scalar_one_or_none()
+            if settings and settings.roster_digest_enabled is False:
+                print("[Scheduler] Roster digest disabled in settings; skipping")
+                return
+            sms_enabled = settings.sms_enabled if settings else True
+
+            recipient_ids = _parse_csv_ids(settings.roster_digest_recipient_ids) if settings else []
+            extra_phones = _parse_csv_phones(settings.roster_digest_extra_phones) if settings else []
+            if not recipient_ids and not extra_phones:
+                print("[Scheduler] Roster digest has no recipients configured; skipping")
+                return
+
+            workers = (await db.execute(
+                select(User).where(
+                    User.is_active == True,  # noqa: E712
+                    User.role == UserRole.WORKER,
+                ).order_by(User.surname, User.first_name)
+            )).scalars().all()
+
+            out, available = [], []
+            for w in workers:
+                if w.assigned_job_site_id is not None and w.assignment_date == tomorrow:
+                    out.append(w)
+                else:
+                    available.append(w)
+
+            date_label = tomorrow.strftime("%a %d %b")
+            out_names = ", ".join(f"{w.first_name} {w.surname}" for w in out) or "none"
+            avail_names = ", ".join(f"{w.first_name} {w.surname}" for w in available) or "none"
+            title = f"Roster {date_label}: {len(out)} out, {len(available)} available"
+            body = (
+                f"Roster for {date_label}\n\n"
+                f"OUT ({len(out)}): {out_names}\n\n"
+                f"AVAILABLE ({len(available)}): {avail_names}"
+            )
+
+            await _deliver_notice(
+                db, recipient_ids, extra_phones, title, body,
+                {"type": "roster_digest", "date": tomorrow.isoformat()},
+                sms_enabled, "Roster digest",
+            )
+    except Exception as e:
+        print(f"[Scheduler] Error sending roster digest: {e}")
 
 
 def _parse_reminder_time(value):
@@ -192,6 +304,22 @@ async def load_settings_from_db():
                         print(f"[Scheduler] Loaded clock-out time from DB: {hour:02d}:{minute:02d}")
                     except Exception as e:
                         print(f"[Scheduler] Error parsing clock-out time: {e}")
+
+                if getattr(settings, 'allocation_notice_time', None):
+                    try:
+                        hour, minute = _parse_reminder_time(settings.allocation_notice_time)
+                        update_allocation_notice_time(hour, minute)
+                        print(f"[Scheduler] Loaded allocation notice time from DB: {hour:02d}:{minute:02d}")
+                    except Exception as e:
+                        print(f"[Scheduler] Error parsing allocation notice time: {e}")
+
+                if getattr(settings, 'roster_digest_time', None):
+                    try:
+                        hour, minute = _parse_reminder_time(settings.roster_digest_time)
+                        update_roster_digest_time(hour, minute)
+                        print(f"[Scheduler] Loaded roster digest time from DB: {hour:02d}:{minute:02d}")
+                    except Exception as e:
+                        print(f"[Scheduler] Error parsing roster digest time: {e}")
             else:
                 print("[Scheduler] No settings in DB, using defaults")
     except Exception as e:
@@ -233,21 +361,31 @@ def setup_scheduler():
         name='Weekly Auto-Archive (Prior Pay Week)'
     )
 
-    # Unaccepted-allocation notice: push to Joshua McPherson Mon-Fri at 6:15 PM
-    # with the workers who haven't accepted tomorrow's jobs.
+    # Unaccepted-allocation notice: Mon-Fri at 6:15 PM (default) with the workers
+    # who haven't accepted tomorrow's jobs.
     scheduler.add_job(
         notify_unaccepted_allocations,
         CronTrigger(hour=18, minute=15, day_of_week='mon-fri', timezone=TIMEZONE),
         id='unaccepted_allocations_notice',
         replace_existing=True,
-        name='Unaccepted Allocations Notice (Joshua McPherson)'
+        name='Unaccepted Allocations Notice'
+    )
+
+    # Daily roster digest: every day at 7:00 PM (default) — who's out vs available.
+    scheduler.add_job(
+        send_roster_digest,
+        CronTrigger(hour=19, minute=0, timezone=TIMEZONE),
+        id='roster_digest',
+        replace_existing=True,
+        name='Daily Roster Digest'
     )
 
     print("[Scheduler] Initial reminders scheduled (defaults):")
     print("  - Clock-in reminder: 6:55 AM AEST/AEDT (Mon-Fri)")
     print("  - Clock-out reminder: 3:30 PM AEST/AEDT (Mon-Fri)")
     print("  - Weekly auto-archive: 7:00 AM AEST/AEDT (Fri)")
-    print("  - Unaccepted allocations notice: 6:15 PM AEST/AEDT (Mon-Fri) -> Joshua McPherson")
+    print("  - Unaccepted allocations notice: 6:15 PM AEST/AEDT (Mon-Fri)")
+    print("  - Daily roster digest: 7:00 PM AEST/AEDT (every day)")
 
 
 def update_clock_in_time(hour: int, minute: int):
@@ -266,6 +404,24 @@ def update_clock_out_time(hour: int, minute: int):
         trigger=CronTrigger(hour=hour, minute=minute, day_of_week='mon-fri', timezone=TIMEZONE)
     )
     print(f"[Scheduler] Clock-out reminder rescheduled to {hour:02d}:{minute:02d}")
+
+
+def update_allocation_notice_time(hour: int, minute: int):
+    """Update the unaccepted-allocations notice time (Mon-Fri)"""
+    scheduler.reschedule_job(
+        'unaccepted_allocations_notice',
+        trigger=CronTrigger(hour=hour, minute=minute, day_of_week='mon-fri', timezone=TIMEZONE)
+    )
+    print(f"[Scheduler] Allocation notice rescheduled to {hour:02d}:{minute:02d}")
+
+
+def update_roster_digest_time(hour: int, minute: int):
+    """Update the daily roster digest time (every day)"""
+    scheduler.reschedule_job(
+        'roster_digest',
+        trigger=CronTrigger(hour=hour, minute=minute, timezone=TIMEZONE)
+    )
+    print(f"[Scheduler] Roster digest rescheduled to {hour:02d}:{minute:02d}")
 
 
 def start_scheduler():

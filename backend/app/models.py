@@ -78,6 +78,10 @@ class User(Base):
     
     # Status
     is_active = Column(Boolean, default=True)
+    # Hidden from the Workers directory ("deleted" by admin) while their payroll
+    # history is preserved. Used when a worker can't be hard-deleted because they
+    # have timesheets referencing them.
+    is_archived = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -546,11 +550,22 @@ class NotificationSettings(Base):
     # SMS settings
     sms_enabled = Column(Boolean, default=True)
 
-    # Daily "who hasn't accepted tomorrow's jobs" notice (push + SMS fallback),
-    # fired Mon-Fri at 18:15. Recipient is configurable; if unset it defaults to
-    # Joshua McPherson by name.
+    # "Who hasn't accepted tomorrow's jobs" notice (push + SMS fallback), Mon-Fri.
+    # Recipients can be multiple workers (CSV of ids) plus extra phone numbers
+    # (CSV) for people who aren't workers. Time is configurable. If no recipients
+    # are configured it defaults to Joshua McPherson by name.
     allocation_notice_enabled = Column(Boolean, default=True)
-    allocation_notice_recipient_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    allocation_notice_time = Column(Time, default=time(18, 15))
+    allocation_notice_recipient_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # legacy (kept for migration)
+    allocation_notice_recipient_ids = Column(Text)  # CSV of user ids
+    allocation_notice_extra_phones = Column(Text)   # CSV of phone numbers
+
+    # Daily roster digest: who's out (allocated) vs who's still available
+    # (unallocated) for the next day. Sent every day at a configurable time.
+    roster_digest_enabled = Column(Boolean, default=True)
+    roster_digest_time = Column(Time, default=time(19, 0))
+    roster_digest_recipient_ids = Column(Text)   # CSV of user ids
+    roster_digest_extra_phones = Column(Text)    # CSV of phone numbers
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
