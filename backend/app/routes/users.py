@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, update, delete
 from pydantic import BaseModel
 from typing import Optional
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import secrets
 
 from ..database import get_db
@@ -1085,41 +1085,100 @@ async def get_worker_assignment(
     user_id: int,
     db: AsyncSession = Depends(get_db)
 ):
-    """Get worker's current job assignment (for mobile app)"""
+    """Get worker job assignments for the mobile app.
+
+    Returns the job they're currently clocked into (if any) plus any upcoming
+    allocated jobs (today if not on site yet, or future dates like tomorrow).
+    """
+    import pytz
+
     result = await db.execute(select(User).where(User.id == user_id))
     worker = result.scalar_one_or_none()
-    
+
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
-    
-    if not worker.assigned_job_site_id:
-        return {"assignment": None}
-    
-    # Get job site details
-    js_result = await db.execute(select(JobSite).where(JobSite.id == worker.assigned_job_site_id))
-    job_site = js_result.scalar_one_or_none()
-    
-    if not job_site:
-        return {"assignment": None}
-    
-    # Use job site default contact info
-    contact_name = job_site.contact_name or ""
-    contact_phone = job_site.contact_phone or ""
-    
-    return {
-        "assignment": {
+
+    melbourne_tz = pytz.timezone("Australia/Melbourne")
+    today = datetime.now(melbourne_tz).date()
+    yesterday = today - timedelta(days=1)
+
+    def _assignment_dict(job_site, w: User):
+        contact_name = (w.assignment_contact_name or job_site.contact_name or "").strip() or None
+        contact_phone = (w.assignment_contact_phone or job_site.contact_phone or "").strip() or None
+        return {
             "job_site_id": job_site.id,
             "job_site_name": job_site.name,
             "job_site_address": job_site.address,
             "job_site_latitude": job_site.latitude,
             "job_site_longitude": job_site.longitude,
-            "assignment_date": worker.assignment_date.isoformat() if worker.assignment_date else None,
-            "start_time": worker.assignment_start_time,
-            "assigned_at": worker.assigned_at.isoformat() if worker.assigned_at else None,
-            "accepted": worker.assignment_accepted,
+            "assignment_date": w.assignment_date.isoformat() if w.assignment_date else None,
+            "start_time": w.assignment_start_time,
+            "assigned_at": w.assigned_at.isoformat() if w.assigned_at else None,
+            "accepted": w.assignment_accepted,
             "contact_name": contact_name,
-            "contact_phone": contact_phone
+            "contact_phone": contact_phone,
         }
+
+    # --- Current job: active clock-in (today or overnight from yesterday) ---
+    current_job = None
+    active_row = (await db.execute(
+        select(TimesheetEntry, JobSite)
+        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
+        .outerjoin(JobSite, TimesheetEntry.job_site_id == JobSite.id)
+        .where(
+            Timesheet.worker_id == worker.id,
+            TimesheetEntry.entry_date.in_([today, yesterday]),
+            TimesheetEntry.clock_in_time.isnot(None),
+            TimesheetEntry.clock_out_time.is_(None),
+        )
+        .limit(1)
+    )).first()
+
+    if active_row:
+        entry, js = active_row
+        site_name = js.name if js else (entry.clock_in_address or "On site")
+        current_job = {
+            "job_site_id": js.id if js else entry.job_site_id,
+            "job_site_name": site_name,
+            "job_site_address": js.address if js else entry.clock_in_address,
+            "job_site_latitude": js.latitude if js else entry.clock_in_latitude,
+            "job_site_longitude": js.longitude if js else entry.clock_in_longitude,
+            "assignment_date": entry.entry_date.isoformat() if entry.entry_date else today.isoformat(),
+            "start_time": entry.clock_in_time.strftime("%H:%M") if entry.clock_in_time else None,
+            "assigned_at": None,
+            "accepted": True,
+            "contact_name": js.contact_name if js else None,
+            "contact_phone": js.contact_phone if js else None,
+            "is_current": True,
+        }
+
+    # --- Upcoming / pending allocations stored on the worker record ---
+    upcoming_jobs = []
+    pending_assignment = None
+
+    if worker.assigned_job_site_id:
+        js_result = await db.execute(
+            select(JobSite).where(JobSite.id == worker.assigned_job_site_id)
+        )
+        job_site = js_result.scalar_one_or_none()
+
+        if job_site and worker.assignment_date and worker.assignment_date >= today:
+            payload = _assignment_dict(job_site, worker)
+            is_duplicate = (
+                current_job
+                and current_job.get("job_site_id") == payload["job_site_id"]
+                and worker.assignment_date == today
+                and worker.assignment_accepted is True
+            )
+            if not is_duplicate:
+                upcoming_jobs.append(payload)
+                pending_assignment = payload
+
+    return {
+        "current_job": current_job,
+        "upcoming_jobs": upcoming_jobs,
+        # Backward compat for older app builds — first upcoming allocation
+        "assignment": pending_assignment,
     }
 
 

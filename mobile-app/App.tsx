@@ -41,11 +41,19 @@ import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { COLORS } from './src/constants/colors';
 
 // Types
+export type MainTabParamList = {
+  MyJobs: undefined;
+  Timesheets: undefined;
+  Inductions: undefined;
+  Tickets: undefined;
+  Profile: undefined;
+};
+
 export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
   ResetPassword: undefined;
-  Main: undefined;
+  Main: { screen?: keyof MainTabParamList } | undefined;
   ClockIn: undefined;
   ClockOut: undefined;
   SupervisorSignature: { 
@@ -54,14 +62,6 @@ export type RootStackParamList = {
     docketNumber: string;
   };
   TimesheetDetail: { timesheetId: number };
-};
-
-export type MainTabParamList = {
-  MyJobs: undefined;
-  Timesheets: undefined;
-  Inductions: undefined;
-  Tickets: undefined;
-  Profile: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -244,7 +244,7 @@ export default function App() {
           `📅 ${data.assignment_date || 'TBC'}\n` +
           `🕐 ${data.start_time || 'TBC'}\n\n` +
           `Go to My Jobs to accept or decline.`,
-          [{ text: 'View Jobs', onPress: () => navigationRef.current?.navigate('Main' as any) }]
+          [{ text: 'View Jobs', onPress: () => navigationRef.current?.navigate('Main', { screen: 'MyJobs' }) }]
         );
       }
     });
@@ -256,8 +256,7 @@ export default function App() {
       
       // Handle navigation based on notification type
       if (data?.type === 'job_assignment') {
-        // Navigate to app and show job details popup
-        navigationRef.current?.navigate('Main' as any);
+        navigationRef.current?.navigate('Main', { screen: 'MyJobs' });
         
         // Show job details after a brief delay to allow navigation
         setTimeout(() => {

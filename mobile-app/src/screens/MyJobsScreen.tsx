@@ -1,6 +1,6 @@
 /**
  * My Jobs Screen
- * Display assigned & accepted jobs for the week with clock in/out functionality
+ * Display current clocked-in job plus upcoming allocated jobs
  */
 
 import React, { useState, useCallback } from 'react';
@@ -41,24 +41,28 @@ interface JobAssignment {
   start_time: string | null;
   assigned_at: string | null;
   accepted: boolean | null;
+  is_current?: boolean;
 }
 
 export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
   const { user } = useAuth();
   const [clockStatus, setClockStatus] = useState<ClockStatus | null>(null);
-  const [assignment, setAssignment] = useState<JobAssignment | null>(null);
+  const [currentJob, setCurrentJob] = useState<JobAssignment | null>(null);
+  const [upcomingJobs, setUpcomingJobs] = useState<JobAssignment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [respondingAssignment, setRespondingAssignment] = useState(false);
 
   const fetchData = async () => {
+    if (!user?.id) return;
     try {
       const [clockRes, assignRes] = await Promise.all([
-        clockAPI.getStatus(user?.id),
-        assignmentAPI.getAssignment(user?.id),
+        clockAPI.getStatus(user.id),
+        assignmentAPI.getAssignment(user.id),
       ]);
       setClockStatus(clockRes.data);
-      setAssignment(assignRes.data.assignment || null);
+      setCurrentJob(assignRes.data.current_job || null);
+      setUpcomingJobs(assignRes.data.upcoming_jobs || []);
     } catch (error) {
       console.warn('Error fetching data:', error);
     } finally {
@@ -69,8 +73,11 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
 
   useFocusEffect(
     useCallback(() => {
-      fetchData();
-    }, [])
+      if (user?.id) {
+        setIsLoading(true);
+        fetchData();
+      }
+    }, [user?.id])
   );
 
   const onRefresh = () => {
@@ -80,11 +87,13 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
 
   const respondToAssignment = async (accepted: boolean) => {
     if (!user?.id || respondingAssignment) return;
-    
+
     setRespondingAssignment(true);
     try {
       await assignmentAPI.respondToAssignment(user.id, accepted);
-      setAssignment(prev => prev ? { ...prev, accepted } : null);
+      setUpcomingJobs(prev =>
+        prev.map(j => ({ ...j, accepted }))
+      );
     } catch (error) {
       console.warn('Error responding to assignment:', error);
     } finally {
@@ -94,7 +103,7 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '';
-    const date = new Date(dateStr);
+    const date = new Date(dateStr + 'T12:00:00');
     return date.toLocaleDateString('en-AU', {
       weekday: 'short',
       day: 'numeric',
@@ -116,6 +125,99 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
     });
   };
 
+  const renderJobCard = (job: JobAssignment, options: { showActions?: boolean; isCurrent?: boolean }) => {
+    const { showActions = false, isCurrent = false } = options;
+    return (
+      <View key={`${job.job_site_id}-${job.assignment_date || 'current'}`} style={styles.jobCard}>
+        <View style={styles.jobHeader}>
+          <View style={[styles.jobIconContainer, isCurrent && styles.jobIconCurrent]}>
+            <Ionicons name={isCurrent ? 'time' : 'briefcase'} size={24} color={COLORS.primary} />
+          </View>
+          <View style={styles.jobTitleContainer}>
+            <Text style={styles.jobSiteName}>{job.job_site_name}</Text>
+            {isCurrent && (
+              <View style={styles.currentBadge}>
+                <Ionicons name="radio-button-on" size={14} color="#059669" />
+                <Text style={styles.badgeText}>On site now</Text>
+              </View>
+            )}
+            {!isCurrent && job.accepted === true && (
+              <View style={styles.acceptedBadge}>
+                <Ionicons name="checkmark-circle" size={14} color="#059669" />
+                <Text style={styles.badgeText}>Accepted</Text>
+              </View>
+            )}
+            {!isCurrent && job.accepted === false && (
+              <View style={styles.declinedBadge}>
+                <Ionicons name="close-circle" size={14} color="#DC2626" />
+                <Text style={styles.declinedBadgeText}>Declined</Text>
+              </View>
+            )}
+            {!isCurrent && job.accepted === null && (
+              <View style={styles.pendingBadge}>
+                <Ionicons name="hourglass" size={14} color="#D97706" />
+                <Text style={styles.pendingBadgeText}>Pending Response</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        <View style={styles.jobDetails}>
+          {job.job_site_address ? (
+            <View style={styles.detailRow}>
+              <Ionicons name="location-outline" size={18} color="#6B7280" />
+              <Text style={styles.detailText} numberOfLines={2}>
+                {job.job_site_address}
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={styles.detailRow}>
+            <Ionicons name="calendar-outline" size={18} color="#6B7280" />
+            <Text style={styles.detailText}>
+              {isCurrent ? `Today · since ${formatTime(job.start_time || undefined)}` : formatDate(job.assignment_date)}
+              {!isCurrent && job.start_time ? ` at ${job.start_time}` : ''}
+            </Text>
+          </View>
+        </View>
+
+        {showActions && job.accepted === null && (
+          <View style={styles.actionButtons}>
+            <TouchableOpacity
+              style={styles.declineButton}
+              onPress={() => respondToAssignment(false)}
+              disabled={respondingAssignment}
+            >
+              {respondingAssignment ? (
+                <ActivityIndicator size="small" color="#DC2626" />
+              ) : (
+                <>
+                  <Ionicons name="close-circle-outline" size={20} color="#DC2626" />
+                  <Text style={styles.declineButtonText}>Decline</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.acceptButton}
+              onPress={() => respondToAssignment(true)}
+              disabled={respondingAssignment}
+            >
+              {respondingAssignment ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" />
+                  <Text style={styles.acceptButtonText}>Accept Job</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    );
+  };
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -123,6 +225,8 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
       </View>
     );
   }
+
+  const hasAnyJobs = currentJob || upcomingJobs.length > 0;
 
   return (
     <ScrollView
@@ -134,10 +238,10 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
       {/* Clock Status Card */}
       <View style={styles.clockCard}>
         <View style={styles.clockHeader}>
-          <Ionicons 
-            name={clockStatus?.is_clocked_in ? 'time' : 'time-outline'} 
-            size={32} 
-            color={clockStatus?.is_clocked_in ? COLORS.success : COLORS.gray} 
+          <Ionicons
+            name={clockStatus?.is_clocked_in ? 'time' : 'time-outline'}
+            size={32}
+            color={clockStatus?.is_clocked_in ? COLORS.success : COLORS.gray}
           />
           <View style={styles.clockInfo}>
             <Text style={styles.clockStatus}>
@@ -150,7 +254,7 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
             )}
           </View>
         </View>
-        
+
         <TouchableOpacity
           style={[
             styles.clockButton,
@@ -171,100 +275,33 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
         </TouchableOpacity>
       </View>
 
-      {/* Current/Upcoming Job Assignment */}
-      <Text style={styles.sectionTitle}>My Assigned Jobs</Text>
-      
-      {assignment ? (
-        <View style={styles.jobCard}>
-          <View style={styles.jobHeader}>
-            <View style={styles.jobIconContainer}>
-              <Ionicons name="briefcase" size={24} color={COLORS.primary} />
-            </View>
-            <View style={styles.jobTitleContainer}>
-              <Text style={styles.jobSiteName}>{assignment.job_site_name}</Text>
-              {assignment.accepted === true && (
-                <View style={styles.acceptedBadge}>
-                  <Ionicons name="checkmark-circle" size={14} color="#059669" />
-                  <Text style={styles.badgeText}>Accepted</Text>
-                </View>
-              )}
-              {assignment.accepted === false && (
-                <View style={styles.declinedBadge}>
-                  <Ionicons name="close-circle" size={14} color="#DC2626" />
-                  <Text style={styles.declinedBadgeText}>Declined</Text>
-                </View>
-              )}
-              {assignment.accepted === null && (
-                <View style={styles.pendingBadge}>
-                  <Ionicons name="hourglass" size={14} color="#D97706" />
-                  <Text style={styles.pendingBadgeText}>Pending Response</Text>
-                </View>
-              )}
-            </View>
-          </View>
+      {currentJob && (
+        <>
+          <Text style={styles.sectionTitle}>Current Job</Text>
+          {renderJobCard(currentJob, { isCurrent: true })}
+        </>
+      )}
 
-          <View style={styles.jobDetails}>
-            {assignment.job_site_address && (
-              <View style={styles.detailRow}>
-                <Ionicons name="location-outline" size={18} color="#6B7280" />
-                <Text style={styles.detailText} numberOfLines={2}>
-                  {assignment.job_site_address}
-                </Text>
-              </View>
-            )}
-            
-            <View style={styles.detailRow}>
-              <Ionicons name="calendar-outline" size={18} color="#6B7280" />
-              <Text style={styles.detailText}>
-                {formatDate(assignment.assignment_date)}
-                {assignment.start_time ? ` at ${assignment.start_time}` : ''}
-              </Text>
-            </View>
-          </View>
-
-          {/* Accept/Decline buttons */}
-          {assignment.accepted === null && (
-            <View style={styles.actionButtons}>
-              <TouchableOpacity
-                style={styles.declineButton}
-                onPress={() => respondToAssignment(false)}
-                disabled={respondingAssignment}
-              >
-                {respondingAssignment ? (
-                  <ActivityIndicator size="small" color="#DC2626" />
-                ) : (
-                  <>
-                    <Ionicons name="close-circle-outline" size={20} color="#DC2626" />
-                    <Text style={styles.declineButtonText}>Decline</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={styles.acceptButton}
-                onPress={() => respondToAssignment(true)}
-                disabled={respondingAssignment}
-              >
-                {respondingAssignment ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <>
-                    <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" />
-                    <Text style={styles.acceptButtonText}>Accept Job</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      ) : (
-        <View style={styles.noJobsCard}>
-          <Ionicons name="briefcase-outline" size={48} color="#9CA3AF" />
-          <Text style={styles.noJobsText}>No jobs assigned</Text>
-          <Text style={styles.noJobsSubtext}>
-            You'll be notified when a job is assigned to you
+      {upcomingJobs.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>
+            {currentJob ? 'Upcoming Jobs' : 'My Assigned Jobs'}
           </Text>
-        </View>
+          {upcomingJobs.map(job => renderJobCard(job, { showActions: true }))}
+        </>
+      )}
+
+      {!hasAnyJobs && (
+        <>
+          <Text style={styles.sectionTitle}>My Assigned Jobs</Text>
+          <View style={styles.noJobsCard}>
+            <Ionicons name="briefcase-outline" size={48} color="#9CA3AF" />
+            <Text style={styles.noJobsText}>No jobs assigned</Text>
+            <Text style={styles.noJobsSubtext}>
+              You'll be notified when a job is assigned to you
+            </Text>
+          </View>
+        </>
       )}
 
       <View style={{ height: 40 }} />
@@ -342,6 +379,7 @@ const styles = StyleSheet.create({
   jobCard: {
     backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
+    marginBottom: 12,
     borderRadius: 16,
     padding: 16,
     shadowColor: '#000',
@@ -362,6 +400,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  jobIconCurrent: {
+    backgroundColor: '#D1FAE5',
+  },
   jobTitleContainer: {
     flex: 1,
     marginLeft: 12,
@@ -371,6 +412,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1F2937',
     marginBottom: 4,
+  },
+  currentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#D1FAE5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    gap: 4,
   },
   acceptedBadge: {
     flexDirection: 'row',
