@@ -661,18 +661,16 @@ async def admin_login(data: AdminLogin, request: Request):
 
 
 @router.get("/admin/verify")
-async def verify_admin_token(authorization: Optional[str] = Header(None), token: Optional[str] = None):
+async def verify_admin_token(authorization: Optional[str] = Header(None)):
     """Verify admin token is valid.
 
-    Prefers the Authorization: Bearer header so the token never lands in URLs /
-    access logs. The legacy ?token= query param is still accepted for backward
-    compatibility with older cached dashboards.
+    The token must be supplied via the Authorization: Bearer header so it never
+    lands in URLs / access logs / Referer. (The dashboard was updated to send the
+    header; the legacy ?token= query param is no longer accepted.)
     """
     tok = None
     if authorization and authorization.lower().startswith("bearer "):
         tok = authorization.split(" ", 1)[1].strip()
-    elif token:
-        tok = token
 
     if tok:
         try:

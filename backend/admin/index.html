@@ -1865,6 +1865,16 @@
                 .replace(/'/g, '&#39;');
         }
 
+        // Only allow genuine base64 image data URLs as an <img src>. Worker-supplied
+        // signatures are attacker-controllable, and HTML-escaping does NOT stop
+        // javascript:/data:text/html scheme injection — so allowlist the scheme.
+        function safeSignature(value) {
+            if (typeof value === 'string' && /^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=\s]+$/.test(value)) {
+                return value;
+            }
+            return '';
+        }
+
         // Look up a worker's display name by id (used by inline handlers instead of
         // embedding the raw name into onclick="" which is a JS-context XSS sink).
         function workerName(id) {
@@ -2405,9 +2415,9 @@
                                         <p class="text-sm"><strong>Company:</strong> ${esc(entry.company_name) || '-'}</p>
                                     </div>
                                     <div>
-                                        ${entry.supervisor_signature ? `
+                                        ${safeSignature(entry.supervisor_signature) ? `
                                             <p class="text-xs text-gray-500 mb-1">Signature:</p>
-                                            <img src="${esc(entry.supervisor_signature)}" alt="Supervisor Signature" class="signature-img border-2 border-green-300 rounded bg-white">
+                                            <img src="${safeSignature(entry.supervisor_signature)}" alt="Supervisor Signature" class="signature-img border-2 border-green-300 rounded bg-white">
                                         ` : '<p class="text-yellow-600 text-sm"><i class="fas fa-exclamation-triangle mr-1"></i>No signature captured</p>'}
                                     </div>
                                 </div>
@@ -2486,11 +2496,11 @@
                                 <p class="font-medium">${(ts.total_overtime_hours || 0).toFixed(2)}h</p>
                             </div>
                         </div>
-                        ${ts.supervisor_signature ? `
+                        ${safeSignature(ts.supervisor_signature) ? `
                             <div class="bg-gray-50 rounded-lg p-4 mb-4">
                                 <p class="text-sm text-gray-500 mb-2">Supervisor Approval</p>
                                 <p class="font-medium">${esc(ts.supervisor_name) || '-'} | ${esc(ts.supervisor_contact) || '-'}</p>
-                                <img src="${ts.supervisor_signature}" alt="Signature" class="signature-img mt-2">
+                                <img src="${safeSignature(ts.supervisor_signature)}" alt="Signature" class="signature-img mt-2">
                             </div>
                         ` : ''}
                     </div>

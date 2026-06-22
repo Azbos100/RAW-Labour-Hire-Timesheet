@@ -10,6 +10,7 @@ from datetime import datetime, date, timedelta
 from typing import Optional, List
 import asyncio
 import pytz
+import re
 
 from ..database import get_db
 
@@ -678,6 +679,12 @@ async def submit_entry(
     
     if entry.entry_status == "submitted":
         raise HTTPException(status_code=400, detail="Entry already submitted")
+    
+    # Reject anything that isn't a genuine base64 image data URL, so a malicious
+    # signature value can never become an XSS sink in the admin dashboard.
+    sig = request.supervisor_signature
+    if sig and not re.match(r"^data:image/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=\s]+$", sig):
+        raise HTTPException(status_code=400, detail="Invalid signature format")
     
     # Update entry with submission details
     entry.entry_status = "submitted"
