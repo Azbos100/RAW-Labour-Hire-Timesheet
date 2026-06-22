@@ -20,7 +20,7 @@ def get_melbourne_now():
     """Get current time in Melbourne, Australia (AEST/AEDT)"""
     return datetime.now(MELBOURNE_TZ)
 from ..models import User, Timesheet, TimesheetEntry, TimesheetStatus, InjuryStatus, Client, JobSite
-from .auth import get_current_user
+from .auth import get_current_user, resolve_user_id
 
 router = APIRouter()
 
@@ -654,6 +654,7 @@ async def submit_timesheet(
 async def submit_entry(
     entry_id: int,
     request: SubmitEntryRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """Submit an individual daily entry for approval"""
@@ -664,6 +665,16 @@ async def submit_entry(
     
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
+    
+    # Ownership: a worker may only submit entries on their own timesheet.
+    if not getattr(http_request.state, "is_admin", False):
+        owner_result = await db.execute(
+            select(Timesheet.worker_id).where(Timesheet.id == entry.timesheet_id)
+        )
+        owner_id = owner_result.scalar_one_or_none()
+        token_sub = getattr(http_request.state, "token_sub", None)
+        if owner_id is None or str(owner_id) != str(token_sub):
+            raise HTTPException(status_code=403, detail="You can only submit your own timesheet")
     
     if entry.entry_status == "submitted":
         raise HTTPException(status_code=400, detail="Entry already submitted")
@@ -929,21 +940,19 @@ async def send_entry_notification(
 
 @router.get("/")
 async def list_timesheets(
+    http_request: Request,
     status: Optional[str] = None,
     limit: int = 20,
     user_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db)
 ):
-    """List timesheets for the current user
-    TODO: Re-add authentication once token issue is fixed.
-    """
+    """List timesheets for the current user."""
     from sqlalchemy import func
     
-    # Use provided user_id or fall back to first user
-    if user_id:
-        result = await db.execute(select(User).where(User.id == user_id))
-    else:
-        result = await db.execute(select(User).limit(1))
+    uid = resolve_user_id(http_request, user_id)
+    if uid is None:
+        return {"timesheets": []}
+    result = await db.execute(select(User).where(User.id == uid))
     current_user = result.scalar_one_or_none()
     if not current_user:
         return {"timesheets": []}
@@ -958,7 +967,7 @@ async def list_timesheets(
         ).distinct()
         query = select(Timesheet).where(
             Timesheet.worker_id == current_user.id,
-            (Timesheet.status == TimesheetStatus.submitted) | (Timesheet.id.in_(subquery))
+            (Timesheet.status == TimesheetStatus.SUBMITTED) | (Timesheet.id.in_(subquery))
         )
     elif status == 'approved':
         # Get timesheets that are approved OR have approved entries
@@ -967,7 +976,7 @@ async def list_timesheets(
         ).distinct()
         query = select(Timesheet).where(
             Timesheet.worker_id == current_user.id,
-            (Timesheet.status == TimesheetStatus.approved) | (Timesheet.id.in_(subquery))
+            (Timesheet.status == TimesheetStatus.APPROVED) | (Timesheet.id.in_(subquery))
         )
     elif status:
         query = query.where(Timesheet.status == TimesheetStatus(status))

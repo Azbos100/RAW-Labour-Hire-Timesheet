@@ -670,6 +670,20 @@ async def require_authentication(request: Request, call_next):
         qs_uid = request.query_params.get("user_id")
         if qs_uid is not None and str(qs_uid) != str(sub):
             return _auth_deny("You can only access your own data", status_code=403)
+        # Also guard user_id supplied in a JSON body (clock in/out, overtime-mode,
+        # profile updates, etc.). Reading the body here caches it so the route
+        # handler can still parse it normally.
+        if method in ("POST", "PUT", "PATCH") and "application/json" in request.headers.get("content-type", ""):
+            try:
+                raw = await request.body()
+                if raw:
+                    import json as _json
+                    parsed = _json.loads(raw)
+                    body_uid = parsed.get("user_id") if isinstance(parsed, dict) else None
+                    if body_uid is not None and str(body_uid) != str(sub):
+                        return _auth_deny("You can only access your own data", status_code=403)
+            except Exception:
+                pass  # malformed body — let the route handler reject it
 
     return await call_next(request)
 

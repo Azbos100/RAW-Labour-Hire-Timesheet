@@ -2,7 +2,7 @@
 RAW Labour Hire - Tickets/Certifications API
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -11,6 +11,7 @@ from typing import Optional, List
 
 from ..database import get_db
 from ..models import User, TicketType, UserTicket
+from .auth import resolve_user_id
 
 router = APIRouter()
 
@@ -87,15 +88,15 @@ async def get_ticket_types(
 
 @router.get("/my-tickets")
 async def get_my_tickets(
+    http_request: Request,
     user_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db)
 ):
     """Get current user's tickets"""
-    # Use provided user_id or fall back to first user (temp auth bypass)
-    if user_id:
-        result = await db.execute(select(User).where(User.id == user_id))
-    else:
-        result = await db.execute(select(User).limit(1))
+    uid = resolve_user_id(http_request, user_id)
+    if uid is None:
+        return {"tickets": []}
+    result = await db.execute(select(User).where(User.id == uid))
     current_user = result.scalar_one_or_none()
     
     if not current_user:
@@ -147,15 +148,15 @@ async def get_my_tickets(
 @router.post("/upload")
 async def upload_ticket(
     request: UploadTicketRequest,
+    http_request: Request,
     user_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db)
 ):
     """Upload a new ticket/certification"""
-    # Use provided user_id or fall back to first user (temp auth bypass)
-    if user_id:
-        result = await db.execute(select(User).where(User.id == user_id))
-    else:
-        result = await db.execute(select(User).limit(1))
+    uid = resolve_user_id(http_request, user_id)
+    if uid is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    result = await db.execute(select(User).where(User.id == uid))
     current_user = result.scalar_one_or_none()
     
     if not current_user:
@@ -232,15 +233,15 @@ async def upload_ticket(
 @router.delete("/{ticket_id}")
 async def delete_ticket(
     ticket_id: int,
+    http_request: Request,
     user_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db)
 ):
     """Delete a user's ticket"""
-    # Use provided user_id or fall back to first user (temp auth bypass)
-    if user_id:
-        result = await db.execute(select(User).where(User.id == user_id))
-    else:
-        result = await db.execute(select(User).limit(1))
+    uid = resolve_user_id(http_request, user_id)
+    if uid is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    result = await db.execute(select(User).where(User.id == uid))
     current_user = result.scalar_one_or_none()
     
     if not current_user:

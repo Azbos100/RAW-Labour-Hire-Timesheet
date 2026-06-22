@@ -23,11 +23,34 @@ from ..services.sms import send_sms
 router = APIRouter()
 
 # Security config - use environment variables in production
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "raw-labour-hire-dev-key-change-in-production-abc123xyz")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "JWT_SECRET_KEY environment variable must be set. Refusing to start with "
+        "a default signing key."
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 90  # 90 days (field workers rarely log out)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def resolve_user_id(http_request: Request, user_id: Optional[int]) -> Optional[int]:
+    """Resolve which user a request acts on.
+
+    Prefer an explicit user_id (the auth middleware already guarantees a non-admin
+    can only pass its own id), otherwise fall back to the authenticated token
+    subject. Never falls back to an arbitrary "first user" in the database.
+    Returns None if the caller cannot be identified (e.g. an admin token with no
+    explicit user_id on a worker-scoped endpoint).
+    """
+    if user_id is not None:
+        return user_id
+    sub = getattr(http_request.state, "token_sub", None)
+    try:
+        return int(sub)
+    except (TypeError, ValueError):
+        return None
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
@@ -359,15 +382,15 @@ def user_to_dict(user: User) -> dict:
 @router.patch("/update-profile")
 async def update_profile(
     data: UpdateProfileRequest,
+    http_request: Request,
     user_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db)
 ):
     """Update user profile information"""
-    # Use provided user_id or fall back to first user (temp auth bypass)
-    if user_id:
-        result = await db.execute(select(User).where(User.id == user_id))
-    else:
-        result = await db.execute(select(User).limit(1))
+    uid = resolve_user_id(http_request, user_id)
+    if uid is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    result = await db.execute(select(User).where(User.id == uid))
     user = result.scalar_one_or_none()
     
     if not user:
@@ -437,15 +460,15 @@ async def update_profile(
 @router.post("/change-password")
 async def change_password(
     data: ChangePasswordRequest,
+    http_request: Request,
     user_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db)
 ):
     """Change user password"""
-    # Use provided user_id or fall back to first user (temp auth bypass)
-    if user_id:
-        result = await db.execute(select(User).where(User.id == user_id))
-    else:
-        result = await db.execute(select(User).limit(1))
+    uid = resolve_user_id(http_request, user_id)
+    if uid is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    result = await db.execute(select(User).where(User.id == uid))
     user = result.scalar_one_or_none()
     
     if not user:
@@ -575,10 +598,14 @@ class AdminLogin(BaseModel):
 async def admin_login(data: AdminLogin, request: Request):
     """Login endpoint for admin dashboard"""
     ip = _check_login_throttle(request)
-    # Get admin credentials from environment variables
-    # Default credentials for development - CHANGE IN PRODUCTION
-    admin_username = os.getenv("ADMIN_USERNAME", "admin")
-    admin_password = os.getenv("ADMIN_PASSWORD", "RAWadmin2024!")
+    # Admin credentials must be configured via environment variables — no defaults.
+    admin_username = os.getenv("ADMIN_USERNAME")
+    admin_password = os.getenv("ADMIN_PASSWORD")
+    if not admin_username or not admin_password:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Admin login is not configured",
+        )
     
     if data.username == admin_username and data.password == admin_password:
         _record_login_success(ip)

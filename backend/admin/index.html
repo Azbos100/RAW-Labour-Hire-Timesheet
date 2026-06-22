@@ -1851,6 +1851,26 @@
         let allClients = [];
         let allJobSites = [];
         let allTickets = [];
+
+        // Escape user-supplied text before injecting into innerHTML to prevent
+        // stored XSS (worker names, comments, supervisor details, etc. are all
+        // attacker-controllable via self-registration / timesheet submission).
+        function esc(value) {
+            if (value === null || value === undefined) return '';
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        // Look up a worker's display name by id (used by inline handlers instead of
+        // embedding the raw name into onclick="" which is a JS-context XSS sink).
+        function workerName(id) {
+            const w = (allWorkers || []).find(x => x.id === id);
+            return w ? `${w.first_name} ${w.surname}` : '';
+        }
         
         // Helper function for authenticated API calls
         function getAuthHeaders() {
@@ -2335,7 +2355,7 @@
                             </div>
                             <div>
                                 <p class="text-gray-500">Role</p>
-                                <p>${entry.worked_as || '-'}</p>
+                                <p>${esc(entry.worked_as) || '-'}</p>
                             </div>
                             <div>
                                 <p class="text-gray-500">Job Site</p>
@@ -2380,14 +2400,14 @@
                                 <p class="text-xs font-semibold text-green-700 mb-2"><i class="fas fa-user-check mr-1"></i>SUPERVISOR SIGN-OFF</p>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     <div>
-                                        <p class="text-sm"><strong>Name:</strong> ${entry.supervisor_name}</p>
-                                        <p class="text-sm"><strong>Contact:</strong> ${entry.supervisor_contact || '-'}</p>
-                                        <p class="text-sm"><strong>Company:</strong> ${entry.company_name || '-'}</p>
+                                        <p class="text-sm"><strong>Name:</strong> ${esc(entry.supervisor_name)}</p>
+                                        <p class="text-sm"><strong>Contact:</strong> ${esc(entry.supervisor_contact) || '-'}</p>
+                                        <p class="text-sm"><strong>Company:</strong> ${esc(entry.company_name) || '-'}</p>
                                     </div>
                                     <div>
                                         ${entry.supervisor_signature ? `
                                             <p class="text-xs text-gray-500 mb-1">Signature:</p>
-                                            <img src="${entry.supervisor_signature}" alt="Supervisor Signature" class="signature-img border-2 border-green-300 rounded bg-white">
+                                            <img src="${esc(entry.supervisor_signature)}" alt="Supervisor Signature" class="signature-img border-2 border-green-300 rounded bg-white">
                                         ` : '<p class="text-yellow-600 text-sm"><i class="fas fa-exclamation-triangle mr-1"></i>No signature captured</p>'}
                                     </div>
                                 </div>
@@ -2400,7 +2420,7 @@
                         
                         ${entry.comments ? `
                             <div class="mt-2 text-sm text-gray-600 bg-gray-50 p-2 rounded">
-                                <i class="fas fa-comment-alt mr-1"></i> ${entry.comments}
+                                <i class="fas fa-comment-alt mr-1"></i> ${esc(entry.comments)}
                             </div>
                         ` : ''}
                         
@@ -2469,7 +2489,7 @@
                         ${ts.supervisor_signature ? `
                             <div class="bg-gray-50 rounded-lg p-4 mb-4">
                                 <p class="text-sm text-gray-500 mb-2">Supervisor Approval</p>
-                                <p class="font-medium">${ts.supervisor_name || '-'} | ${ts.supervisor_contact || '-'}</p>
+                                <p class="font-medium">${esc(ts.supervisor_name) || '-'} | ${esc(ts.supervisor_contact) || '-'}</p>
                                 <img src="${ts.supervisor_signature}" alt="Signature" class="signature-img mt-2">
                             </div>
                         ` : ''}
@@ -3100,7 +3120,7 @@
 
         async function loadWorkers() {
             try {
-                const response = await authFetch(`${API_BASE}/users/admin/workers`);
+                const response = await authFetch(`${API_BASE}/users/admin/workers?active_only=false`);
                 const data = await response.json();
                 allWorkers = data.workers || [];
                 renderWorkers();
@@ -3197,10 +3217,10 @@
                 <tr class="hover:bg-gray-50">
                     <td class="px-4 py-3">
                         <div class="flex items-center gap-2">
-                            <button onclick="openWorkerHistory(${w.id})" class="font-medium text-blue-700 hover:text-blue-900 hover:underline text-left" title="View allocation history & reliability">${w.first_name} ${w.surname}</button>
+                            <button onclick="openWorkerHistory(${w.id})" class="font-medium text-blue-700 hover:text-blue-900 hover:underline text-left" title="View allocation history & reliability">${esc(w.first_name)} ${esc(w.surname)}</button>
                             ${pushStatusHtml}
                         </div>
-                        <div class="text-xs text-gray-500">${w.email}</div>
+                        <div class="text-xs text-gray-500">${esc(w.email)}</div>
                         ${(w.base_pay_rate > 0 || w.overtime_pay_rate > 0 || w.weekend_pay_rate > 0 || w.night_pay_rate > 0)
                             ? `<div class="text-xs text-green-700 mt-0.5"><i class="fas fa-dollar-sign mr-1"></i>$${(w.base_pay_rate||0).toFixed(2)} ord · $${(w.overtime_pay_rate||0).toFixed(2)} OT</div>`
                             : `<div class="text-xs text-amber-600 mt-0.5"><i class="fas fa-exclamation-triangle mr-1"></i>No pay rate set</div>`}
@@ -3208,7 +3228,7 @@
                             ? `<div class="text-xs text-green-600 mt-0.5"><i class="fas fa-truck mr-1"></i>${w.travel_allowance > 0 ? '$' + (w.travel_allowance||0).toFixed(2) + '/day travel' : ''}${(w.travel_allowance > 0 && w.demo_allowance > 0) ? ' · ' : ''}${w.demo_allowance > 0 ? '$' + (w.demo_allowance||0).toFixed(2) + '/hr demo' : ''}</div>`
                             : ''}
                     </td>
-                    <td class="px-4 py-3">${w.phone || '-'}</td>
+                    <td class="px-4 py-3">${esc(w.phone) || '-'}</td>
                     <td class="px-4 py-3">${assignedJobHtml}</td>
                     <td class="px-4 py-3">${acceptedHtml}</td>
                     <td class="px-4 py-3">${clockStatusHtml}</td>
@@ -3222,14 +3242,14 @@
                         <button onclick="viewWorker(${w.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit Worker">
                             <i class="fas fa-edit"></i>
                         </button>
-                        <button onclick="assignJob(${w.id}, '${w.first_name} ${w.surname}')" class="text-orange-600 hover:text-orange-800 mr-2" title="Assign Job">
+                        <button onclick="assignJob(${w.id}, workerName(${w.id}))" class="text-orange-600 hover:text-orange-800 mr-2" title="Assign Job">
                             <i class="fas fa-briefcase"></i>
                         </button>
-                        <button onclick="editSchedule(${w.id}, '${w.first_name} ${w.surname}')" class="text-purple-600 hover:text-purple-800 mr-2" title="Shift Schedule">
+                        <button onclick="editSchedule(${w.id}, workerName(${w.id}))" class="text-purple-600 hover:text-purple-800 mr-2" title="Shift Schedule">
                             <i class="fas fa-clock"></i>
                         </button>
                         ${w.is_clocked_in ? `
-                            <button onclick="forceClockOut(${w.id}, '${w.first_name} ${w.surname}')" class="text-yellow-600 hover:text-yellow-800 mr-2" title="Force Clock Out">
+                            <button onclick="forceClockOut(${w.id}, workerName(${w.id}))" class="text-yellow-600 hover:text-yellow-800 mr-2" title="Force Clock Out">
                                 <i class="fas fa-sign-out-alt"></i>
                             </button>
                         ` : ''}
@@ -3250,7 +3270,7 @@
         function populateWorkerFilter() {
             const select = document.getElementById('filter-worker');
             select.innerHTML = '<option value="">All Workers</option>' +
-                allWorkers.map(w => `<option value="${w.id}">${w.first_name} ${w.surname}</option>`).join('');
+                allWorkers.map(w => `<option value="${w.id}">${esc(w.first_name)} ${esc(w.surname)}</option>`).join('');
         }
 
         async function editSchedule(workerId, workerName) {
@@ -4045,9 +4065,9 @@
                 <div class="p-4 hover:bg-gray-50 ${js.is_active ? '' : 'bg-gray-50/60'}">
                     <div class="flex justify-between items-start">
                         <div class="flex-1">
-                            <div class="font-medium ${js.is_active ? '' : 'text-gray-400'}">${js.name}</div>
-                            <div class="text-sm text-blue-600">${js.client_name || '-'}</div>
-                            <div class="text-sm text-gray-500">${js.address}</div>
+                            <div class="font-medium ${js.is_active ? '' : 'text-gray-400'}">${esc(js.name)}</div>
+                            <div class="text-sm text-blue-600">${esc(js.client_name) || '-'}</div>
+                            <div class="text-sm text-gray-500">${esc(js.address)}</div>
                             <div class="mt-1">
                                 ${js.latitude && js.longitude 
                                     ? `<span class="text-xs text-green-600"><i class="fas fa-map-marker-alt mr-1"></i>GPS: ${js.latitude.toFixed(4)}, ${js.longitude.toFixed(4)}</span>`
@@ -4496,7 +4516,7 @@
             if (select && allWorkers.length > 0) {
                 const current = select.value;
                 select.innerHTML = '<option value="">All Workers</option>' +
-                    allWorkers.map(w => `<option value="${w.id}">${w.first_name} ${w.surname}</option>`).join('');
+                    allWorkers.map(w => `<option value="${w.id}">${esc(w.first_name)} ${esc(w.surname)}</option>`).join('');
                 select.value = current;
             }
         }
@@ -5135,14 +5155,14 @@
 
         function populateSMSWorkerSelect() {
             const container = document.getElementById('worker-checkboxes');
-            const workersWithPhone = allWorkers.filter(w => w.phone);
+            const workersWithPhone = allWorkers.filter(w => w.phone && w.is_active);
             
             if (container && workersWithPhone.length > 0) {
                 container.innerHTML = workersWithPhone.map(w => `
                     <label class="flex items-center gap-2 p-2 hover:bg-white rounded cursor-pointer">
-                        <input type="checkbox" class="worker-checkbox w-4 h-4 text-blue-600 rounded" data-worker-id="${w.id}" data-worker-name="${w.first_name} ${w.surname}">
-                        <span class="flex-1">${w.first_name} ${w.surname}</span>
-                        <span class="text-gray-500 text-sm">${w.phone}</span>
+                        <input type="checkbox" class="worker-checkbox w-4 h-4 text-blue-600 rounded" data-worker-id="${w.id}" data-worker-name="${esc(w.first_name)} ${esc(w.surname)}">
+                        <span class="flex-1">${esc(w.first_name)} ${esc(w.surname)}</span>
+                        <span class="text-gray-500 text-sm">${esc(w.phone)}</span>
                     </label>
                 `).join('');
                 
@@ -5673,7 +5693,7 @@
             if (ws && allWorkers.length) {
                 ws.innerHTML = '<option value="">All workers</option>' +
                     [...allWorkers].sort((a, b) => (`${a.first_name} ${a.surname}`).localeCompare(`${b.first_name} ${b.surname}`))
-                        .map(w => `<option value="${w.id}" ${String(w.id) === String(calFilterWorker) ? 'selected' : ''}>${w.first_name} ${w.surname}</option>`).join('');
+                        .map(w => `<option value="${w.id}" ${String(w.id) === String(calFilterWorker) ? 'selected' : ''}>${esc(w.first_name)} ${esc(w.surname)}</option>`).join('');
             }
             if (cs && allClients.length) {
                 cs.innerHTML = '<option value="">All clients</option>' +
@@ -5910,7 +5930,7 @@
             const sel = document.getElementById('att-worker');
             sel.innerHTML = '<option value="">Select worker…</option>' +
                 [...allWorkers].sort((a, b) => (`${a.first_name} ${a.surname}`).localeCompare(`${b.first_name} ${b.surname}`))
-                    .map(w => `<option value="${w.id}" ${String(w.id) === String(calFilterWorker) ? 'selected' : ''}>${w.first_name} ${w.surname}</option>`).join('');
+                    .map(w => `<option value="${w.id}" ${String(w.id) === String(calFilterWorker) ? 'selected' : ''}>${esc(w.first_name)} ${esc(w.surname)}</option>`).join('');
             document.getElementById('att-date').value = calSelectedDate || new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Melbourne' });
             document.querySelector('input[name="att-type"][value="sick"]').checked = true;
             document.getElementById('att-note').value = '';
@@ -6213,13 +6233,12 @@
                     const foreman = j.contact_name
                         ? `${j.contact_name}${j.contact_phone ? '<div class="text-xs text-gray-400">' + j.contact_phone + '</div>' : ''}`
                         : '<span class="text-gray-400">—</span>';
-                    const wname = `${w.first_name} ${w.surname}`.replace(/'/g, "\\'");
                     const missingTicket = !workerHasRequiredTickets(w.id, ticketMap)
                         ? '<div class="text-xs text-red-600 mt-1"><i class="fas fa-triangle-exclamation mr-1"></i>Missing required ticket</div>'
                         : '';
                     return `
                         <tr class="hover:bg-gray-50">
-                            <td class="px-4 py-3 font-medium">${w.first_name} ${w.surname}${missingTicket}</td>
+                            <td class="px-4 py-3 font-medium">${esc(w.first_name)} ${esc(w.surname)}${missingTicket}</td>
                             <td class="px-4 py-3">
                                 <div class="text-sm font-medium text-blue-700">${j.client_name || '-'}</div>
                                 <div class="text-xs text-gray-600">${j.job_site_name || ''}</div>
@@ -6230,8 +6249,8 @@
                             <td class="px-4 py-3">${accepted}</td>
                             <td class="px-4 py-3">${clocked}</td>
                             <td class="px-4 py-3 whitespace-nowrap">
-                                <button onclick="assignJob(${w.id}, '${wname}', '${selDate}')" class="text-orange-600 hover:text-orange-800 mr-3" title="Reassign / edit"><i class="fas fa-briefcase"></i></button>
-                                <button onclick="clearAssignmentFor(${w.id}, '${wname}')" class="text-red-600 hover:text-red-800" title="Clear assignment"><i class="fas fa-trash"></i></button>
+                                <button onclick="assignJob(${w.id}, workerName(${w.id}), '${selDate}')" class="text-orange-600 hover:text-orange-800 mr-3" title="Reassign / edit"><i class="fas fa-briefcase"></i></button>
+                                <button onclick="clearAssignmentFor(${w.id}, workerName(${w.id}))" class="text-red-600 hover:text-red-800" title="Clear assignment"><i class="fas fa-trash"></i></button>
                             </td>
                         </tr>`;
                 }).join('');
@@ -6249,17 +6268,16 @@
             }
             qualifiedUnallocated.sort((a, b) => `${a.first_name} ${a.surname}`.toLowerCase().localeCompare(`${b.first_name} ${b.surname}`.toLowerCase()));
             unEl.innerHTML = qualifiedUnallocated.map(w => {
-                const wname = `${w.first_name} ${w.surname}`.replace(/'/g, "\\'");
                 const otherDay = (w.assigned_job && w.assigned_job.assignment_date)
-                    ? `<div class="text-xs text-gray-400">on ${w.assigned_job.assignment_date}: ${w.assigned_job.client_name || w.assigned_job.job_site_name || 'assigned'}</div>`
+                    ? `<div class="text-xs text-gray-400">on ${esc(w.assigned_job.assignment_date)}: ${esc(w.assigned_job.client_name || w.assigned_job.job_site_name || 'assigned')}</div>`
                     : '';
                 return `
                     <div class="flex items-center justify-between border rounded-lg px-3 py-2">
                         <div>
-                            <div class="text-sm font-medium">${w.first_name} ${w.surname}</div>
+                            <div class="text-sm font-medium">${esc(w.first_name)} ${esc(w.surname)}</div>
                             ${otherDay}
                         </div>
-                        <button onclick="assignJob(${w.id}, '${wname}', '${selDate}')" class="px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 whitespace-nowrap">
+                        <button onclick="assignJob(${w.id}, workerName(${w.id}), '${selDate}')" class="px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 whitespace-nowrap">
                             <i class="fas fa-plus mr-1"></i>Assign
                         </button>
                     </div>`;
@@ -6277,19 +6295,18 @@
                             <p class="text-sm text-amber-700 mb-2">These are from past days and are cluttering the worker list. Edit to reschedule, or delete once handled.</p>
                             <div class="space-y-2">
                                 ${stale.map(w => {
-                                    const wname = `${w.first_name} ${w.surname}`.replace(/'/g, "\\'");
                                     const j = w.assigned_job;
-                                    const jobInfo = `${j.client_name || j.job_site_name || 'Assigned'}${j.start_time ? ' @ ' + j.start_time : ''}`;
+                                    const jobInfo = `${esc(j.client_name || j.job_site_name || 'Assigned')}${j.start_time ? ' @ ' + esc(j.start_time) : ''}`;
                                     return `<div class="flex items-center justify-between bg-white border border-amber-300 rounded-lg px-3 py-2">
                                         <div>
-                                            <div class="text-sm font-medium text-gray-800">${w.first_name} ${w.surname}</div>
-                                            <div class="text-xs text-gray-500">${jobInfo} <span class="text-gray-400">(${j.assignment_date})</span></div>
+                                            <div class="text-sm font-medium text-gray-800">${esc(w.first_name)} ${esc(w.surname)}</div>
+                                            <div class="text-xs text-gray-500">${jobInfo} <span class="text-gray-400">(${esc(j.assignment_date)})</span></div>
                                         </div>
                                         <div class="flex items-center gap-2 whitespace-nowrap">
-                                            <button onclick="assignJob(${w.id}, '${wname}')" class="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-medium hover:bg-orange-200">
+                                            <button onclick="assignJob(${w.id}, workerName(${w.id}))" class="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-medium hover:bg-orange-200">
                                                 <i class="fas fa-pen mr-1"></i>Edit
                                             </button>
-                                            <button onclick="clearAssignmentFor(${w.id}, '${wname}')" class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium hover:bg-red-200">
+                                            <button onclick="clearAssignmentFor(${w.id}, workerName(${w.id}))" class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium hover:bg-red-200">
                                                 <i class="fas fa-trash mr-1"></i>Delete
                                             </button>
                                         </div>

@@ -3,7 +3,7 @@ RAW Labour Hire - Clock In/Out API
 GPS-enabled time tracking
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -22,7 +22,7 @@ def get_melbourne_now():
     """Get current time in Melbourne, Australia (AEST/AEDT)"""
     return datetime.now(MELBOURNE_TZ)
 from ..models import User, TimesheetEntry, Timesheet, JobSite, Client, TimesheetStatus
-from .auth import get_current_user
+from .auth import get_current_user, resolve_user_id
 
 router = APIRouter()
 
@@ -127,18 +127,17 @@ def get_week_dates(d: date) -> tuple[date, date]:
 
 @router.get("/status", response_model=ClockStatusResponse)
 async def get_clock_status(
+    http_request: Request,
     user_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get current clock status for the user including weekly stats.
-    TODO: Re-add user authentication once token issue is fixed.
     """
-    # Use provided user_id or fall back to first user
-    if user_id:
-        result = await db.execute(select(User).where(User.id == user_id))
-    else:
-        result = await db.execute(select(User).limit(1))
+    uid = resolve_user_id(http_request, user_id)
+    if uid is None:
+        return ClockStatusResponse(is_clocked_in=False, hours_worked_today=0)
+    result = await db.execute(select(User).where(User.id == uid))
     current_user = result.scalar_one_or_none()
     if not current_user:
         return ClockStatusResponse(is_clocked_in=False, hours_worked_today=0)
@@ -217,17 +216,17 @@ async def get_clock_status(
 @router.post("/overtime-mode")
 async def toggle_overtime_mode(
     request: OvertimeModeRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """
     Toggle overtime mode for the current active timesheet entry.
     When overtime mode is enabled, clock-out reminders are suppressed.
     """
-    # Use provided user_id or fall back to first user
-    if request.user_id:
-        result = await db.execute(select(User).where(User.id == request.user_id))
-    else:
-        result = await db.execute(select(User).limit(1))
+    uid = resolve_user_id(http_request, request.user_id)
+    if uid is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    result = await db.execute(select(User).where(User.id == uid))
     current_user = result.scalar_one_or_none()
     if not current_user:
         raise HTTPException(status_code=400, detail="No user found")
@@ -270,18 +269,17 @@ async def toggle_overtime_mode(
 @router.post("/in")
 async def clock_in(
     request: ClockInRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """
     Clock in at a job site with GPS location.
     Creates or updates the timesheet entry for today.
-    TODO: Re-add authentication once token issue is fixed.
     """
-    # Use provided user_id or fall back to first user
-    if request.user_id:
-        result = await db.execute(select(User).where(User.id == request.user_id))
-    else:
-        result = await db.execute(select(User).limit(1))
+    uid = resolve_user_id(http_request, request.user_id)
+    if uid is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    result = await db.execute(select(User).where(User.id == uid))
     current_user = result.scalar_one_or_none()
     if not current_user:
         raise HTTPException(status_code=400, detail="No user found")
@@ -491,18 +489,17 @@ async def clock_in(
 @router.post("/out")
 async def clock_out(
     request: ClockOutRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """
     Clock out from current job with GPS location.
     Calculates hours worked and updates timesheet.
-    TODO: Re-add authentication once token issue is fixed.
     """
-    # Use provided user_id or fall back to first user
-    if request.user_id:
-        result = await db.execute(select(User).where(User.id == request.user_id))
-    else:
-        result = await db.execute(select(User).limit(1))
+    uid = resolve_user_id(http_request, request.user_id)
+    if uid is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    result = await db.execute(select(User).where(User.id == uid))
     current_user = result.scalar_one_or_none()
     if not current_user:
         raise HTTPException(status_code=400, detail="No user found")
@@ -650,6 +647,7 @@ async def clock_out(
 
 @router.get("/check-overtime")
 async def check_overtime_prompt(
+    http_request: Request,
     user_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db)
 ):
@@ -657,10 +655,10 @@ async def check_overtime_prompt(
     Check if the worker should be prompted for overtime when clocking out.
     Returns whether current time is past their assigned shift end time.
     """
-    if user_id:
-        result = await db.execute(select(User).where(User.id == user_id))
-    else:
-        result = await db.execute(select(User).limit(1))
+    uid = resolve_user_id(http_request, user_id)
+    if uid is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    result = await db.execute(select(User).where(User.id == uid))
     current_user = result.scalar_one_or_none()
     
     if not current_user:

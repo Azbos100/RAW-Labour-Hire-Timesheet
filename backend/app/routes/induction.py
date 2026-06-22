@@ -2,7 +2,7 @@
 RAW Labour Hire - Induction/SWMS API
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -14,6 +14,7 @@ import uuid
 
 from ..database import get_db
 from ..models import User, InductionDocument, UserInduction
+from .auth import resolve_user_id
 
 router = APIRouter()
 
@@ -101,15 +102,15 @@ async def get_pdf_file(filename: str):
 
 @router.get("/status")
 async def get_induction_status(
+    http_request: Request,
     user_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db)
 ):
     """Get user's induction progress"""
-    # Use provided user_id or fall back to first user (temp auth bypass)
-    if user_id:
-        result = await db.execute(select(User).where(User.id == user_id))
-    else:
-        result = await db.execute(select(User).limit(1))
+    uid = resolve_user_id(http_request, user_id)
+    if uid is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    result = await db.execute(select(User).where(User.id == uid))
     current_user = result.scalar_one_or_none()
     
     if not current_user:
@@ -174,15 +175,15 @@ async def get_induction_status(
 @router.post("/sign")
 async def sign_document(
     request: SignDocumentRequest,
+    http_request: Request,
     user_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db)
 ):
     """Sign an induction document"""
-    # Use provided user_id or fall back to first user (temp auth bypass)
-    if user_id:
-        result = await db.execute(select(User).where(User.id == user_id))
-    else:
-        result = await db.execute(select(User).limit(1))
+    uid = resolve_user_id(http_request, user_id)
+    if uid is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    result = await db.execute(select(User).where(User.id == uid))
     current_user = result.scalar_one_or_none()
     
     if not current_user:
