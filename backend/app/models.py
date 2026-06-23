@@ -7,7 +7,7 @@ from datetime import datetime, date, time
 from typing import Optional, List
 from sqlalchemy import (
     Column, Integer, String, Float, Boolean, DateTime, Date, Time,
-    ForeignKey, Text, Enum as SQLEnum
+    ForeignKey, Text, Enum as SQLEnum, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from enum import Enum
@@ -140,6 +140,34 @@ class User(Base):
     supervised_timesheets = relationship("Timesheet", back_populates="supervisor", 
                                          foreign_keys="Timesheet.supervisor_id")
     assigned_job_site = relationship("JobSite", foreign_keys=[assigned_job_site_id])
+    job_assignments = relationship(
+        "WorkerAssignment",
+        back_populates="worker",
+        cascade="all, delete-orphan",
+        foreign_keys="WorkerAssignment.worker_id",
+    )
+
+
+class WorkerAssignment(Base):
+    """One allocated job per worker per calendar day (source of truth for rosters)."""
+    __tablename__ = "worker_assignments"
+    __table_args__ = (
+        UniqueConstraint("worker_id", "assignment_date", name="uq_worker_assignment_date"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    worker_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_site_id = Column(Integer, ForeignKey("job_sites.id"), nullable=False)
+    assignment_date = Column(Date, nullable=False)
+    start_time = Column(String(10))
+    end_time = Column(String(10))
+    contact_name = Column(String(100))
+    contact_phone = Column(String(30))
+    accepted = Column(Boolean)  # True=accepted, False=declined, None=pending
+    assigned_at = Column(DateTime, default=datetime.utcnow)
+
+    worker = relationship("User", back_populates="job_assignments", foreign_keys=[worker_id])
+    job_site = relationship("JobSite")
 
 
 # ==================== CLIENTS ====================

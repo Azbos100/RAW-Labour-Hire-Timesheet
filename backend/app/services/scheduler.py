@@ -192,7 +192,7 @@ async def notify_unaccepted_allocations():
     """
     from ..database import AsyncSessionLocal
     from sqlalchemy import select, func, or_
-    from ..models import User, NotificationSettings
+    from ..models import User, NotificationSettings, WorkerAssignment
 
     tomorrow = (datetime.now(TIMEZONE) + timedelta(days=1)).date()
     print(f"[Scheduler] Running unaccepted-allocation notice for {tomorrow}")
@@ -224,22 +224,23 @@ async def notify_unaccepted_allocations():
 
             # Active workers assigned for tomorrow who haven't accepted yet.
             rows = (await db.execute(
-                select(User).where(
+                select(User, WorkerAssignment)
+                .join(WorkerAssignment, WorkerAssignment.worker_id == User.id)
+                .where(
                     User.is_active == True,  # noqa: E712
-                    User.assigned_job_site_id.isnot(None),
-                    User.assignment_date == tomorrow,
+                    WorkerAssignment.assignment_date == tomorrow,
                     or_(
-                        User.assignment_accepted.is_(None),
-                        User.assignment_accepted.is_(False),
+                        WorkerAssignment.accepted.is_(None),
+                        WorkerAssignment.accepted.is_(False),
                     ),
                 ).order_by(User.surname, User.first_name)
-            )).scalars().all()
+            )).all()
 
             date_label = tomorrow.strftime("%a %d %b")
             if rows:
                 lines = []
-                for w in rows:
-                    status = "declined" if w.assignment_accepted is False else "pending"
+                for w, wa in rows:
+                    status = "declined" if wa.accepted is False else "pending"
                     lines.append(f"{w.first_name} {w.surname} ({status})")
                 title = f"{len(rows)} not accepted for tomorrow"
                 body = f"{date_label} — not accepted:\n" + "\n".join(lines)
@@ -263,7 +264,7 @@ async def send_roster_digest():
     """
     from ..database import AsyncSessionLocal
     from sqlalchemy import select
-    from ..models import User, NotificationSettings, UserRole, JobSite, Client
+    from ..models import User, NotificationSettings, UserRole, JobSite, Client, WorkerAssignment
 
     tomorrow = (datetime.now(TIMEZONE) + timedelta(days=1)).date()
     print(f"[Scheduler] Running roster digest for {tomorrow}")
@@ -289,42 +290,51 @@ async def send_roster_digest():
                 ).order_by(User.surname, User.first_name)
             )).scalars().all()
 
-            out, available = [], []
-            for w in workers:
-                if w.assigned_job_site_id is not None and w.assignment_date == tomorrow:
-                    out.append(w)
-                else:
-                    available.append(w)
+            assignment_rows = (await db.execute(
+                select(WorkerAssignment, User)
+                .join(User, WorkerAssignment.worker_id == User.id)
+                .where(
+                    WorkerAssignment.assignment_date == tomorrow,
+                    User.is_active == True,  # noqa: E712
+                )
+            )).all()
 
-            # Look up job-site + client names for the allocated workers so the
-            # message mirrors the "Next Day" allocation page.
-            site_ids = list({w.assigned_job_site_id for w in out if w.assigned_job_site_id})
+            assigned_worker_ids = {u.id for _, u in assignment_rows}
+            out = [u for u in workers if u.id in assigned_worker_ids]
+            available = [u for u in workers if u.id not in assigned_worker_ids]
+
+            site_ids = list({wa.job_site_id for wa, _ in assignment_rows})
             sites_map = {}
             if site_ids:
-                rows = (await db.execute(
+                site_rows = (await db.execute(
                     select(JobSite, Client.name)
                     .outerjoin(Client, JobSite.client_id == Client.id)
                     .where(JobSite.id.in_(site_ids))
                 )).all()
-                for js, client_name in rows:
+                for js, client_name in site_rows:
                     sites_map[js.id] = (client_name, js.name, js.address)
 
+            assignment_by_worker = {u.id: wa for wa, u in assignment_rows}
+
             def _out_line(w):
-                client_name, site_name, address = sites_map.get(w.assigned_job_site_id, (None, "Unknown site", None))
+                wa = assignment_by_worker.get(w.id)
+                client_name, site_name, address = sites_map.get(
+                    wa.job_site_id if wa else None, (None, "Unknown site", None)
+                )
                 parts = [f"{w.first_name} {w.surname}:"]
                 where = " / ".join(p for p in (client_name, site_name) if p)
                 if where:
                     parts.append(where)
                 if address:
                     parts.append(f"@ {address}")
-                if w.assignment_start_time:
-                    parts.append(f"start {w.assignment_start_time}")
-                if w.assignment_contact_name:
-                    foreman = w.assignment_contact_name
-                    if w.assignment_contact_phone:
-                        foreman += f" {w.assignment_contact_phone}"
+                if wa and wa.start_time:
+                    parts.append(f"start {wa.start_time}")
+                if wa and wa.contact_name:
+                    foreman = wa.contact_name
+                    if wa.contact_phone:
+                        foreman += f" {wa.contact_phone}"
                     parts.append(f"foreman {foreman}")
-                status = "accepted" if w.assignment_accepted is True else ("declined" if w.assignment_accepted is False else "not accepted")
+                status = "accepted" if wa and wa.accepted is True else ("declined" if wa and wa.accepted is False else "not accepted")
                 parts.append(f"[{status}]")
                 return "  - " + " ".join(parts)
 

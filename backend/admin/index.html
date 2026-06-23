@@ -3498,29 +3498,36 @@
             // Reset foreman dropdown for this open
             populateForemanSelect(null);
             
-            // Check if worker has current assignment
+            // Check if worker has an assignment on the selected date
             const worker = allWorkers.find(w => w.id === workerId);
             const currentDiv = document.getElementById('current-assignment');
             const currentText = document.getElementById('current-assignment-text');
-            
-            if (worker && worker.assigned_job) {
+            const editDate = presetDate || document.getElementById('assign-job-date').value;
+            const existingForDate = worker ? assignmentForDate(worker, editDate) : null;
+
+            if (worker && existingForDate) {
                 currentDiv.classList.remove('hidden');
-                let statusText = worker.assigned_job.accepted === true ? '(Accepted)' : 
-                                 worker.assigned_job.accepted === false ? '(Declined)' : '(Pending)';
-                let timeText = worker.assigned_job.start_time || 'No time';
-                currentText.innerHTML = `${worker.assigned_job.job_site_name} - ${worker.assigned_job.assignment_date || 'No date'} at ${timeText} ${statusText}`;
-                
-                // Pre-select current job
-                select.value = worker.assigned_job.job_site_id;
-                const preSite = allJobSites.find(js => js.id == worker.assigned_job.job_site_id);
+                let statusText = existingForDate.accepted === true ? '(Accepted)' :
+                                 existingForDate.accepted === false ? '(Declined)' : '(Pending)';
+                let timeText = existingForDate.start_time || 'No time';
+                currentText.innerHTML = `${existingForDate.job_site_name} - ${existingForDate.assignment_date || 'No date'} at ${timeText} ${statusText}`;
+
+                select.value = existingForDate.job_site_id;
+                const preSite = allJobSites.find(js => js.id == existingForDate.job_site_id);
                 populateForemanSelect(preSite ? preSite.client_id : null,
-                    worker.assigned_job.contact_name, worker.assigned_job.contact_phone);
-                if (worker.assigned_job.assignment_date) {
-                    document.getElementById('assign-job-date').value = worker.assigned_job.assignment_date;
+                    existingForDate.contact_name, existingForDate.contact_phone);
+                if (existingForDate.start_time) {
+                    document.getElementById('assign-job-time').value = existingForDate.start_time;
                 }
-                if (worker.assigned_job.start_time) {
-                    document.getElementById('assign-job-time').value = worker.assigned_job.start_time;
+                if (existingForDate.end_time) {
+                    document.getElementById('assign-job-end-time').value = existingForDate.end_time;
                 }
+            } else if (worker && workerAssignments(worker).length > 0) {
+                currentDiv.classList.remove('hidden');
+                currentText.innerHTML = workerAssignments(worker).map(j => {
+                    const st = j.accepted === true ? 'Accepted' : j.accepted === false ? 'Declined' : 'Pending';
+                    return `${j.assignment_date}: ${j.job_site_name} (${st})`;
+                }).join('<br>');
             } else {
                 currentDiv.classList.add('hidden');
                 currentText.innerHTML = '';
@@ -3625,6 +3632,9 @@
                 if (response.ok) {
                     closeModal('assign-job-modal');
                     await loadWorkers();
+                    if (typeof renderAllocation === 'function' && document.getElementById('alloc-date')?.value) {
+                        renderAllocation();
+                    }
                     alert('Job assigned successfully!');
                 } else {
                     const result = await response.json();
@@ -3638,23 +3648,28 @@
 
         async function clearAssignment() {
             const workerId = document.getElementById('assign-worker-id').value;
-            
-            if (!confirm('Are you sure you want to clear this worker\'s assignment?')) {
+            const assignmentDate = document.getElementById('assign-job-date').value;
+
+            if (!confirm(`Are you sure you want to clear this worker's assignment${assignmentDate ? ' for ' + assignmentDate : ''}?`)) {
                 return;
             }
-            
+
             try {
                 const response = await authFetch(`${API_BASE}/users/admin/workers/${workerId}/assign`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        job_site_id: null
+                        job_site_id: null,
+                        assignment_date: assignmentDate || null
                     })
                 });
                 
                 if (response.ok) {
                     closeModal('assign-job-modal');
                     await loadWorkers();
+                    if (typeof renderAllocation === 'function' && document.getElementById('alloc-date')?.value) {
+                        renderAllocation();
+                    }
                     alert('Assignment cleared!');
                 } else {
                     const result = await response.json();
@@ -6365,6 +6380,14 @@
             return allocRequiredTickets.every(id => held.has(id));
         }
 
+        function workerAssignments(w) {
+            return w.assignments || (w.assigned_job ? [w.assigned_job] : []);
+        }
+
+        function assignmentForDate(w, dateStr) {
+            return workerAssignments(w).find(a => a.assignment_date === dateStr) || null;
+        }
+
         function allocSetDay(offset) {
             document.getElementById('alloc-date').value = localDateStr(offset);
             renderAllocation();
@@ -6384,17 +6407,18 @@
             const stale = [];
 
             activeWorkers.forEach(w => {
-                const job = w.assigned_job;
-                if (job && job.assignment_date === selDate) {
-                    allocated.push(w);
+                const job = assignmentForDate(w, selDate);
+                if (job) {
+                    allocated.push({ ...w, assigned_job: job });
                 } else {
                     unallocated.push(w);
                 }
-                // Stale = a pending/declined assignment dated before today that was never clocked
-                if (job && job.assignment_date && job.assignment_date < today &&
-                    job.accepted !== true && !w.is_clocked_in) {
-                    stale.push(w);
-                }
+                workerAssignments(w).forEach(j => {
+                    if (j.assignment_date && j.assignment_date < today &&
+                        j.accepted !== true && !w.is_clocked_in) {
+                        stale.push({ worker: w, job: j });
+                    }
+                });
             });
 
             // --- Allocated table ---
@@ -6438,7 +6462,7 @@
                             <td class="px-4 py-3">${clocked}</td>
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <button onclick="assignJob(${w.id}, workerName(${w.id}), '${selDate}')" class="text-orange-600 hover:text-orange-800 mr-3" title="Reassign / edit"><i class="fas fa-briefcase"></i></button>
-                                <button onclick="clearAssignmentFor(${w.id}, workerName(${w.id}))" class="text-red-600 hover:text-red-800" title="Clear assignment"><i class="fas fa-trash"></i></button>
+                                <button onclick="clearAssignmentFor(${w.id}, workerName(${w.id}), '${selDate}')" class="text-red-600 hover:text-red-800" title="Clear assignment"><i class="fas fa-trash"></i></button>
                             </td>
                         </tr>`;
                 }).join('');
@@ -6456,8 +6480,9 @@
             }
             qualifiedUnallocated.sort((a, b) => `${a.first_name} ${a.surname}`.toLowerCase().localeCompare(`${b.first_name} ${b.surname}`.toLowerCase()));
             unEl.innerHTML = qualifiedUnallocated.map(w => {
-                const otherDay = (w.assigned_job && w.assigned_job.assignment_date)
-                    ? `<div class="text-xs text-gray-400">on ${esc(w.assigned_job.assignment_date)}: ${esc(w.assigned_job.client_name || w.assigned_job.job_site_name || 'assigned')}</div>`
+                const otherDays = workerAssignments(w).filter(a => a.assignment_date !== selDate);
+                const otherDay = otherDays.length
+                    ? otherDays.map(j => `<div class="text-xs text-gray-400">on ${esc(j.assignment_date)}: ${esc(j.client_name || j.job_site_name || 'assigned')}</div>`).join('')
                     : '';
                 return `
                     <div class="flex items-center justify-between border rounded-lg px-3 py-2">
@@ -6482,8 +6507,7 @@
                             <p class="font-semibold text-amber-800">${stale.length} old assignment${stale.length === 1 ? '' : 's'} never accepted or clocked in</p>
                             <p class="text-sm text-amber-700 mb-2">These are from past days and are cluttering the worker list. Edit to reschedule, or delete once handled.</p>
                             <div class="space-y-2">
-                                ${stale.map(w => {
-                                    const j = w.assigned_job;
+                                ${stale.map(({ worker: w, job: j }) => {
                                     const jobInfo = `${esc(j.client_name || j.job_site_name || 'Assigned')}${j.start_time ? ' @ ' + esc(j.start_time) : ''}`;
                                     return `<div class="flex items-center justify-between bg-white border border-amber-300 rounded-lg px-3 py-2">
                                         <div>
@@ -6491,10 +6515,10 @@
                                             <div class="text-xs text-gray-500">${jobInfo} <span class="text-gray-400">(${esc(j.assignment_date)})</span></div>
                                         </div>
                                         <div class="flex items-center gap-2 whitespace-nowrap">
-                                            <button onclick="assignJob(${w.id}, workerName(${w.id}))" class="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-medium hover:bg-orange-200">
+                                            <button onclick="assignJob(${w.id}, workerName(${w.id}), '${j.assignment_date}')" class="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-medium hover:bg-orange-200">
                                                 <i class="fas fa-pen mr-1"></i>Edit
                                             </button>
-                                            <button onclick="clearAssignmentFor(${w.id}, workerName(${w.id}))" class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium hover:bg-red-200">
+                                            <button onclick="clearAssignmentFor(${w.id}, workerName(${w.id}), '${j.assignment_date}')" class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium hover:bg-red-200">
                                                 <i class="fas fa-trash mr-1"></i>Delete
                                             </button>
                                         </div>
@@ -6509,13 +6533,17 @@
             }
         }
 
-        async function clearAssignmentFor(workerId, workerName) {
-            if (!confirm(`Clear ${workerName}'s job assignment?`)) return;
+        async function clearAssignmentFor(workerId, workerName, assignmentDate) {
+            const dateLabel = assignmentDate ? ` for ${assignmentDate}` : '';
+            if (!confirm(`Clear ${workerName}'s job assignment${dateLabel}?`)) return;
             try {
                 const response = await authFetch(`${API_BASE}/users/admin/workers/${workerId}/assign`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ job_site_id: null })
+                    body: JSON.stringify({
+                        job_site_id: null,
+                        assignment_date: assignmentDate || document.getElementById('alloc-date')?.value || null
+                    })
                 });
                 if (response.ok) {
                     await loadWorkers();

@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
+import * as Updates from 'expo-updates';
 import { RootStackParamList } from '../../App';
 import { COLORS } from '../constants/colors';
 import { useAuth } from '../context/AuthContext';
@@ -53,6 +54,73 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [respondingAssignment, setRespondingAssignment] = useState(false);
 
+  const checkForAppUpdate = async () => {
+    if (__DEV__ || !Updates.isEnabled) return;
+    try {
+      const result = await Updates.checkForUpdateAsync();
+      if (result.isAvailable) {
+        await Updates.fetchUpdateAsync();
+        await Updates.reloadAsync();
+      }
+    } catch (e) {
+      console.log('[MyJobs] update check failed:', e);
+    }
+  };
+
+  const parseAssignmentResponse = (
+    assignData: Record<string, unknown>,
+    clockData: ClockStatus | null
+  ): { current: JobAssignment | null; upcoming: JobAssignment[] } => {
+    let current: JobAssignment | null = (assignData.current_job as JobAssignment) || null;
+    let upcoming: JobAssignment[] = [];
+
+    if (Array.isArray(assignData.upcoming_jobs) && assignData.upcoming_jobs.length > 0) {
+      upcoming = assignData.upcoming_jobs as JobAssignment[];
+    } else if (Array.isArray(assignData.assignments) && assignData.assignments.length > 0) {
+      const all = assignData.assignments as JobAssignment[];
+      if (!current) {
+        current = all.find(j => j.is_current) || null;
+      }
+      const todayMel = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Melbourne' });
+      upcoming = all.filter(j => {
+        if (j.is_current) return false;
+        if (current && j.job_site_id === current.job_site_id
+            && j.assignment_date === current.assignment_date && j.accepted === true) {
+          return false;
+        }
+        return !j.assignment_date || j.assignment_date >= todayMel;
+      });
+    } else if (assignData.assignment) {
+      upcoming = [assignData.assignment as JobAssignment];
+    }
+
+    if (!current && clockData?.is_clocked_in) {
+      const todayMel = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Melbourne' });
+      current = {
+        job_site_id: 0,
+        job_site_name: clockData.clock_in_address?.split(',')[0]?.trim() || 'Current job site',
+        job_site_address: clockData.clock_in_address || '',
+        assignment_date: todayMel,
+        start_time: clockData.clock_in_time || null,
+        assigned_at: null,
+        accepted: true,
+        is_current: true,
+      };
+    }
+
+    if (current) {
+      upcoming = upcoming.filter(j => !(
+        j.job_site_id === current!.job_site_id
+        && j.assignment_date === current!.assignment_date
+        && j.accepted === true
+      ));
+    }
+
+    upcoming.sort((a, b) => (a.assignment_date || '').localeCompare(b.assignment_date || ''));
+
+    return { current, upcoming };
+  };
+
   const fetchData = async () => {
     if (!user?.id) return;
     try {
@@ -60,40 +128,8 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
         clockAPI.getStatus(user.id),
         assignmentAPI.getAssignment(user.id),
       ]);
-      const clockData = clockRes.data;
-      const assignData = assignRes.data;
-
-      let current: JobAssignment | null = assignData.current_job || null;
-      let upcoming: JobAssignment[] = assignData.upcoming_jobs || [];
-      if (!upcoming.length && assignData.assignment) {
-        upcoming = [assignData.assignment];
-      }
-
-      // Belt-and-braces: if the API didn't send current_job but we're clocked in,
-      // build a "today" card from the active clock-in so Wed doesn't disappear when
-      // Thu is also allocated.
-      if (!current && clockData?.is_clocked_in) {
-        const todayMel = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Melbourne' });
-        current = {
-          job_site_id: 0,
-          job_site_name: clockData.clock_in_address?.split(',')[0]?.trim() || 'Current job site',
-          job_site_address: clockData.clock_in_address || '',
-          assignment_date: todayMel,
-          start_time: clockData.clock_in_time || null,
-          assigned_at: null,
-          accepted: true,
-          is_current: true,
-        };
-      }
-
-      // Don't list the same site+day twice in upcoming when it's already "current".
-      if (current) {
-        upcoming = upcoming.filter(j => !(
-          j.job_site_id === current!.job_site_id
-          && j.assignment_date === current!.assignment_date
-          && j.accepted === true
-        ));
-      }
+      const clockData = clockRes.data as ClockStatus;
+      const { current, upcoming } = parseAssignmentResponse(assignRes.data, clockData);
 
       setClockStatus(clockData);
       setCurrentJob(current);
@@ -110,7 +146,7 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
     useCallback(() => {
       if (user?.id) {
         setIsLoading(true);
-        fetchData();
+        checkForAppUpdate().finally(() => fetchData());
       }
     }, [user?.id])
   );
@@ -120,14 +156,16 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
     fetchData();
   };
 
-  const respondToAssignment = async (accepted: boolean) => {
+  const respondToAssignment = async (job: JobAssignment, accepted: boolean) => {
     if (!user?.id || respondingAssignment) return;
 
     setRespondingAssignment(true);
     try {
-      await assignmentAPI.respondToAssignment(user.id, accepted);
+      await assignmentAPI.respondToAssignment(user.id, accepted, job.assignment_date);
       setUpcomingJobs(prev =>
-        prev.map(j => ({ ...j, accepted }))
+        prev.map(j =>
+          j.assignment_date === job.assignment_date ? { ...j, accepted } : j
+        )
       );
     } catch (error) {
       console.warn('Error responding to assignment:', error);
@@ -143,6 +181,7 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
       weekday: 'short',
       day: 'numeric',
       month: 'short',
+      timeZone: 'Australia/Melbourne',
     });
   };
 
@@ -225,7 +264,7 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
           <View style={styles.actionButtons}>
             <TouchableOpacity
               style={styles.declineButton}
-              onPress={() => respondToAssignment(false)}
+              onPress={() => respondToAssignment(job, false)}
               disabled={respondingAssignment}
             >
               {respondingAssignment ? (
@@ -240,7 +279,7 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
 
             <TouchableOpacity
               style={styles.acceptButton}
-              onPress={() => respondToAssignment(true)}
+              onPress={() => respondToAssignment(job, true)}
               disabled={respondingAssignment}
             >
               {respondingAssignment ? (
@@ -327,7 +366,9 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
           <Text style={styles.sectionTitle}>
             {currentJob ? 'Upcoming Jobs' : 'My Assigned Jobs'}
           </Text>
-          {upcomingJobs.map(job => renderJobCard(job, { showActions: true }))}
+          {upcomingJobs.map(job => renderJobCard(job, {
+            showActions: job.accepted === null,
+          }))}
         </>
       )}
 

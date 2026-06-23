@@ -261,11 +261,36 @@ export const inductionAPI = {
 // ==================== JOB ASSIGNMENT API ====================
 
 export const assignmentAPI = {
-  // Get worker's current job assignment
-  getAssignment: (userId: number) => 
-    api.get(`/users/${userId}/assignment`),
+  // Get worker's job assignments (normalises multi-day list for all app versions)
+  getAssignment: async (userId: number) => {
+    const res = await api.get(`/users/${userId}/assignment`);
+    const data = res.data || {};
+
+    // Prefer explicit arrays from the API
+    let jobs = data.upcoming_jobs || data.assignments || data.jobs || [];
+    if (!Array.isArray(jobs)) jobs = [];
+
+    if (jobs.length === 0 && data.assignment) {
+      jobs = [data.assignment];
+    }
+
+    // If the server folded other days into the legacy single card, expand them
+    if (jobs.length === 1 && Array.isArray(data.assignments) && data.assignments.length > 1) {
+      jobs = data.assignments.filter((j: { is_current?: boolean }) => !j.is_current);
+    }
+    if (jobs.length === 1 && Array.isArray(data.upcoming_jobs) && data.upcoming_jobs.length > 1) {
+      jobs = data.upcoming_jobs;
+    }
+
+    data.upcoming_jobs = jobs;
+    data.jobs = data.assignments || jobs;
+    return { ...res, data };
+  },
   
-  // Accept or decline job assignment
-  respondToAssignment: (userId: number, accepted: boolean) => 
-    api.post(`/users/${userId}/assignment/respond`, { accepted }),
+  // Accept or decline job assignment for a specific date
+  respondToAssignment: (userId: number, accepted: boolean, assignmentDate?: string | null) => 
+    api.post(`/users/${userId}/assignment/respond`, {
+      accepted,
+      assignment_date: assignmentDate || undefined,
+    }),
 };

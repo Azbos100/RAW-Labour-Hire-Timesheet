@@ -4,7 +4,7 @@ RAW Labour Hire - Job Sites API
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, delete
 from pydantic import BaseModel
 from typing import Optional, List
 import json
@@ -192,11 +192,22 @@ async def delete_job_site(
     if not site:
         raise HTTPException(status_code=404, detail="Job site not found")
 
-    # Unassign any workers currently assigned to this site (clears the FK).
+    # Unassign any workers currently assigned to this site.
+    from ..models import WorkerAssignment
+    await db.execute(delete(WorkerAssignment).where(WorkerAssignment.job_site_id == site_id))
     await db.execute(
         update(User)
         .where(User.assigned_job_site_id == site_id)
-        .values(assigned_job_site_id=None)
+        .values(
+            assigned_job_site_id=None,
+            assignment_date=None,
+            assignment_start_time=None,
+            assignment_end_time=None,
+            assignment_contact_name=None,
+            assignment_contact_phone=None,
+            assignment_accepted=None,
+            assigned_at=None,
+        )
     )
 
     # Is the site referenced by any timesheet history?

@@ -202,6 +202,49 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Migration note (assignment contact): {e}")
 
+        # Per-date worker assignments (one job per worker per day)
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS worker_assignments (
+                    id SERIAL PRIMARY KEY,
+                    worker_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    job_site_id INTEGER NOT NULL REFERENCES job_sites(id),
+                    assignment_date DATE NOT NULL,
+                    start_time VARCHAR(10),
+                    end_time VARCHAR(10),
+                    contact_name VARCHAR(100),
+                    contact_phone VARCHAR(30),
+                    accepted BOOLEAN,
+                    assigned_at TIMESTAMP DEFAULT NOW(),
+                    CONSTRAINT uq_worker_assignment_date UNIQUE (worker_id, assignment_date)
+                );
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_worker_assignments_worker ON worker_assignments(worker_id);
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_worker_assignments_date ON worker_assignments(assignment_date);
+            """))
+            await conn.execute(text("""
+                INSERT INTO worker_assignments (
+                    worker_id, job_site_id, assignment_date, start_time, end_time,
+                    contact_name, contact_phone, accepted, assigned_at
+                )
+                SELECT
+                    u.id, u.assigned_job_site_id, u.assignment_date, u.assignment_start_time,
+                    u.assignment_end_time, u.assignment_contact_name, u.assignment_contact_phone,
+                    u.assignment_accepted, COALESCE(u.assigned_at, NOW())
+                FROM users u
+                WHERE u.assigned_job_site_id IS NOT NULL
+                  AND u.assignment_date IS NOT NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM worker_assignments wa
+                    WHERE wa.worker_id = u.id AND wa.assignment_date = u.assignment_date
+                  );
+            """))
+        except Exception as e:
+            print(f"Migration note (worker_assignments): {e}")
+
         # Required tickets/certifications per job site (JSON list of ticket_type ids)
         try:
             await conn.execute(text("""

@@ -223,7 +223,14 @@ export default function App() {
         const result = await Updates.checkForUpdateAsync();
         if (result.isAvailable) {
           await Updates.fetchUpdateAsync();
-          await Updates.reloadAsync();
+          Alert.alert(
+            'App update ready',
+            'RAW Timesheet has an update with My Jobs fixes. Restart now?',
+            [
+              { text: 'Later', style: 'cancel' },
+              { text: 'Restart', onPress: () => Updates.reloadAsync() },
+            ]
+          );
         }
       } catch (e) {
         console.log('[Updates] check failed:', e);

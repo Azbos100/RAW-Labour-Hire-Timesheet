@@ -209,47 +209,21 @@ async def list_all_workers(
                 "job_site_id": entry.job_site_id
             }
     
-    # Get job site names and client info for assigned workers
-    from ..models import Client
-    job_site_ids = [u.assigned_job_site_id for u in users if hasattr(u, 'assigned_job_site_id') and u.assigned_job_site_id]
-    job_sites_map = {}
-    if job_site_ids:
-        # Join with Client to get client name
-        js_result = await db.execute(
-            select(JobSite, Client.name.label('client_name'))
-            .outerjoin(Client, JobSite.client_id == Client.id)
-            .where(JobSite.id.in_(job_site_ids))
-        )
-        for row in js_result.all():
-            js = row[0]  # JobSite object
-            client_name = row[1]  # client_name from join
-            job_sites_map[js.id] = {
-                "name": js.name, 
-                "address": js.address,
-                "client_name": client_name
-            }
-    
+    # Load all per-date assignments for these workers
+    from ..services.assignment_helpers import load_assignments_map, melbourne_today
+
+    worker_ids = [u.id for u in users]
+    assignments_map = await load_assignments_map(db, worker_ids)
+    today_assign = melbourne_today()
+
     workers_data = []
     for u in users:
-        # Check for assignment info
-        assigned_job = None
-        if hasattr(u, 'assigned_job_site_id') and u.assigned_job_site_id:
-            js_info = job_sites_map.get(u.assigned_job_site_id, {})
-            assigned_job = {
-                "job_site_id": u.assigned_job_site_id,
-                "job_site_name": js_info.get("name", "Unknown"),
-                "job_site_address": js_info.get("address", ""),
-                "client_name": js_info.get("client_name"),
-                "accepted": getattr(u, 'assignment_accepted', None),
-                "assignment_date": u.assignment_date.isoformat() if hasattr(u, 'assignment_date') and u.assignment_date else None,
-                "start_time": getattr(u, 'assignment_start_time', None),
-                "end_time": getattr(u, 'assignment_end_time', None),
-                "contact_name": getattr(u, 'assignment_contact_name', None),
-                "contact_phone": getattr(u, 'assignment_contact_phone', None),
-                "assigned_at": u.assigned_at.isoformat() if hasattr(u, 'assigned_at') and u.assigned_at else None
-            }
-        
-        # Check clock-in status
+        worker_assignments = assignments_map.get(u.id, [])
+        # Legacy single-slot field: earliest assignment from today onward
+        assigned_job = next(
+            (a for a in worker_assignments if a.get("assignment_date") and a["assignment_date"] >= today_assign.isoformat()),
+            worker_assignments[0] if worker_assignments else None,
+        )
         clock_in_status = clocked_in_users.get(u.id)
         
         workers_data.append({
@@ -291,9 +265,10 @@ async def list_all_workers(
             "works_friday": u.works_friday,
             "works_saturday": u.works_saturday,
             "works_sunday": u.works_sunday,
-            # New: Job assignment
+            # Job assignments (all dates) + legacy single-slot summary
+            "assignments": worker_assignments,
             "assigned_job": assigned_job,
-            # New: Clock-in status
+            # Clock-in status
             "is_clocked_in": clock_in_status is not None,
             "clock_in_info": clock_in_status,
             # Push notification status
@@ -871,84 +846,87 @@ async def assign_worker_to_job(
     background_tasks: BackgroundTasks = None,
     admin: dict = Depends(verify_admin_auth)
 ):
-    """Assign a worker to a job site"""
+    """Assign a worker to a job site for a specific date (upserts; does not overwrite other days)."""
     from ..services.push_notifications import send_push_notification
     from ..services.sms import send_sms, CONTACT_FOOTER
-    
+    from ..services.assignment_helpers import upsert_assignment, delete_assignment
+
     result = await db.execute(select(User).where(User.id == worker_id))
     worker = result.scalar_one_or_none()
-    
+
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
-    
+
     notifications_sent = []
-    
+
     if assignment.job_site_id:
-        # Verify job site exists
         js_result = await db.execute(select(JobSite).where(JobSite.id == assignment.job_site_id))
         job_site = js_result.scalar_one_or_none()
         if not job_site:
             raise HTTPException(status_code=404, detail="Job site not found")
-        
-        worker.assigned_job_site_id = assignment.job_site_id
-        worker.assignment_date = assignment.assignment_date or date.today()
-        worker.assignment_start_time = assignment.start_time
-        worker.assignment_end_time = assignment.end_time
-        worker.assignment_contact_name = (assignment.contact_name or "").strip() or None
-        worker.assignment_contact_phone = (assignment.contact_phone or "").strip() or None
-        worker.assignment_accepted = None  # Reset acceptance status
-        worker.assigned_at = datetime.utcnow()
-        
-        message = f"Worker assigned to {job_site.name}"
-        
-        date_str = assignment.assignment_date.strftime("%a %d %b") if assignment.assignment_date else "TBC"
+
+        assign_date = assignment.assignment_date or date.today()
+        row = await upsert_assignment(
+            db,
+            worker,
+            job_site_id=assignment.job_site_id,
+            assignment_date=assign_date,
+            start_time=assignment.start_time,
+            end_time=assignment.end_time,
+            contact_name=assignment.contact_name,
+            contact_phone=assignment.contact_phone,
+            reset_acceptance=True,
+        )
+
+        message = f"Worker assigned to {job_site.name} on {assign_date.strftime('%a %d %b')}"
+
+        date_str = assign_date.strftime("%a %d %b")
         time_str = assignment.start_time or "TBC"
         contact_str = ""
-        if worker.assignment_contact_name:
-            contact_str = f" Foreman: {worker.assignment_contact_name}"
-            if worker.assignment_contact_phone:
-                contact_str += f" {worker.assignment_contact_phone}"
+        contact_name = row.contact_name or job_site.contact_name
+        contact_phone = row.contact_phone or job_site.contact_phone
+        if contact_name:
+            contact_str = f" Foreman: {contact_name}"
+            if contact_phone:
+                contact_str += f" {contact_phone}"
             contact_str += "."
-        
-        # Send SMS notification to worker (always, if they have a phone)
+
         if worker.phone:
             sms_message = f"RAW Labour Hire: You've been assigned to {job_site.name} on {date_str} at {time_str}. Address: {job_site.address or 'TBC'}.{contact_str} Open the app to accept.\n{CONTACT_FOOTER}"
-            
+
             async def send_assignment_sms():
                 result = await send_sms(worker.phone, sms_message)
                 if result.get("success"):
                     print(f"[Assignment] SMS sent to {worker.first_name} {worker.surname}")
                 else:
                     print(f"[Assignment] SMS failed for {worker.first_name}: {result.get('error')}")
-            
+
             if background_tasks:
                 background_tasks.add_task(send_assignment_sms)
             else:
                 await send_assignment_sms()
             notifications_sent.append("SMS")
-        
-        # Send push notification to worker (if they have push enabled)
+
         if worker.push_token:
             notification_title = "New Job Assignment"
             notification_body = f"You've been assigned to {job_site.name} on {date_str} at {time_str}. Tap to accept or decline."
-            
             notification_data = {
                 "type": "job_assignment",
                 "job_site_id": job_site.id,
                 "job_site_name": job_site.name,
                 "job_site_address": job_site.address or "",
-                "assignment_date": date_str,
+                "assignment_date": assign_date.isoformat(),
                 "start_time": time_str,
             }
-            
+
             async def send_assignment_notification():
                 await send_push_notification(
                     worker.push_token,
                     notification_title,
                     notification_body,
-                    notification_data
+                    notification_data,
                 )
-            
+
             if background_tasks:
                 background_tasks.add_task(send_assignment_notification)
             else:
@@ -956,23 +934,19 @@ async def assign_worker_to_job(
                     worker.push_token,
                     notification_title,
                     notification_body,
-                    notification_data
+                    notification_data,
                 )
             notifications_sent.append("Push")
     else:
-        # Clear assignment
-        worker.assigned_job_site_id = None
-        worker.assignment_date = None
-        worker.assignment_start_time = None
-        worker.assignment_end_time = None
-        worker.assignment_contact_name = None
-        worker.assignment_contact_phone = None
-        worker.assignment_accepted = None
-        worker.assigned_at = None
-        message = "Assignment cleared"
-    
+        if assignment.assignment_date:
+            await delete_assignment(db, worker, assignment.assignment_date)
+            message = f"Assignment cleared for {assignment.assignment_date.strftime('%a %d %b')}"
+        else:
+            await delete_assignment(db, worker, None)
+            message = "All assignments cleared"
+
     await db.commit()
-    
+
     return {
         "message": message,
         "notifications_sent": notifications_sent
@@ -988,60 +962,67 @@ async def assign_workers_bulk(
     db: AsyncSession = Depends(get_db),
     background_tasks: BackgroundTasks = None
 ):
-    """Assign multiple workers to a job site"""
+    """Assign multiple workers to a job site for one date"""
     from ..services.sms import send_sms, CONTACT_FOOTER
     from ..services.push_notifications import send_push_notification
-    
-    # Verify job site exists
+    from ..services.assignment_helpers import upsert_assignment
+
     js_result = await db.execute(select(JobSite).where(JobSite.id == job_site_id))
     job_site = js_result.scalar_one_or_none()
     if not job_site:
         raise HTTPException(status_code=404, detail="Job site not found")
-    
-    # Get all workers
+
     result = await db.execute(select(User).where(User.id.in_(worker_ids)))
     workers = result.scalars().all()
-    
+
     assigned_count = 0
     sms_sent = 0
     push_sent = 0
-    
-    date_str = assignment_date.strftime("%a %d %b") if assignment_date else "TBC"
+
+    assign_date = assignment_date or date.today()
+    date_str = assign_date.strftime("%a %d %b")
     time_str = start_time or "TBC"
-    
+
     for worker in workers:
-        worker.assigned_job_site_id = job_site_id
-        worker.assignment_date = assignment_date or date.today()
-        worker.assignment_start_time = start_time
-        worker.assignment_accepted = None
-        worker.assigned_at = datetime.utcnow()
+        await upsert_assignment(
+            db,
+            worker,
+            job_site_id=job_site_id,
+            assignment_date=assign_date,
+            start_time=start_time,
+            end_time=None,
+            contact_name=None,
+            contact_phone=None,
+            reset_acceptance=True,
+        )
         assigned_count += 1
-        
-        # Send SMS notification
+
         if worker.phone:
             sms_message = f"RAW Labour Hire: You've been assigned to {job_site.name} on {date_str} at {time_str}. Address: {job_site.address or 'TBC'}. Open the app to accept.\n{CONTACT_FOOTER}"
-            
+
             async def send_worker_sms(phone=worker.phone, msg=sms_message):
                 await send_sms(phone, msg)
-            
+
             if background_tasks:
                 background_tasks.add_task(send_worker_sms)
             sms_sent += 1
-        
-        # Send push notification
+
         if worker.push_token:
             notification_title = "New Job Assignment"
             notification_body = f"You've been assigned to {job_site.name} on {date_str} at {time_str}. Tap to accept or decline."
-            
+
             async def send_worker_push(token=worker.push_token, title=notification_title, body=notification_body):
-                await send_push_notification(token, title, body, {"type": "job_assignment"})
-            
+                await send_push_notification(
+                    token, title, body,
+                    {"type": "job_assignment", "assignment_date": assign_date.isoformat()},
+                )
+
             if background_tasks:
                 background_tasks.add_task(send_worker_push)
             push_sent += 1
-    
+
     await db.commit()
-    
+
     return {
         "message": f"{assigned_count} workers assigned to {job_site.name}",
         "assigned_count": assigned_count,
@@ -1053,6 +1034,7 @@ async def assign_workers_bulk(
 # Mobile app endpoint to accept/decline assignment
 class AssignmentResponse(BaseModel):
     accepted: bool
+    assignment_date: Optional[date] = None
 
 
 @router.post("/{user_id}/assignment/respond")
@@ -1061,22 +1043,47 @@ async def respond_to_assignment(
     response: AssignmentResponse,
     db: AsyncSession = Depends(get_db)
 ):
-    """Worker accepts or declines their job assignment"""
+    """Worker accepts or declines a job assignment for a specific date."""
+    from ..models import WorkerAssignment
+    from ..services.assignment_helpers import sync_user_legacy_fields, melbourne_today
+
     result = await db.execute(select(User).where(User.id == user_id))
     worker = result.scalar_one_or_none()
-    
+
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
-    
-    if not worker.assigned_job_site_id:
+
+    target_date = response.assignment_date
+    if target_date is None:
+        today = melbourne_today()
+        row = (await db.execute(
+            select(WorkerAssignment)
+            .where(
+                WorkerAssignment.worker_id == worker.id,
+                WorkerAssignment.assignment_date >= today,
+            )
+            .order_by(WorkerAssignment.assignment_date)
+            .limit(1)
+        )).scalar_one_or_none()
+    else:
+        row = (await db.execute(
+            select(WorkerAssignment).where(
+                WorkerAssignment.worker_id == worker.id,
+                WorkerAssignment.assignment_date == target_date,
+            )
+        )).scalar_one_or_none()
+
+    if not row:
         raise HTTPException(status_code=400, detail="No job assignment to respond to")
-    
-    worker.assignment_accepted = response.accepted
+
+    row.accepted = response.accepted
+    await sync_user_legacy_fields(db, worker)
     await db.commit()
-    
+
     return {
         "message": "Job accepted" if response.accepted else "Job declined",
-        "accepted": response.accepted
+        "accepted": response.accepted,
+        "assignment_date": row.assignment_date.isoformat(),
     }
 
 
@@ -1085,12 +1092,8 @@ async def get_worker_assignment(
     user_id: int,
     db: AsyncSession = Depends(get_db)
 ):
-    """Get worker job assignments for the mobile app.
-
-    Returns the job they're currently clocked into (if any) plus any upcoming
-    allocated jobs (today if not on site yet, or future dates like tomorrow).
-    """
-    import pytz
+    """Get worker job assignments for the mobile app."""
+    from ..services.assignment_helpers import get_mobile_assignments
 
     result = await db.execute(select(User).where(User.id == user_id))
     worker = result.scalar_one_or_none()
@@ -1098,88 +1101,7 @@ async def get_worker_assignment(
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
 
-    melbourne_tz = pytz.timezone("Australia/Melbourne")
-    today = datetime.now(melbourne_tz).date()
-    yesterday = today - timedelta(days=1)
-
-    def _assignment_dict(job_site, w: User):
-        contact_name = (w.assignment_contact_name or job_site.contact_name or "").strip() or None
-        contact_phone = (w.assignment_contact_phone or job_site.contact_phone or "").strip() or None
-        return {
-            "job_site_id": job_site.id,
-            "job_site_name": job_site.name,
-            "job_site_address": job_site.address,
-            "job_site_latitude": job_site.latitude,
-            "job_site_longitude": job_site.longitude,
-            "assignment_date": w.assignment_date.isoformat() if w.assignment_date else None,
-            "start_time": w.assignment_start_time,
-            "assigned_at": w.assigned_at.isoformat() if w.assigned_at else None,
-            "accepted": w.assignment_accepted,
-            "contact_name": contact_name,
-            "contact_phone": contact_phone,
-        }
-
-    # --- Current job: active clock-in (today or overnight from yesterday) ---
-    current_job = None
-    active_row = (await db.execute(
-        select(TimesheetEntry, JobSite)
-        .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
-        .outerjoin(JobSite, TimesheetEntry.job_site_id == JobSite.id)
-        .where(
-            Timesheet.worker_id == worker.id,
-            TimesheetEntry.entry_date.in_([today, yesterday]),
-            TimesheetEntry.clock_in_time.isnot(None),
-            TimesheetEntry.clock_out_time.is_(None),
-        )
-        .limit(1)
-    )).first()
-
-    if active_row:
-        entry, js = active_row
-        site_name = js.name if js else (entry.clock_in_address or "On site")
-        current_job = {
-            "job_site_id": js.id if js else entry.job_site_id,
-            "job_site_name": site_name,
-            "job_site_address": js.address if js else entry.clock_in_address,
-            "job_site_latitude": js.latitude if js else entry.clock_in_latitude,
-            "job_site_longitude": js.longitude if js else entry.clock_in_longitude,
-            "assignment_date": entry.entry_date.isoformat() if entry.entry_date else today.isoformat(),
-            "start_time": entry.clock_in_time.strftime("%H:%M") if entry.clock_in_time else None,
-            "assigned_at": None,
-            "accepted": True,
-            "contact_name": js.contact_name if js else None,
-            "contact_phone": js.contact_phone if js else None,
-            "is_current": True,
-        }
-
-    # --- Upcoming / pending allocations stored on the worker record ---
-    upcoming_jobs = []
-    pending_assignment = None
-
-    if worker.assigned_job_site_id:
-        js_result = await db.execute(
-            select(JobSite).where(JobSite.id == worker.assigned_job_site_id)
-        )
-        job_site = js_result.scalar_one_or_none()
-
-        if job_site and worker.assignment_date and worker.assignment_date >= today:
-            payload = _assignment_dict(job_site, worker)
-            is_duplicate = (
-                current_job
-                and current_job.get("job_site_id") == payload["job_site_id"]
-                and worker.assignment_date == today
-                and worker.assignment_accepted is True
-            )
-            if not is_duplicate:
-                upcoming_jobs.append(payload)
-                pending_assignment = payload
-
-    return {
-        "current_job": current_job,
-        "upcoming_jobs": upcoming_jobs,
-        # Backward compat for older app builds — first upcoming allocation
-        "assignment": pending_assignment,
-    }
+    return await get_mobile_assignments(db, user_id)
 
 
 # ==================== ORIGINAL ADMIN AUTH ENDPOINTS ====================
