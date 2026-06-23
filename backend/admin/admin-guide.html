@@ -44,14 +44,14 @@
   .chrome{height:38px;background:#e9edf6;display:flex;align-items:center;gap:7px;padding:0 14px;border-bottom:1px solid #d6deea;flex:none;}
   .chrome .dot{width:11px;height:11px;border-radius:50%;}
   .url{flex:1;margin-left:12px;background:#fff;border:1px solid #d6deea;border-radius:8px;font-size:12px;color:#64748b;padding:5px 12px;text-align:center;}
-  .viewport{height:566px;background:var(--screen-bg);overflow:hidden;display:flex;flex-direction:column;}
+  .viewport{height:620px;background:var(--screen-bg);overflow:hidden;display:flex;flex-direction:column;}
 
   /* admin nav */
   .an{background:#fff;border-bottom:1px solid #e5e7eb;display:flex;flex-wrap:wrap;padding:0 10px;flex:none;}
-  .an .t{font-size:12px;color:#6b7280;padding:11px 9px;font-weight:600;white-space:nowrap;border-bottom:2px solid transparent;display:flex;align-items:center;gap:5px;}
+  .an .t{font-size:11px;color:#6b7280;padding:10px 7px;font-weight:600;white-space:nowrap;border-bottom:2px solid transparent;display:flex;align-items:center;gap:4px;}
   .an .t.on{color:var(--primary);border-bottom-color:var(--primary);}
 
-  .ab{flex:1;overflow:hidden;padding:16px;}
+  .ab{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px;-webkit-overflow-scrolling:touch;}
 
   /* KPIs */
   .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px;}
@@ -96,7 +96,7 @@
   .splash{height:100%;background:var(--primary);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#fff;padding:32px;}
 
   /* ---- Caption ---- */
-  .caption{max-width:880px;text-align:center;font-size:18px;line-height:1.55;color:#eaf0ff;min-height:60px;padding:0 8px;font-weight:500;}
+  .caption{max-width:880px;width:100%;text-align:center;font-size:17px;line-height:1.6;color:#eaf0ff;min-height:72px;padding:0 16px 4px;font-weight:500;overflow:visible;word-wrap:break-word;}
   .caption b{color:#ffd479;}
 
   /* ---- Controls ---- */
@@ -151,7 +151,7 @@
       <button class="ctrl" id="prev" title="Previous">◀ Back</button>
       <button class="ctrl primary" id="play" title="Play / Pause">▶ Play</button>
       <button class="ctrl" id="next" title="Next">Next ▶</button>
-      <span class="slidecount" id="count">1 / 15</span>
+      <span class="slidecount" id="count">1 / 19</span>
       <button class="ctrl" id="mute" title="Mute voice-over">🔊 Voice</button>
     </div>
     <div class="controls" style="margin-top:10px;">
@@ -222,14 +222,51 @@ const screens = {
       ${kpi('Total Hours','312.5','🕐','#DBEAFE','#1E40AF')}
       ${kpi('Active Workers','24','👥','#EDE9FE','#6D28D9')}
     </div>
+    <div class="arow ring" style="gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <div class="field">Status: Pending ▾</div>
+      <div class="field">Pay Week: 21–27 Jun ▾</div>
+      <div class="field" style="border-color:#6366f1;">Day: 23 Jun 2026</div>
+      <div class="field"><span style="margin-right:4px;">☑</span> Group by week</div>
+    </div>
+    <div style="background:#EFF6FF;border-radius:8px;padding:8px 12px;margin-bottom:6px;font-size:12px;font-weight:700;color:#1E40AF;">📅 Pay week 21 Jun – 27 Jun 2026 · 8 dockets · 64.0h</div>
+    <div style="background:#F9FAFB;border-radius:8px;padding:6px 12px;margin-bottom:6px;font-size:12px;font-weight:700;color:#374151;">📍 2 Lonsdale Street</div>
     <table class="tbl">
-      <thead><tr><th>Docket #</th><th>Worker</th><th>Job Site</th><th>Hours</th><th>Status</th><th>Action</th></tr></thead>
+      <thead><tr><th>Docket #</th><th>Worker</th><th>Hours</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>
-        <tr><td>#10231</td><td>Liam Carter</td><td>2 Lonsdale Street</td><td>8.0</td><td><span class="ap a">Pending</span></td><td><span class="abtn g sm">Approve</span></td></tr>
-        <tr><td>#10230</td><td>Noah Bennett</td><td>93-97 Maroondah Hwy</td><td>8.5</td><td><span class="ap a">Pending</span></td><td><span class="abtn g sm">Approve</span></td></tr>
-        <tr><td>#10228</td><td>Jack Wilson</td><td>2 Lonsdale Street</td><td>7.5</td><td><span class="ap g">Approved</span></td><td>—</td></tr>
+        <tr><td>#10231</td><td>Liam Carter</td><td>8.0</td><td><span class="ap a">Pending</span><div class="amuted" style="font-family:monospace;margin-top:3px;">Mon ✓ Tue ⏳ Wed —</div></td><td><span class="abtn b sm">Edit</span></td></tr>
+        <tr><td>#10228</td><td>Jack Wilson</td><td>15.5</td><td><span class="ap g">Approved</span><div class="amuted" style="font-family:monospace;margin-top:3px;">Mon ✓ Tue ✓ Wed ✓</div></td><td><span class="abtn b sm">Edit</span></td></tr>
       </tbody>
     </table>`),
+
+  timesheetFilters: () => FRAME('Timesheets', `
+    <div class="acard ring">
+      <div class="asec">🔍 Filter &amp; group timesheets</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div><div class="amuted" style="font-weight:700;">Pay Week (Sat→Fri)</div><div class="field">21 Jun – 27 Jun 2026 ▾</div></div>
+        <div><div class="amuted" style="font-weight:700;">Day</div><div class="field" style="border-color:#6366f1;">23 Jun 2026 · Clear</div></div>
+        <div><div class="amuted" style="font-weight:700;">Status</div><div class="field">Pending Approval ▾</div></div>
+        <div><div class="amuted" style="font-weight:700;">Worker</div><div class="field">All Workers ▾</div></div>
+      </div>
+      <div class="amuted">Rows group by <b>pay week</b>, then <b>job site</b>. Pick a <b>Day</b> to see only dockets with entries on that date — status shows that day only.</div>
+    </div>
+    <div style="background:#EEF2FF;border-radius:10px;padding:10px 14px;font-size:12px;color:#3730A3;">
+      <b>Day view: Tuesday 23 June 2026</b> — 3 dockets with entries on this day
+    </div>`),
+
+  dailyStatus: () => FRAME('Timesheets', `
+    <table class="tbl" style="margin-bottom:10px;font-size:12px;">
+      <thead><tr><th>Docket #</th><th>Worker</th><th>Hours</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr class="hl"><td>#10231</td><td>James Smith</td><td>32.0</td>
+          <td><span class="ap g">Approved</span>
+            <div class="amuted" style="font-family:monospace;margin-top:3px;">Mon ✓ Tue ✓ Wed ⏳ Thu —</div>
+          </td></tr>
+      </tbody>
+    </table>
+    <div class="acard ring" style="padding:12px;">
+      <div class="asec" style="font-size:14px;">Per-day approval</div>
+      <div class="amuted" style="line-height:1.55;">Each day has its own status: ✓ approved · ⏳ pending or clocked in · — no entry yet. Clocking in on a new day drops the docket back to draft until that day is approved.</div>
+    </div>`),
 
   approve: () => FRAME('Timesheets', `
     <table class="tbl" style="margin-bottom:12px;">
@@ -249,6 +286,25 @@ const screens = {
         <button class="abtn ghost">✕ Reject</button>
         <button class="abtn g">✓ Approve</button>
       </div>
+    </div>`),
+
+  docketActions: () => FRAME('Timesheets', `
+    <table class="tbl">
+      <thead><tr><th>Docket #</th><th>Worker</th><th>Hours</th><th>Actions</th></tr></thead>
+      <tbody>
+        <tr class="hl"><td>#10199</td><td>Sam Older</td><td>0.0</td>
+          <td>
+            <span class="abtn b sm">Edit</span>
+            <span class="abtn g sm">Docket</span>
+            <span class="abtn sm ring" style="background:#FEF3C7;color:#B45309;">Archive</span>
+            <span class="abtn sm ring" style="background:#FEE2E2;color:#DC2626;">Delete</span>
+          </td></tr>
+      </tbody>
+    </table>
+    <div class="acard ring" style="margin-top:12px;">
+      <div class="asec">Archive vs Delete</div>
+      <div class="amuted" style="line-height:1.65;margin-bottom:8px;"><b style="color:#B45309;">Archive</b> (orange) — hides the docket from the main list but keeps it recoverable under the Archived tab. Use for finished weeks.</div>
+      <div class="amuted" style="line-height:1.65;"><b style="color:#DC2626;">Delete</b> (red) — permanently removes the docket and all its day entries. Double confirmation required. Cannot be restored.</div>
     </div>`),
 
   onsite: () => FRAME('Timesheets', `
@@ -288,18 +344,34 @@ const screens = {
   allocation: () => FRAME('Allocation', `
     <div class="arow" style="justify-content:space-between;margin-bottom:12px;">
       <div class="asec" style="margin:0;">📋 Allocated — Tue 23 Jun</div>
-      <div class="field" style="padding:6px 10px;">📅 Tue 23 Jun ▾</div>
+      <div class="field ring" style="padding:6px 10px;">📅 Tue 23 Jun ▾</div>
     </div>
     <table class="tbl" style="margin-bottom:14px;">
-      <thead><tr><th>Worker</th><th>Client / Site</th><th>Start</th><th>Foreman</th><th>Status</th></tr></thead>
+      <thead><tr><th>Worker</th><th>Client / Site</th><th>Start</th><th>Foreman</th><th>Status</th><th>Clocked</th></tr></thead>
       <tbody>
-        <tr><td>Liam Carter</td><td>BuildCo · 2 Lonsdale St</td><td>7:00 AM</td><td>Dave 0400 111 222</td><td><span class="ap g">Accepted</span></td></tr>
-        <tr><td>Noah Bennett</td><td>BuildCo · 2 Lonsdale St</td><td>7:00 AM</td><td>Dave 0400 111 222</td><td><span class="ap a">Pending</span></td></tr>
+        <tr><td>Liam Carter</td><td>BuildCo · 2 Lonsdale St</td><td>7:00 AM</td><td>Dave</td><td><span class="ap g">Accepted</span></td><td><span class="ap g">In</span></td></tr>
+        <tr><td>Noah Bennett</td><td>BuildCo · 2 Lonsdale St</td><td>7:00 AM</td><td>Dave</td><td><span class="ap a">Pending</span></td><td><span class="ap s">—</span></td></tr>
       </tbody>
     </table>
     <div class="acard ring" style="background:#F0FDF4;">
       <div class="asec" style="color:#166534;">➕ Not allocated for this day (4)</div>
-      <div class="amuted">Mia Thompson · Jack Wilson · Ava Nguyen · Ethan Brown — drag onto a job or tap to assign. They get a notification to accept.</div>
+      <div class="amuted">Mia Thompson · Jack Wilson · Ava Nguyen · Ethan Brown — assign them to a job. They get a notification to accept.</div>
+    </div>`),
+
+  multidayAllocation: () => FRAME('Allocation', `
+    <div class="arow" style="justify-content:space-between;margin-bottom:12px;">
+      <div class="asec" style="margin:0;">Multi-day assignments</div>
+      <div class="field">📅 Wed 24 Jun ▾</div>
+    </div>
+    <table class="tbl" style="margin-bottom:10px;">
+      <thead><tr><th>Worker</th><th>Client / Site</th><th>Start</th><th>Status</th><th>Clocked</th></tr></thead>
+      <tbody>
+        <tr><td>Liam Carter</td><td>Metro · Maroondah Hwy</td><td>6:30 AM</td><td><span class="ap g">Accepted</span></td><td><span class="ap s">—</span></td></tr>
+        <tr class="hl"><td>Noah Bennett</td><td>BuildCo · 2 Lonsdale St</td><td>7:00 AM</td><td><span class="ap g">Accepted</span></td><td><span class="ap s">—</span></td></tr>
+      </tbody>
+    </table>
+    <div class="acard ring">
+      <div class="amuted" style="line-height:1.65;">Workers can be assigned to <b>different sites on different days</b>. The <b>Clocked</b> column only shows <b>In</b> when you're viewing <b>today's</b> date — not future days. Change the date picker to plan ahead without seeing today's clock-ins on tomorrow's roster.</div>
     </div>`),
 
   workers: () => FRAME('Workers', `
@@ -381,17 +453,24 @@ const screens = {
     <button class="abtn g ring" style="padding:10px 16px;">➡ Push to MYOB &amp; create invoices</button>`),
 
   alerts: () => FRAME('Alerts', `
-    <div class="acard">
-      <div class="arow" style="justify-content:space-between;"><div class="asec" style="margin:0;">⏰ Clock-in / Clock-out reminders</div><div class="toggle"><div></div></div></div>
-      <div class="arow" style="gap:10px;margin-top:10px;"><div class="field">In: 07:00</div><div class="field">Out: 17:00</div></div>
+    <div class="acard ring" style="padding:12px;margin-bottom:8px;">
+      <div class="asec" style="font-size:14px;margin-bottom:6px;">📣 Message Foremen</div>
+      <div class="amuted" style="line-height:1.5;margin-bottom:6px;">Select site foremen, write your message, send — each gets an individual SMS.</div>
+      <button class="abtn g sm">Send SMS to selected foremen</button>
     </div>
-    <div class="acard">
-      <div class="arow" style="justify-content:space-between;"><div class="asec" style="margin:0;">📣 Unaccepted Jobs Notice</div><div class="toggle"><div></div></div></div>
-      <div class="amuted" style="margin-top:8px;">Time 18:15 · Recipients: Josh + selected workers · Extra SMS numbers</div>
-    </div>
-    <div class="acard ring">
-      <div class="arow" style="justify-content:space-between;"><div class="asec" style="margin:0;">📋 Daily Roster Digest</div><div class="toggle"><div></div></div></div>
-      <div class="amuted" style="margin-top:8px;">7:00 PM SMS — who's out vs who's still available, with client, site &amp; start time.</div>
+    <div class="acard ring" style="padding:12px;margin-bottom:0;">
+      <div class="asec" style="font-size:14px;margin-bottom:6px;">📋 SMS Send Log</div>
+      <div class="arow" style="gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+        <div class="field" style="padding:6px 8px;font-size:11px;">From · To · Type ▾</div>
+      </div>
+      <table class="tbl" style="font-size:12px;">
+        <thead><tr><th>Sent</th><th>Recipient</th><th>Type</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>23 Jun 7:02</td><td>Liam Carter</td><td>Clock-In Reminder</td><td><span class="ap g">Sent</span></td></tr>
+          <tr><td>22 Jun 18:15</td><td>Dave (foreman)</td><td>Foremen Broadcast</td><td><span class="ap g">Sent</span></td></tr>
+        </tbody>
+      </table>
+      <div class="amuted" style="margin-top:6px;line-height:1.45;">Filter by date and type. Delete log rows to tidy up — that does not unsend the SMS.</div>
     </div>`),
 
   housekeeping: () => FRAME('Archived', `
@@ -415,11 +494,11 @@ const screens = {
       <div style="font-size:40px;margin-bottom:14px;">✅</div>
       <div style="font-size:22px;font-weight:800;">That's the dashboard!</div>
       <div style="font-size:14px;opacity:.92;margin-top:14px;line-height:1.7;text-align:left;">
-        ✔ Approve timesheets → payroll &amp; invoicing<br/>
-        ✔ Allocate the next day's jobs<br/>
-        ✔ Keep workers, clients &amp; tickets up to date<br/>
-        ✔ Push approved hours to MYOB<br/>
-        ✔ Manage reminders &amp; the daily roster digest
+        ✔ Approve timesheets day-by-day → payroll &amp; invoicing<br/>
+        ✔ Filter by pay week, day, and job site<br/>
+        ✔ Allocate multi-day jobs · see who's clocked in today<br/>
+        ✔ Message foremen &amp; review the SMS send log<br/>
+        ✔ Push approved hours to MYOB
       </div>
       <div style="margin-top:22px;font-size:13px;opacity:.85;">Questions? Call or text Josh McPherson<br/><b style="font-size:16px;">0424 142 040</b></div>
     </div>`,
@@ -429,16 +508,25 @@ const screens = {
 const slides = [
   { s:'intro',
     cap:'Welcome to the <b>RAW Admin Dashboard</b> — your control centre for the whole operation.',
-    say:'G\'day, and welcome to the RAW Labour Hire admin dashboard. This is your control centre for the whole operation, approving timesheets, allocating jobs, managing your workers and clients, and pushing it all through to invoicing. Let\'s take a quick tour.' },
+    say:'G\'day, and welcome to the RAW Labour Hire admin dashboard. This is your control centre for the whole operation, approving timesheets, allocating jobs, managing your workers and clients, and pushing it all through to invoicing. Let\'s take a quick tour, including the newest features.' },
   { s:'login',
     cap:'Open <b>admin.rawlabourhire.com/admin</b> and log in with your admin email and password.',
     say:'You\'ll find the dashboard at admin dot raw labour hire dot com, slash admin. Just log in with your admin email and password, and you\'re in.' },
   { s:'dashboard',
-    cap:'The <b>Timesheets</b> tab is home base. The cards up top show pending approvals, approved hours, total hours and active workers.',
-    say:'First up is the Timesheets tab, your home base. Right at the top you\'ve got your live numbers, how many timesheets are pending approval, how many you\'ve approved this week, the total hours, and how many workers are active.' },
+    cap:'The <b>Timesheets</b> tab groups dockets by <b>pay week</b> and <b>job site</b>. The day-by-day line under Status shows each day\'s progress.',
+    say:'First up is the Timesheets tab, your home base. At the top you\'ve got your live numbers, pending approvals, approved hours, total hours, and active workers. Below that, timesheets now group by pay week, then by job site. Under each docket\'s status you\'ll see a little day-by-day summary, like Monday tick, Tuesday pending, Wednesday dash, so you can see the whole week at a glance.' },
+  { s:'timesheetFilters',
+    cap:'Use <b>Pay Week</b>, <b>Day</b>, and <b>Status</b> filters to narrow the list. Pick a day to see only dockets with entries on that date.',
+    say:'You\'ve got powerful filters up here. Filter by pay week, which runs Saturday to Friday, pick a specific day to see only dockets that have entries on that date, filter by status or worker, and toggle group by week on or off. When you pick a day, the status column shows that day only, not the whole docket.' },
+  { s:'dailyStatus',
+    cap:'Each day in a docket has its own approval status. If someone clocks in on a new day, the docket goes back to draft until that day is approved.',
+    say:'Here\'s an important one. Each day inside a docket has its own approval status. So a docket might show Approved overall, but if the worker clocks in on Wednesday, that day is still pending. The little Mon Tue Wed summary tells you exactly where you stand. When they clock in on a fresh day, the docket drops back to draft until you approve that new day.' },
   { s:'approve',
-    cap:'Click a timesheet to open it. Check the hours, adjust the times if needed, then <b>Approve</b> — or Reject to send it back.',
-    say:'Below that is the list of timesheets. Click any one to open it, where you can check the hours, tweak the clock-in or clock-out times if you need to, then hit Approve. Once it\'s approved, those hours flow straight through to payroll and invoicing. Anything that looks off, just reject it and send it back.' },
+    cap:'Click <b>Edit</b> to open a docket. Check each day\'s hours, adjust times if needed, then <b>Approve</b> — or Reject to send it back.',
+    say:'Click Edit on any docket to open it, where you can check each day\'s hours, tweak the clock-in or clock-out times if you need to, then hit Approve. Once approved, those hours flow straight through to payroll and invoicing. Anything that looks off, just reject it and send it back.' },
+  { s:'docketActions',
+    cap:'<b>Archive</b> (orange) hides finished dockets but keeps them recoverable. <b>Delete</b> (red) permanently removes a docket — double confirmation required.',
+    say:'Each docket row has Archive and Delete buttons. Archive, the orange one, hides finished dockets from the main list but you can always restore them from the Archived tab. Delete, the red one, permanently removes the docket and every day entry inside it. You\'ll get a double confirmation, and it cannot be undone, so use it carefully.' },
   { s:'onsite',
     cap:'The <b>On Site</b> button shows who\'s clocked in right now — and lets you clock someone out if they forget.',
     say:'See the On Site button? Give it a tap to see exactly who\'s clocked in right now, and where. And if someone\'s forgotten to clock out, you can do it for them, right from here.' },
@@ -446,8 +534,11 @@ const slides = [
     cap:'The <b>Calendar</b> tab is the big picture — a month at a glance showing who worked which day.',
     say:'The Calendar tab gives you the big picture, a month at a glance, showing who worked which day. It\'s handy for spotting gaps, or double bookings.' },
   { s:'allocation',
-    cap:'The <b>Allocation</b> tab sets up the next day. Assign workers to each client and site — they get a notification to accept.',
-    say:'The Allocation tab is where you set up the next day\'s work. Pick a date, then assign your workers to each client and job site, set the start time and the site foreman. The moment you save, every worker gets a notification on their phone to accept the job.' },
+    cap:'The <b>Allocation</b> tab sets up each day\'s jobs. The <b>Clocked</b> column shows who\'s on site — but only when viewing <b>today\'s</b> date.',
+    say:'The Allocation tab is where you set up each day\'s work. Pick a date, assign workers to each client and job site, set the start time and foreman, and they get a notification to accept. The new Clocked column shows In for workers currently on site, but only when you\'re viewing today\'s date.' },
+  { s:'multidayAllocation',
+    cap:'Workers can be assigned to <b>different sites on different days</b>. Future dates won\'t show today\'s clock-ins in the Clocked column.',
+    say:'Workers can now be assigned to different sites on different days. Liam might be at Lonsdale Street on Tuesday and Maroondah Highway on Wednesday. When you\'re looking at tomorrow or any future date, the Clocked column stays blank, so you\'re not confused by who\'s on site today.' },
   { s:'workers',
     cap:'The <b>Workers</b> tab is your directory — add, edit, reset passwords, set schedules. Green is active, red is inactive.',
     say:'The Workers tab is your full directory. Add a new worker, edit their details, set a shift schedule, or reset a password on the spot. Active workers show in green, inactive in red, and you can permanently remove anyone who\'s left, while keeping their payroll history intact.' },
@@ -464,14 +555,14 @@ const slides = [
     cap:'The <b>Invoicing</b> tab groups approved hours by client and site, then pushes them to <b>MYOB</b>.',
     say:'The Invoicing tab is where it all comes together. It takes your approved hours, groups them by client and job site, and pushes them through to MYOB to generate the weekly invoices. No more re-typing into a spreadsheet.' },
   { s:'alerts',
-    cap:'The <b>Alerts</b> tab controls reminders, the Unaccepted Jobs notice, and the 7pm Daily Roster Digest.',
-    say:'The Alerts tab controls all the automatic messages. Set your clock-in and clock-out reminder times, decide who gets the Unaccepted Jobs notice each evening, and set up the Daily Roster Digest, that seven p.m. text listing who\'s out and who\'s still available.' },
+    cap:'The <b>Alerts</b> tab has reminders, <b>Message Foremen</b> broadcasts, and the new <b>SMS Send Log</b> to review every text sent.',
+    say:'The Alerts tab controls all your messaging. Set clock-in and clock-out reminder times, use Message Foremen to send a one-off text to selected site contacts, each one gets their own individual SMS. And scroll down to the SMS Send Log, a full history of every text sent, filterable by date and type. You can delete log entries to tidy up, but that doesn\'t unsend the message.' },
   { s:'housekeeping',
-    cap:'The <b>Archived</b> tab keeps old timesheets recoverable. Up top, <b>Refresh</b> reloads data and <b>Logout</b> signs you out.',
-    say:'A couple of last things. The Archived tab keeps your old timesheets tidy, but recoverable. And up the top, Refresh pulls the very latest data, while Logout signs you out securely when you\'re done.' },
+    cap:'The <b>Archived</b> tab keeps old timesheets recoverable. Up top, <b>Help</b> opens this guide, <b>Refresh</b> reloads data, and <b>Logout</b> signs you out.',
+    say:'A couple of last things. The Archived tab keeps your old timesheets tidy, but recoverable. Up the top, the Help button opens this guide anytime. Refresh pulls the very latest data, while Logout signs you out securely when you\'re done.' },
   { s:'outro',
-    cap:'That\'s the dashboard! Approve, allocate, manage, and invoice. Questions? Call Josh on <b>0424 142 040</b>.',
-    say:'And that\'s the dashboard! Approve your timesheets, allocate the next day\'s jobs, keep your workers and clients up to date, and let invoicing do the heavy lifting. Any questions, give Josh a call or text, on 0 4 2 4, 1 4 2, 0 4 0. Cheers.' },
+    cap:'That\'s the dashboard! Approve day-by-day, allocate, message foremen, and invoice. Questions? Call Josh on <b>0424 142 040</b>.',
+    say:'And that\'s the dashboard! Approve your timesheets day by day, filter by pay week and job site, allocate multi-day jobs, message your foremen, and let invoicing do the heavy lifting. Any questions, give Josh a call or text, on 0 4 2 4, 1 4 2, 0 4 0. Cheers.' },
 ];
 
 /* ---------------- Player ---------------- */
@@ -487,12 +578,17 @@ const muteBtn = document.getElementById('mute');
 slides.forEach((_,i)=>{const d=document.createElement('div');d.className='dot';d.onclick=()=>{stop();go(i);};dotsEl.appendChild(d);});
 const dots=[...dotsEl.children];
 
-function estDur(text){ return Math.max(3800, Math.min(14000, text.length*55)); }
+function estDur(text){
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(4500, words * 420 + 2000);
+}
 
 function render(i){
   const sl = slides[i];
   screenEl.innerHTML = screens[sl.s]();
   screenEl.classList.remove('screen-fade'); void screenEl.offsetWidth; screenEl.classList.add('screen-fade');
+  const ab = screenEl.querySelector('.ab');
+  if(ab) ab.scrollTop = 0;
   capEl.innerHTML = sl.cap;
   countEl.textContent = `${i+1} / ${slides.length}`;
   barEl.style.width = `${((i+1)/slides.length)*100}%`;
@@ -535,8 +631,16 @@ function speak(text, onEnd){
   const u = new SpeechSynthesisUtterance(text);
   u.rate = 0.92; u.pitch = 0.95;
   if(chosenVoice) u.voice = chosenVoice;
-  u.onend = ()=>{ if(playing) onEnd(); };
-  timer = setTimeout(()=>{ if(playing){ window.speechSynthesis.cancel(); onEnd(); } }, estDur(text)+6000);
+  let finished = false;
+  const done = ()=>{
+    if(finished) return;
+    finished = true;
+    clearTimeout(timer);
+    if(playing) onEnd();
+  };
+  u.onend = done;
+  u.onerror = done;
+  timer = setTimeout(done, estDur(text) * 2.5);
   window.speechSynthesis.speak(u);
 }
 

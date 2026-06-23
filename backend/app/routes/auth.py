@@ -562,7 +562,13 @@ async def request_password_reset(
     sms_message = f"RAW Labour Hire: Your password reset code is {reset_code}. This code expires in 15 minutes."
     
     async def send_reset_sms():
-        await send_sms(user.phone, sms_message)
+        await send_sms(
+            user.phone,
+            sms_message,
+            recipient_name=f"{user.first_name} {user.surname}",
+            worker_id=user.id,
+            message_type="password_reset",
+        )
     
     background_tasks.add_task(send_reset_sms)
 

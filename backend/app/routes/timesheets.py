@@ -21,6 +21,11 @@ def get_melbourne_now():
     """Get current time in Melbourne, Australia (AEST/AEDT)"""
     return datetime.now(MELBOURNE_TZ)
 from ..models import User, Timesheet, TimesheetEntry, TimesheetStatus, InjuryStatus, Client, JobSite
+from ..services.timesheet_helpers import (
+    summarize_entries,
+    sync_timesheet_status,
+    matches_admin_status_filter,
+)
 from .auth import get_current_user, resolve_user_id
 
 router = APIRouter()
@@ -36,55 +41,37 @@ async def get_all_timesheets_admin(
 ):
     """Get all active (non-archived) timesheets for admin dashboard"""
     query = select(Timesheet).where(Timesheet.archived_at.is_(None)).order_by(Timesheet.week_starting.desc())
-    
-    if status == 'submitted':
-        # "Pending Approval" = docket submitted OR any day-entry submitted (even if the
-        # docket itself is still draft because the worker submitted per-day).
-        sub = select(TimesheetEntry.timesheet_id).where(
-            TimesheetEntry.entry_status == 'submitted'
-        ).distinct()
-        query = query.where(
-            (Timesheet.status == TimesheetStatus.SUBMITTED) | (Timesheet.id.in_(sub))
-        )
-    elif status == 'not_submitted':
-        # "Clocked but not sent" = draft docket that has NO submitted day-entries.
-        # These are timesheets where the worker clocked out but never completed the
-        # supervisor-signature submission, so they never appear under Pending Approval.
-        sub = select(TimesheetEntry.timesheet_id).where(
-            TimesheetEntry.entry_status == 'submitted'
-        ).distinct()
-        query = query.where(
-            (Timesheet.status == TimesheetStatus.DRAFT) & (~Timesheet.id.in_(sub))
-        )
-    elif status:
-        query = query.where(Timesheet.status == TimesheetStatus(status))
     if worker_id:
         query = query.where(Timesheet.worker_id == worker_id)
-    
+
     result = await db.execute(query)
     timesheets = result.scalars().all()
-    
-    # Get worker and client names
+
     response_data = []
     for ts in timesheets:
-        # Get worker
         worker_result = await db.execute(select(User).where(User.id == ts.worker_id))
         worker = worker_result.scalar_one_or_none()
-        
-        # Get client
+
         client_result = await db.execute(select(Client).where(Client.id == ts.client_id))
         client = client_result.scalar_one_or_none()
-        
-        # Count submitted (pending-approval) day entries so the dashboard can keep
-        # showing a docket that is still 'draft' overall but has days awaiting approval.
-        submitted_entries_result = await db.execute(
-            select(func.count(TimesheetEntry.id)).where(
-                TimesheetEntry.timesheet_id == ts.id,
-                TimesheetEntry.entry_status == 'submitted'
-            )
+
+        job_site_name = None
+        if ts.job_site_id:
+            site_result = await db.execute(select(JobSite).where(JobSite.id == ts.job_site_id))
+            site = site_result.scalar_one_or_none()
+            job_site_name = site.name if site else None
+
+        entries_result = await db.execute(
+            select(TimesheetEntry)
+            .where(TimesheetEntry.timesheet_id == ts.id)
+            .order_by(TimesheetEntry.entry_date)
         )
-        submitted_entries = submitted_entries_result.scalar() or 0
-        
+        entries = entries_result.scalars().all()
+        summary = summarize_entries(entries)
+
+        if not matches_admin_status_filter(summary["display_status"], status):
+            continue
+
         response_data.append({
             "id": ts.id,
             "docket_number": ts.docket_number,
@@ -92,19 +79,37 @@ async def get_all_timesheets_admin(
             "worker_name": f"{worker.first_name} {worker.surname}" if worker else "Unknown",
             "client_id": ts.client_id,
             "client_name": client.name if client else None,
+            "job_site_id": ts.job_site_id,
+            "job_site_name": job_site_name,
             "week_starting": ts.week_starting.isoformat(),
             "week_ending": ts.week_ending.isoformat(),
             "status": ts.status.value,
+            "display_status": summary["display_status"],
+            "entries_summary": summary["entries_summary"],
             "total_ordinary_hours": ts.total_ordinary_hours or 0,
             "total_overtime_hours": ts.total_overtime_hours or 0,
             "total_hours": ts.total_hours or 0,
+            "approved_hours": summary["approved_hours"],
             "supervisor_name": ts.supervisor_name,
             "supervisor_contact": ts.supervisor_contact,
             "supervisor_signature": ts.supervisor_signature,
             "submitted_at": ts.submitted_at.isoformat() if ts.submitted_at else None,
-            "submitted_entries_count": submitted_entries,
+            "submitted_entries_count": summary["submitted_entries_count"],
+            "approved_entries_count": summary["approved_entries_count"],
+            "total_entries_count": summary["total_entries_count"],
+            "entries": [
+                {
+                    "entry_date": e.entry_date.isoformat(),
+                    "day_of_week": e.day_of_week,
+                    "entry_status": e.entry_status or "draft",
+                    "clock_in": e.clock_in_time is not None,
+                    "clock_out": e.clock_out_time is not None,
+                    "total_hours": e.total_hours or 0,
+                }
+                for e in entries
+            ],
         })
-    
+
     return {"timesheets": response_data}
 
 
@@ -238,8 +243,7 @@ async def admin_submit_on_behalf(
     if submitted_count == 0:
         raise HTTPException(status_code=400, detail="No un-submitted entries on this docket")
 
-    if timesheet.status == TimesheetStatus.DRAFT:
-        timesheet.status = TimesheetStatus.SUBMITTED
+    sync_timesheet_status(timesheet, entries)
     if not timesheet.submitted_at:
         timesheet.submitted_at = datetime.utcnow()
 
@@ -564,6 +568,7 @@ async def get_timesheet(
             "supervisor_signature": e.supervisor_signature
         })
     
+    summary = summarize_entries(entries)
     return {
         "id": timesheet.id,
         "docket_number": timesheet.docket_number,
@@ -571,6 +576,11 @@ async def get_timesheet(
         "week_starting": timesheet.week_starting.isoformat(),
         "week_ending": timesheet.week_ending.isoformat(),
         "status": timesheet.status.value,
+        "display_status": summary["display_status"],
+        "entries_summary": summary["entries_summary"],
+        "approved_entries_count": summary["approved_entries_count"],
+        "submitted_entries_count": summary["submitted_entries_count"],
+        "total_entries_count": summary["total_entries_count"],
         "worker_name": worker_name,
         "client_name": client_name,
         "total_ordinary_hours": timesheet.total_ordinary_hours,
@@ -693,14 +703,25 @@ async def submit_entry(
     entry.supervisor_contact = request.supervisor_contact
     entry.supervisor_signature = request.supervisor_signature
     entry.submitted_at = datetime.utcnow()
-    
-    await db.commit()
-    
-    # Get timesheet and worker info for notification
+
     timesheet_result = await db.execute(
         select(Timesheet).where(Timesheet.id == entry.timesheet_id)
     )
     timesheet = timesheet_result.scalar_one_or_none()
+    if timesheet:
+        all_entries_result = await db.execute(
+            select(TimesheetEntry).where(TimesheetEntry.timesheet_id == timesheet.id)
+        )
+        sync_timesheet_status(timesheet, all_entries_result.scalars().all())
+
+    await db.commit()
+
+    # Get timesheet and worker info for notification
+    if not timesheet:
+        timesheet_result = await db.execute(
+            select(Timesheet).where(Timesheet.id == entry.timesheet_id)
+        )
+        timesheet = timesheet_result.scalar_one_or_none()
     
     worker_result = await db.execute(
         select(User).where(User.id == timesheet.worker_id)
@@ -1103,32 +1124,27 @@ async def approve_entry(
         raise HTTPException(status_code=404, detail="Entry not found")
     
     entry.entry_status = "approved"
-    
-    # Check if all entries in the timesheet are now approved
+
     all_entries_result = await db.execute(
         select(TimesheetEntry).where(TimesheetEntry.timesheet_id == entry.timesheet_id)
     )
     all_entries = all_entries_result.scalars().all()
-    
-    # If all entries are approved, update the timesheet status
-    all_approved = all(e.entry_status == "approved" for e in all_entries)
-    any_approved = any(e.entry_status == "approved" for e in all_entries)
-    
-    # Get the parent timesheet
+
     ts_result = await db.execute(select(Timesheet).where(Timesheet.id == entry.timesheet_id))
     timesheet = ts_result.scalar_one_or_none()
-    
+
     if timesheet:
-        if all_approved:
-            timesheet.status = TimesheetStatus.APPROVED
-        elif any_approved:
-            # At least some entries approved - mark as submitted (in progress)
-            if timesheet.status == TimesheetStatus.DRAFT:
-                timesheet.status = TimesheetStatus.SUBMITTED
-    
+        sync_timesheet_status(timesheet, all_entries)
+
     await db.commit()
-    
-    return {"message": "Entry approved", "entry_id": entry_id, "timesheet_status": timesheet.status.value if timesheet else None}
+
+    summary = summarize_entries(all_entries)
+    return {
+        "message": "Entry approved",
+        "entry_id": entry_id,
+        "timesheet_status": timesheet.status.value if timesheet else None,
+        "display_status": summary["display_status"],
+    }
 
 
 @router.post("/admin/entries/{entry_id}/reject")
@@ -1146,8 +1162,18 @@ async def reject_entry(
         raise HTTPException(status_code=404, detail="Entry not found")
     
     entry.entry_status = "rejected"
+
+    all_entries_result = await db.execute(
+        select(TimesheetEntry).where(TimesheetEntry.timesheet_id == entry.timesheet_id)
+    )
+    all_entries = all_entries_result.scalars().all()
+    ts_result = await db.execute(select(Timesheet).where(Timesheet.id == entry.timesheet_id))
+    timesheet = ts_result.scalar_one_or_none()
+    if timesheet:
+        sync_timesheet_status(timesheet, all_entries)
+
     await db.commit()
-    
+
     return {"message": "Entry rejected", "entry_id": entry_id}
 
 
@@ -1184,6 +1210,7 @@ async def delete_entry(
         timesheet.total_ordinary_hours = sum(e.ordinary_hours or 0 for e in entries)
         timesheet.total_overtime_hours = sum(e.overtime_hours or 0 for e in entries)
         timesheet.total_hours = timesheet.total_ordinary_hours + timesheet.total_overtime_hours
+        sync_timesheet_status(timesheet, entries)
         await db.commit()
     
     return {"message": "Entry deleted", "entry_id": entry_id}

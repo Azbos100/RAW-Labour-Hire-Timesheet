@@ -33,6 +33,9 @@
         .status-submitted { background: #FEF3C7; color: #92400E; }
         .status-approved { background: #D1FAE5; color: #065F46; }
         .status-rejected { background: #FEE2E2; color: #991B1B; }
+        .status-in_progress { background: #DBEAFE; color: #1E40AF; }
+        .status-partial { background: #FFEDD5; color: #9A3412; }
+        .status-not_submitted { background: #EDE9FE; color: #5B21B6; }
         .loader { border: 3px solid #f3f3f3; border-top: 3px solid #1E3A8A; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: scroll; -webkit-overflow-scrolling: touch; }
@@ -256,6 +259,11 @@
                             <select id="filter-week" onchange="renderTimesheets()" class="border rounded-lg px-3 py-2">
                                 <option value="">All Weeks</option>
                             </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-500 mb-1">Day</label>
+                            <input type="date" id="filter-day" onchange="onDayFilterChange()" class="border rounded-lg px-3 py-2">
+                            <button type="button" onclick="clearDayFilter()" id="filter-day-clear" class="hidden ml-1 text-xs text-blue-600 hover:underline">Clear</button>
                         </div>
                         <div>
                             <label class="block text-sm text-gray-500 mb-1">View</label>
@@ -992,6 +1000,65 @@
                             Send SMS to selected foremen
                         </button>
                         <div id="foremen-send-result" class="text-sm mt-3"></div>
+                    </div>
+                </div>
+
+                <!-- Twilio Setup Info -->
+                <div class="bg-white rounded-xl shadow overflow-hidden lg:col-span-2">
+                    <div class="p-4 border-b flex flex-wrap items-center justify-between gap-3">
+                        <h2 class="text-lg font-semibold flex items-center gap-2">
+                            <i class="fas fa-history text-indigo-600"></i>
+                            SMS Send Log
+                        </h2>
+                        <button onclick="loadSmsLog()" class="text-sm text-blue-600 hover:underline">
+                            <i class="fas fa-sync-alt mr-1"></i>Refresh
+                        </button>
+                    </div>
+                    <div class="p-4 border-b bg-gray-50 flex flex-wrap gap-3 items-end">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">From</label>
+                            <input type="date" id="sms-log-from" onchange="loadSmsLog()" class="border rounded-lg px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">To</label>
+                            <input type="date" id="sms-log-to" onchange="loadSmsLog()" class="border rounded-lg px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Type</label>
+                            <select id="sms-log-type" onchange="loadSmsLog()" class="border rounded-lg px-3 py-2 text-sm">
+                                <option value="">All types</option>
+                                <option value="clock_in_reminder">Clock-In Reminder</option>
+                                <option value="clock_out_reminder">Clock-Out Reminder</option>
+                                <option value="job_assignment">Job Assignment</option>
+                                <option value="custom">Custom SMS</option>
+                                <option value="foremen_broadcast">Foremen Broadcast</option>
+                                <option value="allocation_notice">Unaccepted Jobs Notice</option>
+                                <option value="roster_digest">Roster Digest</option>
+                                <option value="password_reset">Password Reset</option>
+                                <option value="timesheet_approved">Timesheet Approved</option>
+                                <option value="timesheet_rejected">Timesheet Rejected</option>
+                            </select>
+                        </div>
+                        <button onclick="clearSmsLogFilters()" class="text-sm text-gray-600 hover:text-gray-800 px-3 py-2">Clear filters</button>
+                        <span id="sms-log-count" class="text-sm text-gray-500 ml-auto"></span>
+                    </div>
+                    <div class="overflow-x-auto max-h-[480px]">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 sticky top-0">
+                                <tr>
+                                    <th class="px-4 py-2 text-left font-medium text-gray-500">Sent</th>
+                                    <th class="px-4 py-2 text-left font-medium text-gray-500">Recipient</th>
+                                    <th class="px-4 py-2 text-left font-medium text-gray-500">Phone</th>
+                                    <th class="px-4 py-2 text-left font-medium text-gray-500">Type</th>
+                                    <th class="px-4 py-2 text-left font-medium text-gray-500">Message</th>
+                                    <th class="px-4 py-2 text-left font-medium text-gray-500">Status</th>
+                                    <th class="px-4 py-2 text-right font-medium text-gray-500 w-20"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="sms-log-table" class="divide-y divide-gray-100">
+                                <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Open this tab to load SMS history</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
 
@@ -2063,13 +2130,49 @@
                 initAllocation();
             } else if (tab === 'notifications') {
                 loadForemenCount();
+                loadSmsLog();
             }
         }
 
         // ==================== TIMESHEETS ====================
 
+        function onDayFilterChange() {
+            const day = (document.getElementById('filter-day') || {}).value || '';
+            const clearBtn = document.getElementById('filter-day-clear');
+            if (clearBtn) clearBtn.classList.toggle('hidden', !day);
+            loadTimesheets();
+        }
+
+        function clearDayFilter() {
+            const el = document.getElementById('filter-day');
+            if (el) el.value = '';
+            onDayFilterChange();
+        }
+
+        function entryForDate(ts, dateStr) {
+            return (ts.entries || []).find(e => e.entry_date === dateStr) || null;
+        }
+
+        function dayEntryStatus(entry) {
+            if (!entry) return 'none';
+            const st = entry.entry_status || 'draft';
+            if (st === 'approved') return 'approved';
+            if (st === 'submitted') return 'submitted';
+            if (st === 'rejected') return 'rejected';
+            if (entry.clock_in && !entry.clock_out) return 'in_progress';
+            if (entry.clock_out) return 'not_submitted';
+            return 'draft';
+        }
+
+        function dayStatusLabel(status) {
+            if (status === 'none') return 'No entry';
+            return displayStatusLabel(status);
+        }
+
         async function loadTimesheets() {
-            const status = document.getElementById('filter-status').value;
+            const dayFilter = (document.getElementById('filter-day') || {}).value || '';
+            // Day view needs every docket so we can show that day's status across workers
+            const status = dayFilter ? '' : document.getElementById('filter-status').value;
             const workerId = document.getElementById('filter-worker').value;
             
             try {
@@ -2260,52 +2363,95 @@
             if (prev && seen.has(prev)) sel.value = prev;
         }
 
+        function tsDisplayStatus(ts) {
+            return ts.display_status || ts.status;
+        }
+
+        function displayStatusLabel(status) {
+            const labels = {
+                draft: 'Draft',
+                submitted: 'Pending Approval',
+                approved: 'Approved',
+                rejected: 'Rejected',
+                not_submitted: 'Not Submitted',
+                in_progress: 'On Site',
+                partial: 'Partial',
+            };
+            return labels[status] || (status.charAt(0).toUpperCase() + status.slice(1));
+        }
+
         function renderTimesheets() {
             const tbody = document.getElementById('timesheets-table');
             const weekFilter = (document.getElementById('filter-week') || {}).value || '';
+            const dayFilter = (document.getElementById('filter-day') || {}).value || '';
             const groupByWeek = (document.getElementById('group-by-week') || {}).checked;
 
             const statusFilter = (document.getElementById('filter-status') || {}).value || '';
             let rows = allTimesheets;
-            // Hide pure drafts (not submitted yet) only on the specific status views
-            // (Pending Approval / Approved / Rejected). On "All Statuses" ('') and the
-            // "Not Submitted (clocked)" view we show them so nothing is hidden. Drafts
-            // that have at least one submitted day are always kept (still need approval).
-            if (statusFilter !== 'not_submitted' && statusFilter !== '') {
-                rows = rows.filter(ts => ts.status !== 'draft' || (ts.submitted_entries_count || 0) > 0);
+            if (dayFilter) {
+                rows = rows.filter(ts => entryForDate(ts, dayFilter));
+                if (statusFilter) {
+                    rows = rows.filter(ts => {
+                        const ds = dayEntryStatus(entryForDate(ts, dayFilter));
+                        if (statusFilter === 'submitted') return ds === 'submitted' || ds === 'partial';
+                        if (statusFilter === 'not_submitted') return ['not_submitted', 'in_progress', 'draft'].includes(ds);
+                        if (statusFilter === 'approved') return ds === 'approved';
+                        if (statusFilter === 'rejected') return ds === 'rejected';
+                        return true;
+                    });
+                }
+            } else if (statusFilter !== 'not_submitted' && statusFilter !== '') {
+                rows = rows.filter(ts => tsDisplayStatus(ts) !== 'draft' || (ts.submitted_entries_count || 0) > 0 || (ts.total_entries_count || 0) > 0);
             }
             if (weekFilter) rows = rows.filter(ts => ts.week_starting === weekFilter);
 
             if (rows.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">No timesheets found</td></tr>`;
+                const msg = dayFilter
+                    ? `No dockets with entries on ${formatDate(dayFilter)}`
+                    : 'No timesheets found';
+                tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">${msg}</td></tr>`;
                 return;
             }
 
-            const timesheetRow = (ts) => `
+            const timesheetRow = (ts) => {
+                const dayEntry = dayFilter ? entryForDate(ts, dayFilter) : null;
+                const ds = dayFilter ? dayEntryStatus(dayEntry) : tsDisplayStatus(ts);
+                const daysLabel = !dayFilter && (ts.total_entries_count || 0) > 0
+                    ? `${ts.approved_entries_count || 0}/${ts.total_entries_count} days approved`
+                    : '';
+                const rowHours = dayFilter ? (dayEntry?.total_hours || 0) : (ts.total_hours || 0);
+                return `
                 <tr class="hover:bg-gray-50">
                     <td class="px-4 py-3">
                         <span class="font-mono text-sm font-medium">#${ts.docket_number}</span>
                     </td>
                     <td class="px-4 py-3">
                         <div class="font-medium">${ts.worker_name || 'Unknown'}</div>
+                        ${ts.job_site_name ? `<div class="text-xs text-gray-500">${esc(ts.job_site_name)}</div>` : ''}
                     </td>
                     <td class="px-4 py-3">
                         <div class="text-sm">${formatDate(ts.week_starting)} - ${formatDate(ts.week_ending)}</div>
+                        ${dayFilter ? `<div class="text-xs text-blue-600 font-medium">${formatDate(dayFilter)}</div>` : ''}
                     </td>
                     <td class="px-4 py-3">
                         <div class="text-sm">${ts.client_name || '-'}</div>
                     </td>
                     <td class="px-4 py-3">
-                        <div class="font-medium">${(ts.total_hours || 0).toFixed(1)}h</div>
+                        <div class="font-medium">${rowHours.toFixed(1)}h</div>
+                        ${dayFilter ? '' : `
                         <div class="text-xs text-gray-500">${(ts.total_overtime_hours || 0).toFixed(1)}h OT</div>
+                        ${(ts.approved_hours || 0) > 0 ? `<div class="text-xs text-green-600">${(ts.approved_hours || 0).toFixed(1)}h approved</div>` : ''}`}
                     </td>
                     <td class="px-4 py-3">
-                        <span class="px-2 py-1 rounded-full text-xs font-medium status-${ts.status}">
-                            ${ts.status.charAt(0).toUpperCase() + ts.status.slice(1)}
+                        <span class="px-2 py-1 rounded-full text-xs font-medium status-${ds === 'none' ? 'draft' : ds}">
+                            ${dayStatusLabel(ds)}
                         </span>
+                        ${!dayFilter && ts.entries_summary ? `<div class="text-xs text-gray-500 mt-1 font-mono">${ts.entries_summary}</div>` : ''}
+                        ${daysLabel ? `<div class="text-xs text-gray-400">${daysLabel}</div>` : ''}
+                        ${dayFilter && dayEntry ? `<div class="text-xs text-gray-400">${dayEntry.day_of_week || ''} · ${dayEntry.entry_status || 'draft'}</div>` : ''}
                     </td>
                     <td class="px-4 py-3">
-                        ${(ts.status === 'draft' && (ts.submitted_entries_count || 0) === 0) ? `
+                        ${!dayFilter && (ds === 'not_submitted' || ds === 'draft' || ds === 'in_progress') && (ts.submitted_entries_count || 0) === 0 ? `
                         <button onclick="submitTimesheetOnBehalf(${ts.id}, '${ts.docket_number}')" class="px-2 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 text-xs font-medium mr-1" title="Submit this clocked timesheet for approval on the worker's behalf">
                             <i class="fas fa-paper-plane mr-1"></i>Submit
                         </button>` : ''}
@@ -2315,33 +2461,67 @@
                         <button onclick="downloadDocketPdf(${ts.id})" class="px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 text-xs font-medium mr-1" title="Download Docket PDF">
                             <i class="fas fa-file-pdf mr-1"></i>Docket
                         </button>
-                        <button onclick="deleteTimesheet(${ts.id}, '${ts.docket_number}')" class="px-2 py-1 bg-orange-100 text-orange-700 rounded hover:bg-orange-200 text-xs font-medium" title="Archive Timesheet">
+                        <button onclick="permanentlyDeleteDocket(${ts.id}, '${ts.docket_number}')" class="px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-xs font-medium mr-1" title="Permanently delete this docket">
+                            <i class="fas fa-trash mr-1"></i>Delete
+                        </button>
+                        <button onclick="archiveTimesheet(${ts.id}, '${ts.docket_number}')" class="px-2 py-1 bg-orange-100 text-orange-700 rounded hover:bg-orange-200 text-xs font-medium" title="Archive Timesheet">
                             <i class="fas fa-archive mr-1"></i>Archive
                         </button>
                     </td>
-                </tr>
-            `;
+                </tr>`;
+            };
 
             if (!groupByWeek) {
-                tbody.innerHTML = rows.map(timesheetRow).join('');
+                const dayHeader = dayFilter ? `
+                <tr class="bg-indigo-50 border-t-2 border-indigo-200">
+                    <td colspan="7" class="px-4 py-2">
+                        <span class="font-semibold text-indigo-800">
+                            <i class="fas fa-calendar-day mr-2"></i>Day view: ${new Date(dayFilter + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                        </span>
+                        <span class="text-sm text-indigo-700 ml-3">${rows.length} docket${rows.length === 1 ? '' : 's'} with entries on this day</span>
+                    </td>
+                </tr>` : '';
+                tbody.innerHTML = dayHeader + rows.map(timesheetRow).join('');
                 return;
             }
 
-            // Group rows by pay week (week_starting), most-recent week first
+            // Group rows by pay week, then by job site within each week
             const groups = new Map();
             rows.forEach(ts => {
                 const key = ts.week_starting || 'unknown';
-                if (!groups.has(key)) groups.set(key, []);
-                groups.get(key).push(ts);
+                if (!groups.has(key)) groups.set(key, new Map());
+                const siteKey = ts.job_site_name || ts.client_name || 'Unknown site';
+                if (!groups.get(key).has(siteKey)) groups.get(key).set(siteKey, []);
+                groups.get(key).get(siteKey).push(ts);
             });
             const orderedKeys = [...groups.keys()].sort((a, b) => new Date(b) - new Date(a));
 
-            tbody.innerHTML = orderedKeys.map(key => {
-                const list = groups.get(key);
-                const we = list[0].week_ending;
-                const totalHours = list.reduce((s, t) => s + (t.total_hours || 0), 0);
-                const totalOt = list.reduce((s, t) => s + (t.total_overtime_hours || 0), 0);
-                const header = `
+            const dayFilterLabel = dayFilter
+                ? new Date(dayFilter + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+                : '';
+
+            tbody.innerHTML = (dayFilter ? `
+                <tr class="bg-indigo-50 border-t-2 border-indigo-200">
+                    <td colspan="7" class="px-4 py-2">
+                        <span class="font-semibold text-indigo-800">
+                            <i class="fas fa-calendar-day mr-2"></i>Day view: ${dayFilterLabel}
+                        </span>
+                        <span class="text-sm text-indigo-700 ml-3">${rows.length} docket${rows.length === 1 ? '' : 's'} with entries on this day</span>
+                    </td>
+                </tr>` : '') + orderedKeys.map(key => {
+                const siteMap = groups.get(key);
+                const firstList = siteMap.values().next().value || [];
+                const we = firstList[0]?.week_ending;
+                const weekRows = [...siteMap.values()].flat();
+                const totalHours = weekRows.reduce((s, t) => {
+                    if (dayFilter) {
+                        const e = entryForDate(t, dayFilter);
+                        return s + (e?.total_hours || 0);
+                    }
+                    return s + (t.total_hours || 0);
+                }, 0);
+                const totalOt = dayFilter ? 0 : weekRows.reduce((s, t) => s + (t.total_overtime_hours || 0), 0);
+                const weekHeader = dayFilter ? '' : `
                     <tr class="bg-blue-50 border-t-2 border-blue-200">
                         <td colspan="7" class="px-4 py-2">
                             <div class="flex items-center justify-between">
@@ -2349,14 +2529,33 @@
                                     <i class="fas fa-calendar-week mr-2"></i>${weekLabel(key === 'unknown' ? null : key, we)}
                                 </span>
                                 <span class="text-sm text-blue-700">
-                                    ${list.length} timesheet${list.length === 1 ? '' : 's'} ·
+                                    ${weekRows.length} docket${weekRows.length === 1 ? '' : 's'} ·
                                     <span class="font-semibold">${totalHours.toFixed(1)}h</span>
                                     <span class="text-blue-500">(${totalOt.toFixed(1)}h OT)</span>
                                 </span>
                             </div>
                         </td>
                     </tr>`;
-                return header + list.map(timesheetRow).join('');
+                const siteBlocks = [...siteMap.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([siteName, list]) => {
+                    const siteHours = list.reduce((s, t) => {
+                        if (dayFilter) {
+                            const e = entryForDate(t, dayFilter);
+                            return s + (e?.total_hours || 0);
+                        }
+                        return s + (t.total_hours || 0);
+                    }, 0);
+                    const siteHeader = `
+                    <tr class="bg-gray-50 border-t border-gray-200">
+                        <td colspan="7" class="px-4 py-2 pl-8">
+                            <span class="font-medium text-gray-700">
+                                <i class="fas fa-map-marker-alt mr-2 text-gray-400"></i>${esc(siteName)}
+                            </span>
+                            <span class="text-sm text-gray-500 ml-3">${list.length} worker${list.length === 1 ? '' : 's'} · ${siteHours.toFixed(1)}h</span>
+                        </td>
+                    </tr>`;
+                    return siteHeader + list.map(timesheetRow).join('');
+                }).join('');
+                return weekHeader + siteBlocks;
             }).join('');
         }
 
@@ -2413,14 +2612,14 @@
                 return tsEnd >= weekStart && tsStart <= weekEnd;
             };
 
-            // Pending = docket submitted OR a still-draft docket that has submitted days awaiting approval
-            const pending = allTimesheets.filter(ts => ts.status === 'submitted' || (ts.status === 'draft' && (ts.submitted_entries_count || 0) > 0)).length;
+            // Pending = any day submitted for approval, or partial week still open
+            const pending = allTimesheets.filter(ts => ['submitted', 'partial'].includes(tsDisplayStatus(ts))).length;
             const approvedThisWeek = allTimesheets.filter(ts =>
-                ts.status === 'approved' && isInThisPayWeek(ts)
+                tsDisplayStatus(ts) === 'approved' && isInThisPayWeek(ts)
             ).length;
             const hoursThisWeek = allTimesheets
-                .filter(ts => ts.status === 'approved' && isInThisPayWeek(ts))
-                .reduce((sum, ts) => sum + (ts.total_hours || 0), 0);
+                .filter(ts => isInThisPayWeek(ts))
+                .reduce((sum, ts) => sum + (ts.approved_hours || 0), 0);
 
             document.getElementById('stat-pending').textContent = pending;
             document.getElementById('stat-approved').textContent = approvedThisWeek;
@@ -2633,7 +2832,7 @@
                             <i class="fas fa-check mr-2"></i>Approve
                         </button>
                     `;
-                } else if (approvedEntries.length > 0 || ts.status === 'approved') {
+                } else if (approvedEntries.length > 0 || tsDisplayStatus(ts) === 'approved') {
                     actionsHtml = `${cancelBtn}<span class="text-green-600"><i class="fas fa-check-circle mr-2"></i>${approvedEntries.length} entries approved</span>`;
                 } else if (ts.status === 'rejected') {
                     actionsHtml = `${cancelBtn}<span class="text-red-600"><i class="fas fa-times-circle mr-2"></i>Rejected</span>`;
@@ -3176,42 +3375,38 @@
             }
         }
 
-        async function deleteTimesheet(id, docketNumber) {
-            // Find the timesheet to check its status
-            const ts = allTimesheets.find(t => t.id === id);
-            const isDraft = ts && ts.status === 'draft';
-            
-            let action = 'archive';
-            if (isDraft) {
-                // For drafts, offer permanent delete option
-                const choice = confirm(`Delete timesheet #${docketNumber}?\n\nClick OK to PERMANENTLY DELETE\nClick Cancel to keep it`);
-                if (!choice) return;
-                action = 'permanent';
-            } else {
-                // For non-drafts, archive instead
-                if (!confirm(`Archive timesheet #${docketNumber}?\n\nIt will be moved to the Archived tab and can be restored later.`)) return;
-                action = 'archive';
+        async function permanentlyDeleteDocket(id, docketNumber) {
+            if (!confirm(`Are you sure? This is PERMANENT.\n\nDocket #${docketNumber} and ALL its day entries will be deleted forever. This cannot be undone or restored.`)) {
+                return;
             }
-            
+            if (!confirm(`Final confirmation — permanently delete docket #${docketNumber}?`)) {
+                return;
+            }
             try {
-                let url = `${API_BASE}/timesheets/${id}`;
-                if (action === 'permanent') {
-                    url = `${API_BASE}/timesheets/${id}/permanent`;
-                }
-                
-                const response = await authFetch(url, {
-                    method: 'DELETE'
-                });
+                const response = await authFetch(`${API_BASE}/timesheets/${id}/permanent`, { method: 'DELETE' });
                 if (response.ok) {
                     await loadTimesheets();
-                    if (action === 'permanent') {
-                        alert('Timesheet permanently deleted.');
-                    } else {
-                        alert('Timesheet archived. You can restore it from the Archived tab.');
-                    }
+                    alert(`Docket #${docketNumber} permanently deleted.`);
                 } else {
                     const data = await response.json();
-                    alert(data.detail || 'Error deleting timesheet');
+                    alert(data.detail || 'Error deleting docket');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error deleting docket');
+            }
+        }
+
+        async function archiveTimesheet(id, docketNumber) {
+            if (!confirm(`Archive docket #${docketNumber}?\n\nIt will move to the Archived tab and can be restored later.`)) return;
+            try {
+                const response = await authFetch(`${API_BASE}/timesheets/${id}`, { method: 'DELETE' });
+                if (response.ok) {
+                    await loadTimesheets();
+                    alert('Docket archived. You can restore it from the Archived tab.');
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Error archiving docket');
                 }
             } catch (error) {
                 console.error('Error:', error);
@@ -5324,6 +5519,107 @@
             }
         }
         
+        function smsTypeLabel(type) {
+            const labels = {
+                clock_in_reminder: 'Clock-In Reminder',
+                clock_out_reminder: 'Clock-Out Reminder',
+                job_assignment: 'Job Assignment',
+                custom: 'Custom SMS',
+                foremen_broadcast: 'Foremen Broadcast',
+                allocation_notice: 'Unaccepted Jobs',
+                roster_digest: 'Roster Digest',
+                password_reset: 'Password Reset',
+                timesheet_approved: 'Timesheet Approved',
+                timesheet_rejected: 'Timesheet Rejected',
+                test: 'Test',
+                notice: 'Notice',
+            };
+            return labels[type] || (type || 'SMS').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        }
+
+        function formatSmsLogTime(iso) {
+            if (!iso) return '—';
+            const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+            return d.toLocaleString('en-AU', {
+                weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+                hour: '2-digit', minute: '2-digit', hour12: true,
+                timeZone: 'Australia/Melbourne',
+            });
+        }
+
+        function clearSmsLogFilters() {
+            ['sms-log-from', 'sms-log-to'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            const typeEl = document.getElementById('sms-log-type');
+            if (typeEl) typeEl.value = '';
+            loadSmsLog();
+        }
+
+        async function deleteSmsLogEntry(id) {
+            if (!confirm('Delete this SMS log entry?\n\nThis only removes the record from the log — it does not unsend the message.')) {
+                return;
+            }
+            try {
+                const response = await authFetch(`${API_BASE}/notifications/sms-log/${id}`, { method: 'DELETE' });
+                if (response.ok) {
+                    await loadSmsLog();
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Error deleting log entry');
+                }
+            } catch (error) {
+                console.error('Error deleting SMS log:', error);
+                alert('Error deleting log entry');
+            }
+        }
+
+        async function loadSmsLog() {
+            const tbody = document.getElementById('sms-log-table');
+            const countEl = document.getElementById('sms-log-count');
+            if (!tbody) return;
+            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500"><div class="loader mx-auto mb-2"></div>Loading…</td></tr>';
+            try {
+                const params = new URLSearchParams({ limit: '200' });
+                const from = (document.getElementById('sms-log-from') || {}).value;
+                const to = (document.getElementById('sms-log-to') || {}).value;
+                const msgType = (document.getElementById('sms-log-type') || {}).value;
+                if (from) params.append('date_from', from);
+                if (to) params.append('date_to', to);
+                if (msgType) params.append('message_type', msgType);
+                const response = await authFetch(`${API_BASE}/notifications/sms-log?${params}`);
+                const data = await response.json();
+                const logs = data.logs || [];
+                if (countEl) countEl.textContent = `${data.total || logs.length} message${(data.total || logs.length) === 1 ? '' : 's'} total`;
+                if (logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">No SMS messages recorded yet</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = logs.map(log => `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-4 py-2 whitespace-nowrap text-gray-700">${formatSmsLogTime(log.sent_at)}</td>
+                        <td class="px-4 py-2 font-medium">${esc(log.recipient_name || '—')}</td>
+                        <td class="px-4 py-2 font-mono text-xs text-gray-600">${esc(log.recipient_phone || '')}</td>
+                        <td class="px-4 py-2"><span class="px-2 py-0.5 rounded-full text-xs bg-indigo-50 text-indigo-800">${esc(smsTypeLabel(log.message_type))}</span></td>
+                        <td class="px-4 py-2 text-gray-600 max-w-xs truncate" title="${esc(log.message_preview || '')}">${esc((log.message_preview || '').substring(0, 80))}${(log.message_preview || '').length > 80 ? '…' : ''}</td>
+                        <td class="px-4 py-2">${log.success
+                            ? '<span class="text-green-600 text-xs font-medium"><i class="fas fa-check-circle mr-1"></i>Sent</span>'
+                            : `<span class="text-red-600 text-xs font-medium" title="${esc(log.error || '')}"><i class="fas fa-times-circle mr-1"></i>Failed</span>`}
+                        </td>
+                        <td class="px-4 py-2 text-right">
+                            <button onclick="deleteSmsLogEntry(${log.id})" class="px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-xs font-medium" title="Remove from log">
+                                <i class="fas fa-trash mr-1"></i>Delete
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading SMS log:', error);
+                tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-red-500">Error loading SMS log</td></tr>';
+            }
+        }
+
         async function loadSchedulerStatus() {
             try {
                 const response = await authFetch(`${API_BASE}/notifications/scheduler-status`);
@@ -5446,6 +5742,7 @@
             if (sent > 0) {
                 document.getElementById('sms-message').value = '';
                 deselectAllWorkers();
+                loadSmsLog();
             }
         }
 
@@ -5529,13 +5826,20 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message, phones })
                 });
-                const data = await res.json();
+                const raw = await res.text();
+                let data = {};
+                try {
+                    data = raw ? JSON.parse(raw) : {};
+                } catch (_) {
+                    throw new Error(raw || `Server error (${res.status})`);
+                }
                 if (res.ok) {
                     resultEl.className = 'text-sm mt-3 text-green-700';
                     resultEl.textContent = `Sent to ${data.sent} of ${data.total} foreman(s).` + (data.failed ? ` ${data.failed} failed.` : '');
                     if (data.failed && data.errors && data.errors.length) {
                         resultEl.textContent += ' ' + data.errors.slice(0, 3).join('; ');
                     }
+                    if (data.sent > 0) loadSmsLog();
                 } else {
                     resultEl.className = 'text-sm mt-3 text-red-600';
                     resultEl.textContent = data.detail || 'Failed to send';
@@ -5595,6 +5899,7 @@
                 const data = await response.json();
                 
                 alert(`${data.message}\n\nSent: ${data.sent} SMS${data.errors ? `\nErrors: ${data.errors.length}` : ''}`);
+                if (data.sent > 0) loadSmsLog();
             } catch (error) {
                 console.error('Error:', error);
                 alert('Error sending reminders');
@@ -5611,6 +5916,7 @@
                 const data = await response.json();
                 
                 alert(`${data.message}\n\nSent: ${data.sent} SMS${data.errors ? `\nErrors: ${data.errors.length}` : ''}`);
+                if (data.sent > 0) loadSmsLog();
             } catch (error) {
                 console.error('Error:', error);
                 alert('Error sending reminders');
@@ -6439,8 +6745,8 @@
                         : j.accepted === false
                         ? '<span class="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700"><i class="fas fa-times mr-1"></i>Declined</span>'
                         : '<span class="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700"><i class="fas fa-clock mr-1"></i>Pending</span>';
-                    const clocked = w.is_clocked_in
-                        ? '<span class="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700"><i class="fas fa-sign-in-alt mr-1"></i>In</span>'
+                    const clocked = (selDate === today && w.is_clocked_in)
+                        ? '<span class="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700" title="Clocked in today"><i class="fas fa-sign-in-alt mr-1"></i>In</span>'
                         : '<span class="text-gray-400 text-xs">—</span>';
                     const foreman = j.contact_name
                         ? `${j.contact_name}${j.contact_phone ? '<div class="text-xs text-gray-400">' + j.contact_phone + '</div>' : ''}`

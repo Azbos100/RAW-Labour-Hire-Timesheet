@@ -895,7 +895,13 @@ async def assign_worker_to_job(
             sms_message = f"RAW Labour Hire: You've been assigned to {job_site.name} on {date_str} at {time_str}. Address: {job_site.address or 'TBC'}.{contact_str} Open the app to accept.\n{CONTACT_FOOTER}"
 
             async def send_assignment_sms():
-                result = await send_sms(worker.phone, sms_message)
+                result = await send_sms(
+                    worker.phone,
+                    sms_message,
+                    recipient_name=f"{worker.first_name} {worker.surname}",
+                    worker_id=worker.id,
+                    message_type="job_assignment",
+                )
                 if result.get("success"):
                     print(f"[Assignment] SMS sent to {worker.first_name} {worker.surname}")
                 else:
@@ -1000,8 +1006,13 @@ async def assign_workers_bulk(
         if worker.phone:
             sms_message = f"RAW Labour Hire: You've been assigned to {job_site.name} on {date_str} at {time_str}. Address: {job_site.address or 'TBC'}. Open the app to accept.\n{CONTACT_FOOTER}"
 
-            async def send_worker_sms(phone=worker.phone, msg=sms_message):
-                await send_sms(phone, msg)
+            async def send_worker_sms(phone=worker.phone, msg=sms_message, wid=worker.id, wname=f"{worker.first_name} {worker.surname}"):
+                await send_sms(
+                    phone, msg,
+                    recipient_name=wname,
+                    worker_id=wid,
+                    message_type="job_assignment",
+                )
 
             if background_tasks:
                 background_tasks.add_task(send_worker_sms)

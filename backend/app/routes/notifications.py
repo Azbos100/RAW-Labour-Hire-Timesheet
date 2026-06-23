@@ -13,10 +13,9 @@ from datetime import datetime, date, time, timedelta
 from typing import Optional, List
 
 from ..database import get_db
-from ..models import User, Timesheet, TimesheetEntry, NotificationSettings, ClientContact, Client
+from ..models import User, Timesheet, TimesheetEntry, NotificationSettings, ClientContact, Client, SmsLog
 from ..services.sms import (
     send_sms,
-    send_sms_sync,
     format_phone_number,
     brand_message,
     clock_in_reminder_message,
@@ -35,7 +34,7 @@ async def test_sms(phone: str):
     
     formatted = format_phone_number(phone)
     
-    result = await send_sms(phone, "Test message from RAW Labour Hire")
+    result = await send_sms(phone, "Test message from RAW Labour Hire", message_type="test")
     
     return {
         "original_phone": phone,
@@ -263,6 +262,85 @@ async def update_notification_settings(
     return {"message": "Settings updated successfully"}
 
 
+@router.get("/sms-log")
+async def get_sms_log(
+    limit: int = 100,
+    offset: int = 0,
+    message_type: Optional[str] = None,
+    worker_id: Optional[int] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin audit trail of outbound SMS messages."""
+    from sqlalchemy import func
+
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+
+    query = select(SmsLog).order_by(SmsLog.sent_at.desc())
+    count_query = select(func.count(SmsLog.id))
+
+    if message_type:
+        query = query.where(SmsLog.message_type == message_type)
+        count_query = count_query.where(SmsLog.message_type == message_type)
+    if worker_id:
+        query = query.where(SmsLog.worker_id == worker_id)
+        count_query = count_query.where(SmsLog.worker_id == worker_id)
+    if date_from:
+        try:
+            d_from = datetime.strptime(date_from, "%Y-%m-%d")
+            query = query.where(SmsLog.sent_at >= d_from)
+            count_query = count_query.where(SmsLog.sent_at >= d_from)
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            d_to = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+            query = query.where(SmsLog.sent_at < d_to)
+            count_query = count_query.where(SmsLog.sent_at < d_to)
+        except ValueError:
+            pass
+
+    total = (await db.execute(count_query)).scalar() or 0
+    rows = (await db.execute(query.offset(offset).limit(limit))).scalars().all()
+
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "logs": [
+            {
+                "id": r.id,
+                "sent_at": r.sent_at.isoformat() if r.sent_at else None,
+                "recipient_name": r.recipient_name,
+                "recipient_phone": r.recipient_phone,
+                "worker_id": r.worker_id,
+                "message_type": r.message_type,
+                "message_preview": r.message_preview,
+                "success": r.success,
+                "error": r.error,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.delete("/sms-log/{log_id}")
+async def delete_sms_log_entry(
+    log_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a single SMS log row from the admin audit trail."""
+    result = await db.execute(select(SmsLog).where(SmsLog.id == log_id))
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="SMS log entry not found")
+    await db.delete(row)
+    await db.commit()
+    return {"message": "SMS log entry deleted", "id": log_id}
+
+
 @router.post("/send-sms")
 async def send_sms_to_worker(
     data: SendSMSRequest,
@@ -278,7 +356,13 @@ async def send_sms_to_worker(
     if not worker.phone:
         raise HTTPException(status_code=400, detail="Worker has no phone number")
     
-    sms_result = await send_sms(worker.phone, brand_message(data.message))
+    sms_result = await send_sms(
+        worker.phone,
+        brand_message(data.message),
+        recipient_name=f"{worker.first_name} {worker.surname}",
+        worker_id=worker.id,
+        message_type="custom",
+    )
     
     if sms_result["success"]:
         return {"message": "SMS sent successfully", "to": worker.phone}
@@ -345,20 +429,21 @@ async def broadcast_to_foremen(
     if not recipients:
         raise HTTPException(status_code=400, detail="No foremen with phone numbers found")
 
-    def _send_all():
-        sent = 0
-        failed = 0
-        errors = []
-        for name, phone, _client_name in recipients:
-            res = send_sms_sync(phone, message)
-            if res.get("success"):
-                sent += 1
-            else:
-                failed += 1
-                errors.append(f"{name}: {res.get('error', 'failed')}")
-        return sent, failed, errors
-
-    sent, failed, errors = await asyncio.to_thread(_send_all)
+    sent = 0
+    failed = 0
+    errors = []
+    for name, phone, _client_name in recipients:
+        res = await send_sms(
+            phone,
+            message,
+            recipient_name=name,
+            message_type="foremen_broadcast",
+        )
+        if res.get("success"):
+            sent += 1
+        else:
+            failed += 1
+            errors.append(f"{name}: {res.get('error', 'failed')}")
 
     return {
         "sent": sent,
@@ -479,7 +564,13 @@ async def check_clock_in_reminders(
         if not has_clocked_in:
             # Send reminder
             message = clock_in_reminder_message(worker.first_name)
-            result = await send_sms(worker.phone, message)
+            result = await send_sms(
+                worker.phone,
+                message,
+                recipient_name=f"{worker.first_name} {worker.surname}",
+                worker_id=worker.id,
+                message_type="clock_in_reminder",
+            )
             
             if result["success"]:
                 sent_count += 1
@@ -560,7 +651,13 @@ async def check_clock_out_reminders(
         
         # Send reminder
         message = clock_out_reminder_message(worker.first_name)
-        result = await send_sms(worker.phone, message)
+        result = await send_sms(
+            worker.phone,
+            message,
+            recipient_name=f"{worker.first_name} {worker.surname}",
+            worker_id=worker.id,
+            message_type="clock_out_reminder",
+        )
         
         if result["success"]:
             sent_count += 1
@@ -609,7 +706,13 @@ async def send_timesheet_notification(
     else:
         raise HTTPException(status_code=400, detail="Invalid notification type")
     
-    sms_result = await send_sms(worker.phone, message)
+    sms_result = await send_sms(
+        worker.phone,
+        message,
+        recipient_name=f"{worker.first_name} {worker.surname}",
+        worker_id=worker.id,
+        message_type=f"timesheet_{notification_type}",
+    )
     
     return {
         "message": "Notification sent" if sms_result["success"] else "Failed to send",

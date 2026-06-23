@@ -7,8 +7,6 @@ import os
 from typing import Optional
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
-
-# Twilio configuration from environment variables
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")  # Your Twilio phone number
@@ -86,33 +84,48 @@ def format_phone_number(phone: str) -> str:
     return "+61" + phone
 
 
-async def send_sms(to_phone: str, message: str) -> dict:
+async def send_sms(
+    to_phone: str,
+    message: str,
+    *,
+    recipient_name: Optional[str] = None,
+    worker_id: Optional[int] = None,
+    message_type: str = "custom",
+) -> dict:
     """
-    Send an SMS message
-    
-    Args:
-        to_phone: Recipient phone number
-        message: Message text (max 160 chars for single SMS)
-    
-    Returns:
-        dict with success status and message SID or error
+    Send an SMS message and record it in sms_logs for the admin audit trail.
     """
+    from .sms_log import record_sms_log
+
     client = get_twilio_client()
-    
-    if not client:
-        return {
-            "success": False,
-            "error": "SMS service not configured"
-        }
-    
     formatted_phone = format_phone_number(to_phone)
-    
+
+    if not client:
+        result = {"success": False, "error": "SMS service not configured"}
+        await record_sms_log(
+            recipient_phone=formatted_phone or to_phone or "",
+            recipient_name=recipient_name,
+            worker_id=worker_id,
+            message_type=message_type,
+            message_preview=message,
+            success=False,
+            error=result["error"],
+        )
+        return result
+
     if not formatted_phone:
-        return {
-            "success": False,
-            "error": "Invalid phone number"
-        }
-    
+        result = {"success": False, "error": "Invalid phone number"}
+        await record_sms_log(
+            recipient_phone=to_phone or "",
+            recipient_name=recipient_name,
+            worker_id=worker_id,
+            message_type=message_type,
+            message_preview=message,
+            success=False,
+            error=result["error"],
+        )
+        return result
+
     try:
         sender = get_sender()
         try:
@@ -122,8 +135,6 @@ async def send_sms(to_phone: str, message: str) -> dict:
                 to=formatted_phone
             )
         except TwilioRestException as e:
-            # If the alphanumeric Sender ID is rejected, fall back to the phone number
-            # so SMS keeps working no matter what.
             if sender != TWILIO_PHONE_NUMBER and TWILIO_PHONE_NUMBER:
                 print(f"[SMS] Sender '{sender}' rejected ({e.code}); retrying with number.")
                 message_obj = client.messages.create(
@@ -133,38 +144,74 @@ async def send_sms(to_phone: str, message: str) -> dict:
                 )
             else:
                 raise
-        
+
         print(f"[SMS] Sent to {formatted_phone}: {message[:50]}...")
-        
-        return {
+        result = {
             "success": True,
             "message_sid": message_obj.sid,
-            "to": formatted_phone
+            "to": formatted_phone,
         }
-    
+
     except TwilioRestException as e:
         print(f"[SMS] Twilio error: {e}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        result = {"success": False, "error": str(e), "to": formatted_phone}
     except Exception as e:
         print(f"[SMS] Error sending SMS: {e}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        result = {"success": False, "error": str(e), "to": formatted_phone}
+
+    await record_sms_log(
+        recipient_phone=formatted_phone,
+        recipient_name=recipient_name,
+        worker_id=worker_id,
+        message_type=message_type,
+        message_preview=message,
+        success=result.get("success", False),
+        error=result.get("error"),
+        twilio_sid=result.get("message_sid"),
+    )
+    return result
 
 
-def send_sms_sync(to_phone: str, message: str) -> dict:
+def send_sms_sync(
+    to_phone: str,
+    message: str,
+    *,
+    recipient_name: Optional[str] = None,
+    worker_id: Optional[int] = None,
+    message_type: str = "custom",
+) -> dict:
     """Synchronous SMS send (for running many sends in a background thread)."""
-    client = get_twilio_client()
-    if not client:
-        return {"success": False, "error": "SMS service not configured"}
+    import asyncio
+    from .sms_log import record_sms_log
 
+    client = get_twilio_client()
     formatted_phone = format_phone_number(to_phone)
+
+    def _log(result: dict) -> None:
+        coro = record_sms_log(
+            recipient_phone=formatted_phone or to_phone or "",
+            recipient_name=recipient_name,
+            worker_id=worker_id,
+            message_type=message_type,
+            message_preview=message,
+            success=result.get("success", False),
+            error=result.get("error"),
+            twilio_sid=result.get("message_sid"),
+        )
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(coro)
+        except RuntimeError:
+            asyncio.run(coro)
+
+    if not client:
+        result = {"success": False, "error": "SMS service not configured"}
+        _log(result)
+        return result
     if not formatted_phone:
-        return {"success": False, "error": "Invalid phone number"}
+        result = {"success": False, "error": "Invalid phone number"}
+        _log(result)
+        return result
 
     try:
         sender = get_sender()
@@ -184,11 +231,14 @@ def send_sms_sync(to_phone: str, message: str) -> dict:
                 )
             else:
                 raise
-        return {"success": True, "message_sid": message_obj.sid, "to": formatted_phone}
+        result = {"success": True, "message_sid": message_obj.sid, "to": formatted_phone}
     except TwilioRestException as e:
-        return {"success": False, "error": str(e)}
+        result = {"success": False, "error": str(e), "to": formatted_phone}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        result = {"success": False, "error": str(e), "to": formatted_phone}
+
+    _log(result)
+    return result
 
 
 # ==================== NOTIFICATION TEMPLATES ====================

@@ -600,6 +600,24 @@ class NotificationSettings(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class SmsLog(Base):
+    """Record of every outbound SMS for admin audit trail."""
+    __tablename__ = "sms_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sent_at = Column(DateTime, default=datetime.utcnow, index=True)
+    recipient_name = Column(String(200))
+    recipient_phone = Column(String(30), index=True)
+    worker_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    message_type = Column(String(50), index=True, default="custom")
+    message_preview = Column(String(500))
+    success = Column(Boolean, default=True)
+    error = Column(Text)
+    twilio_sid = Column(String(64))
+
+    worker = relationship("User", foreign_keys=[worker_id])
+
+
 # ==================== WORKER ATTENDANCE (sick / no-show tracking) ====================
 
 class AttendanceEvent(Base):

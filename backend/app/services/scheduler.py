@@ -137,13 +137,21 @@ async def _deliver_notice(db, recipient_ids, extra_phones, title, body, data, sm
     # worker and an extra number doesn't get the same SMS twice.
     texted = set()
 
-    async def _sms_once(phone, who):
+    async def _sms_once(phone, who, worker_id=None):
         fp = format_phone_number(phone) if phone else ""
         if not fp or fp in texted:
             return False
         texted.add(fp)
+        msg_type = "allocation_notice" if "allocation" in notice_label.lower() else (
+            "roster_digest" if "roster" in notice_label.lower() else "notice"
+        )
         for part in sms_parts:
-            result = await send_sms(phone, part)
+            result = await send_sms(
+                phone, part,
+                recipient_name=who,
+                worker_id=worker_id,
+                message_type=msg_type,
+            )
             print(f"[Scheduler] {notice_label} SMS -> {who} ({fp}): {result}")
         return True
 
@@ -158,14 +166,14 @@ async def _deliver_notice(db, recipient_ids, extra_phones, title, body, data, sm
         who = f"{r.first_name} {r.surname}"
         can_sms = bool(r.phone and sms_enabled)
         if prefer_sms and can_sms:
-            if await _sms_once(r.phone, who):
+            if await _sms_once(r.phone, who, r.id):
                 sent += 1
         elif r.push_token:
             result = await send_push_notification(r.push_token, title, body, data)
             print(f"[Scheduler] {notice_label} push -> {who}: {result}")
             sent += 1
         elif can_sms:
-            if await _sms_once(r.phone, who):
+            if await _sms_once(r.phone, who, r.id):
                 sent += 1
         else:
             print(f"[Scheduler] {notice_label}: {who} has no push token / usable SMS; skipped")

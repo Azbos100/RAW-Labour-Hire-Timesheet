@@ -468,6 +468,12 @@ async def clock_in(
         assigned_end_time=assigned_end
     )
     db.add(entry)
+    await db.flush()
+    entries_result = await db.execute(
+        select(TimesheetEntry).where(TimesheetEntry.timesheet_id == timesheet.id)
+    )
+    from ..services.timesheet_helpers import sync_timesheet_status
+    sync_timesheet_status(timesheet, entries_result.scalars().all())
     await db.commit()
     await db.refresh(entry)
     

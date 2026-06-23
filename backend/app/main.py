@@ -225,6 +225,35 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("""
                 CREATE INDEX IF NOT EXISTS ix_worker_assignments_date ON worker_assignments(assignment_date);
             """))
+        except Exception as e:
+            print(f"Migration note (worker_assignments): {e}")
+
+        # Outbound SMS audit log for admin Alerts tab
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS sms_logs (
+                    id SERIAL PRIMARY KEY,
+                    sent_at TIMESTAMP DEFAULT NOW(),
+                    recipient_name VARCHAR(200),
+                    recipient_phone VARCHAR(30),
+                    worker_id INTEGER REFERENCES users(id),
+                    message_type VARCHAR(50) DEFAULT 'custom',
+                    message_preview VARCHAR(500),
+                    success BOOLEAN DEFAULT TRUE,
+                    error TEXT,
+                    twilio_sid VARCHAR(64)
+                );
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_sms_logs_sent_at ON sms_logs(sent_at);
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_sms_logs_message_type ON sms_logs(message_type);
+            """))
+        except Exception as e:
+            print(f"Migration note (sms_logs): {e}")
+
+        try:
             await conn.execute(text("""
                 INSERT INTO worker_assignments (
                     worker_id, job_site_id, assignment_date, start_time, end_time,
@@ -648,6 +677,29 @@ async def lifespan(app: FastAPI):
                 session.add(doc)
             await session.commit()
     
+    # Reconcile stored timesheet.status with per-day entry approval (idempotent).
+    from .models import Timesheet, TimesheetEntry
+    from .services.timesheet_helpers import sync_timesheet_status
+    async with AsyncSessionLocal() as session:
+        try:
+            ts_rows = (await session.execute(
+                select(Timesheet).where(Timesheet.archived_at.is_(None))
+            )).scalars().all()
+            fixed = 0
+            for ts in ts_rows:
+                entries = (await session.execute(
+                    select(TimesheetEntry).where(TimesheetEntry.timesheet_id == ts.id)
+                )).scalars().all()
+                before = ts.status
+                sync_timesheet_status(ts, entries)
+                if ts.status != before:
+                    fixed += 1
+            if fixed:
+                await session.commit()
+                print(f"Timesheet status sync: updated {fixed} docket(s)")
+        except Exception as e:
+            print(f"Timesheet status sync note: {e}")
+
     # Start the automatic reminder scheduler
     from .services.scheduler import start_scheduler, stop_scheduler
     start_scheduler()
