@@ -3,7 +3,7 @@
  * Display current clocked-in job plus upcoming allocated jobs
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -53,6 +53,7 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [respondingAssignment, setRespondingAssignment] = useState(false);
+  const fetchSeq = useRef(0);
 
   const checkForAppUpdate = async () => {
     if (__DEV__ || !Updates.isEnabled) return;
@@ -73,15 +74,42 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
   ): { current: JobAssignment | null; upcoming: JobAssignment[] } => {
     let current: JobAssignment | null = (assignData.current_job as JobAssignment) || null;
     let upcoming: JobAssignment[] = [];
+    const todayMel = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Melbourne' });
 
-    if (Array.isArray(assignData.upcoming_jobs) && assignData.upcoming_jobs.length > 0) {
-      upcoming = assignData.upcoming_jobs as JobAssignment[];
-    } else if (Array.isArray(assignData.assignments) && assignData.assignments.length > 0) {
-      const all = assignData.assignments as JobAssignment[];
-      if (!current) {
-        current = all.find(j => j.is_current) || null;
+    const mergeSources: JobAssignment[] = [
+      ...(Array.isArray(assignData.upcoming_jobs) ? assignData.upcoming_jobs as JobAssignment[] : []),
+      ...(Array.isArray(assignData.assignments)
+        ? (assignData.assignments as JobAssignment[]).filter(j => !j.is_current)
+        : []),
+    ];
+    const byDate = new Map<string, JobAssignment>();
+    for (const j of mergeSources) {
+      if (!j.assignment_date || j.is_current) continue;
+      if (j.assignment_date < todayMel) continue;
+      const existing = byDate.get(j.assignment_date);
+      if (!existing || (existing.accepted == null && j.accepted != null)) {
+        byDate.set(j.assignment_date, j);
       }
-      const todayMel = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Melbourne' });
+    }
+    upcoming = [...byDate.values()].sort(
+      (a, b) => (a.assignment_date || '').localeCompare(b.assignment_date || '')
+    );
+
+    if (upcoming.length === 0 && assignData.assignment) {
+      const legacy = assignData.assignment as JobAssignment;
+      if (legacy.assignment_date && legacy.assignment_date >= todayMel) {
+        upcoming = [legacy];
+      }
+    }
+
+    if (!current && Array.isArray(assignData.assignments)) {
+      current = (assignData.assignments as JobAssignment[]).find(j => j.is_current) || null;
+    }
+
+    if (Array.isArray(assignData.upcoming_jobs) && assignData.upcoming_jobs.length > 0 && upcoming.length === 0) {
+      upcoming = assignData.upcoming_jobs as JobAssignment[];
+    } else if (Array.isArray(assignData.assignments) && assignData.assignments.length > 0 && upcoming.length === 0) {
+      const all = assignData.assignments as JobAssignment[];
       upcoming = all.filter(j => {
         if (j.is_current) return false;
         if (current && j.job_site_id === current.job_site_id
@@ -90,7 +118,7 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
         }
         return !j.assignment_date || j.assignment_date >= todayMel;
       });
-    } else if (assignData.assignment) {
+    } else if (assignData.assignment && upcoming.length === 0) {
       upcoming = [assignData.assignment as JobAssignment];
     }
 
@@ -123,11 +151,13 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
 
   const fetchData = async () => {
     if (!user?.id) return;
+    const seq = ++fetchSeq.current;
     try {
       const [clockRes, assignRes] = await Promise.all([
         clockAPI.getStatus(user.id),
         assignmentAPI.getAssignment(user.id),
       ]);
+      if (seq !== fetchSeq.current) return;
       const clockData = clockRes.data as ClockStatus;
       const { current, upcoming } = parseAssignmentResponse(assignRes.data, clockData);
 
@@ -137,8 +167,10 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
     } catch (error) {
       console.warn('Error fetching data:', error);
     } finally {
-      setIsLoading(false);
-      setRefreshing(false);
+      if (seq === fetchSeq.current) {
+        setIsLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
@@ -161,12 +193,14 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
 
     setRespondingAssignment(true);
     try {
-      await assignmentAPI.respondToAssignment(user.id, accepted, job.assignment_date);
+      const res = await assignmentAPI.respondToAssignment(user.id, accepted, job.assignment_date);
+      const savedDate = res.data?.assignment_date || job.assignment_date;
       setUpcomingJobs(prev =>
         prev.map(j =>
-          j.assignment_date === job.assignment_date ? { ...j, accepted } : j
+          j.assignment_date === savedDate ? { ...j, accepted } : j
         )
       );
+      await fetchData();
     } catch (error) {
       console.warn('Error responding to assignment:', error);
     } finally {
@@ -212,6 +246,9 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
             <Ionicons name={isCurrent ? 'time' : 'briefcase'} size={24} color={COLORS.primary} />
           </View>
           <View style={styles.jobTitleContainer}>
+            {job.assignment_date ? (
+              <Text style={styles.jobDateHeader}>{formatDate(job.assignment_date)}</Text>
+            ) : null}
             <Text style={styles.jobSiteName}>{job.job_site_name}</Text>
             {isCurrent && (
               <View style={styles.currentBadge}>
@@ -493,6 +530,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1F2937',
     marginBottom: 4,
+  },
+  jobDateHeader: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.primary,
+    marginBottom: 2,
+    textTransform: 'uppercase',
   },
   currentBadge: {
     flexDirection: 'row',

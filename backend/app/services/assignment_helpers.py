@@ -229,7 +229,10 @@ def _build_legacy_assignment_card(
     if not all_jobs:
         return pending
 
-    primary = pending or all_jobs[-1]
+    tomorrow_iso = (today + timedelta(days=1)).isoformat()
+    tomorrow_job = next((j for j in all_jobs if j.get("assignment_date") == tomorrow_iso), None)
+    # Headline the next shift (tomorrow) so today's row doesn't look like the only job.
+    primary = pending or tomorrow_job or all_jobs[-1]
     card = dict(primary)
 
     summary_lines: List[str] = []

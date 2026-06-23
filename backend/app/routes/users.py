@@ -1042,6 +1042,48 @@ async def assign_workers_bulk(
     }
 
 
+# Admin: mark acceptance on a specific date
+class AdminAssignmentResponse(BaseModel):
+    assignment_date: date
+    accepted: bool
+
+
+@router.post("/admin/workers/{worker_id}/assignment/respond")
+async def admin_respond_to_assignment(
+    worker_id: int,
+    response: AdminAssignmentResponse,
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin marks a worker's job as accepted or declined for a specific date."""
+    from ..models import WorkerAssignment
+    from ..services.assignment_helpers import sync_user_legacy_fields
+
+    result = await db.execute(select(User).where(User.id == worker_id))
+    worker = result.scalar_one_or_none()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+
+    row = (await db.execute(
+        select(WorkerAssignment).where(
+            WorkerAssignment.worker_id == worker.id,
+            WorkerAssignment.assignment_date == response.assignment_date,
+        )
+    )).scalar_one_or_none()
+
+    if not row:
+        raise HTTPException(status_code=400, detail="No job assignment for that date")
+
+    row.accepted = response.accepted
+    await sync_user_legacy_fields(db, worker)
+    await db.commit()
+
+    return {
+        "message": "Job marked accepted" if response.accepted else "Job marked declined",
+        "accepted": response.accepted,
+        "assignment_date": row.assignment_date.isoformat(),
+    }
+
+
 # Mobile app endpoint to accept/decline assignment
 class AssignmentResponse(BaseModel):
     accepted: bool
@@ -1067,15 +1109,28 @@ async def respond_to_assignment(
     target_date = response.assignment_date
     if target_date is None:
         today = melbourne_today()
+        # Prefer the first still-pending allocation (fixes home-screen Accept hitting
+        # today's already-accepted row while tomorrow remains open).
         row = (await db.execute(
             select(WorkerAssignment)
             .where(
                 WorkerAssignment.worker_id == worker.id,
                 WorkerAssignment.assignment_date >= today,
+                WorkerAssignment.accepted.is_(None),
             )
             .order_by(WorkerAssignment.assignment_date)
             .limit(1)
         )).scalar_one_or_none()
+        if not row:
+            row = (await db.execute(
+                select(WorkerAssignment)
+                .where(
+                    WorkerAssignment.worker_id == worker.id,
+                    WorkerAssignment.assignment_date >= today,
+                )
+                .order_by(WorkerAssignment.assignment_date)
+                .limit(1)
+            )).scalar_one_or_none()
     else:
         row = (await db.execute(
             select(WorkerAssignment).where(

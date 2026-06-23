@@ -3,7 +3,7 @@
  * Main screen with clock in/out status and quick actions
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -54,6 +54,7 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const [togglingOvertime, setTogglingOvertime] = useState(false);
   const [assignment, setAssignment] = useState<JobAssignment | null>(null);
   const [respondingAssignment, setRespondingAssignment] = useState(false);
+  const fetchSeq = useRef(0);
 
   const toggleOvertimeMode = async () => {
     if (!clockStatus?.is_clocked_in || togglingOvertime) return;
@@ -74,25 +75,43 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
     }
   };
 
+  const pickPendingAssignment = (data: Record<string, unknown>): JobAssignment | null => {
+    const upcoming = (data.upcoming_jobs || data.assignments || []) as JobAssignment[];
+    if (Array.isArray(upcoming)) {
+      const pending = upcoming.find(j => j.accepted === null && j.assignment_date);
+      if (pending) return pending;
+    }
+    return (data.assignment as JobAssignment) || null;
+  };
+
   const fetchAssignment = async () => {
     if (!user?.id) return;
+    const seq = ++fetchSeq.current;
     try {
       const response = await assignmentAPI.getAssignment(user.id);
-      setAssignment(response.data.assignment || null);
+      if (seq !== fetchSeq.current) return;
+      setAssignment(pickPendingAssignment(response.data || {}));
     } catch (error) {
       console.warn('Error fetching assignment:', error);
-      setAssignment(null);
+      if (seq === fetchSeq.current) setAssignment(null);
     }
   };
 
   const respondToAssignment = async (accepted: boolean) => {
-    if (!user?.id || respondingAssignment) return;
+    if (!user?.id || respondingAssignment || !assignment) return;
     
     setRespondingAssignment(true);
     try {
-      await assignmentAPI.respondToAssignment(user.id, accepted);
-      // Update local state
-      setAssignment(prev => prev ? { ...prev, accepted } : null);
+      const res = await assignmentAPI.respondToAssignment(
+        user.id,
+        accepted,
+        assignment.assignment_date,
+      );
+      const savedDate = res.data?.assignment_date || assignment.assignment_date;
+      setAssignment(prev =>
+        prev && prev.assignment_date === savedDate ? { ...prev, accepted } : prev
+      );
+      await fetchAssignment();
     } catch (error) {
       console.warn('Error responding to assignment:', error);
     } finally {

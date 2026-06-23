@@ -323,6 +323,8 @@ async def send_roster_digest():
                     sites_map[js.id] = (client_name, js.name, js.address)
 
             assignment_by_worker = {u.id: wa for wa, u in assignment_rows}
+            accepted_count = sum(1 for wa, _ in assignment_rows if wa.accepted is True)
+            pending_count = len(assignment_rows) - accepted_count
 
             def _out_line(w):
                 wa = assignment_by_worker.get(w.id)
@@ -349,10 +351,15 @@ async def send_roster_digest():
             date_label = tomorrow.strftime("%a %d %b")
             out_block = "\n".join(_out_line(w) for w in out) if out else "  - none"
             avail_block = "\n".join(f"  - {w.first_name} {w.surname}" for w in available) if available else "  - none"
-            title = f"Roster {date_label}: {len(out)} out, {len(available)} available"
+            title = (
+                f"Roster {date_label}: {len(out)} allocated "
+                f"({accepted_count} accepted, {pending_count} pending), "
+                f"{len(available)} available"
+            )
             body = (
-                f"Roster for {date_label}\n\n"
-                f"OUT ({len(out)}):\n{out_block}\n\n"
+                f"Roster for {date_label}\n"
+                f"{accepted_count} accepted · {pending_count} still pending\n\n"
+                f"ALLOCATED ({len(out)}):\n{out_block}\n\n"
                 f"AVAILABLE ({len(available)}):\n{avail_block}"
             )
 
