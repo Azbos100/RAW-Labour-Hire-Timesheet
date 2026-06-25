@@ -320,6 +320,25 @@ const screens = {
       <div class="amuted" style="margin-top:10px;">Forgot to clock out? You can do it for them here.</div>
     </div>`),
 
+  manualEntry: () => FRAME('Timesheets', `
+    <div class="acard ring">
+      <div class="asec">➕ Add Manual Entry</div>
+      <div class="amuted" style="line-height:1.65;margin-bottom:10px;">For a day worked <b>off-app</b> — before the rollout, or a forgotten clock-in.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div><div class="amuted" style="font-weight:700;">Worker</div><div class="field">Liam Carter</div></div>
+        <div><div class="amuted" style="font-weight:700;">Job Site</div><div class="field">2 Lonsdale Street</div></div>
+        <div><div class="amuted" style="font-weight:700;">Date</div><div class="field">Mon 22 Jun</div></div>
+        <div><div class="amuted" style="font-weight:700;">Unpaid Break</div><div class="field">30 min</div></div>
+        <div><div class="amuted" style="font-weight:700;">Start Time</div><div class="field">7:00 AM</div></div>
+        <div><div class="amuted" style="font-weight:700;">Finish Time</div><div class="field">3:30 PM</div></div>
+      </div>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:8px;">
+        <span class="abtn sm ring" style="background:#E0E7FF;color:#4338CA;">✔ Mark as approved</span>
+        <span class="abtn sm" style="background:#4F46E5;color:#fff;">Add Entry</span>
+      </div>
+      <div class="amuted" style="margin-top:10px;line-height:1.6;">Lands on the worker's docket for that pay week. Hours are worked out just like a normal clock-out.</div>
+    </div>`),
+
   calendar: () => {
     let cells='';
     const work={3:2,4:1,5:3,9:4,10:2,11:5,12:1,16:3,17:2,18:4,19:6,23:2,24:3,25:1};
@@ -530,6 +549,9 @@ const slides = [
   { s:'onsite',
     cap:'The <b>On Site</b> button shows who\'s clocked in right now — and lets you clock someone out if they forget.',
     say:'See the On Site button? Give it a tap to see exactly who\'s clocked in right now, and where. And if someone\'s forgotten to clock out, you can do it for them, right from here.' },
+  { s:'manualEntry',
+    cap:'<b>Add Manual Entry</b> records a day worked off-app — pick the worker, site, date and times. Perfect for backfilling days before everyone was on the app.',
+    say:'Right next to On Site is Add Manual Entry. Use this when a day was worked but never clocked in the app, like the days before your staff were all set up, or if someone simply forgot. Pick the worker, the job site, the date, and the start and finish times, and it works out the hours exactly like a normal clock-out. It drops straight onto that worker\'s docket for the week, and by default it\'s marked approved so it flows through to payroll. If two people were on different sites that day, just add a separate entry for each.' },
   { s:'calendar',
     cap:'The <b>Calendar</b> tab is the big picture — a month at a glance showing who worked which day.',
     say:'The Calendar tab gives you the big picture, a month at a glance, showing who worked which day. It\'s handy for spotting gaps, or double bookings.' },
