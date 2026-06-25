@@ -277,6 +277,9 @@
                         <button onclick="openActiveShifts()" class="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium" title="See who is clocked in now and manually clock them out">
                             <i class="fas fa-user-clock mr-1"></i>On Site<span id="active-shifts-badge"></span>
                         </button>
+                        <button onclick="openManualEntryModal()" class="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium" title="Add a day a worker did before they used the app (or a forgotten clock-in)">
+                            <i class="fas fa-plus mr-1"></i>Add Manual Entry
+                        </button>
                         <button onclick="archiveLastWeek()" class="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium" title="Archive approved timesheets from prior pay week (Sat→Fri)">
                             <i class="fas fa-archive mr-1"></i>Archive Last Week
                         </button>
@@ -1707,6 +1710,79 @@
                 <button onclick="closeModal('edit-entry-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-100">Cancel</button>
                 <button onclick="saveEntryEdit()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                     <i class="fas fa-save mr-1"></i>Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Manual Entry Modal -->
+    <div id="manual-entry-modal" class="modal">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="border-b px-6 py-4 flex justify-between items-center sticky top-0 bg-white z-10">
+                <div>
+                    <h2 class="text-xl font-bold">Add Manual Entry</h2>
+                    <p class="text-gray-500 text-sm">Record a day worked off-app (e.g. before the app rollout, or a missed clock-in)</p>
+                </div>
+                <button onclick="closeModal('manual-entry-modal')" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Worker *</label>
+                    <select id="manual-worker" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500">
+                        <option value="">Select a worker...</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Job Site *</label>
+                    <select id="manual-jobsite" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500">
+                        <option value="">Select a job site...</option>
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">Determines the client this docket bills to.</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+                    <input type="date" id="manual-date" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Start Time *</label>
+                        <input type="time" id="manual-start" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Finish Time *</label>
+                        <input type="time" id="manual-finish" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Unpaid Break (mins)</label>
+                        <input type="number" id="manual-break" min="0" max="120" value="30" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500">
+                        <p class="text-xs text-gray-500 mt-1">Only deducted if shift is 4h+.</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Worked As (optional)</label>
+                        <input type="text" id="manual-worked-as" placeholder="e.g. Labourer" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Comments (optional)</label>
+                    <textarea id="manual-comments" rows="2" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500"></textarea>
+                </div>
+                <label class="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" id="manual-approved" checked class="rounded">
+                    <span class="text-sm text-gray-700">Mark as <strong>approved</strong> (counts toward payroll straight away)</span>
+                </label>
+                <div class="bg-indigo-50 p-3 rounded-lg text-sm text-indigo-700">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    <strong>Hours:</strong> Finish − Start − unpaid break = paid hours. First 8h ordinary, rest overtime. This attaches to the worker's docket for that pay week (Sat→Fri).
+                </div>
+            </div>
+            <div class="border-t px-6 py-4 flex justify-end gap-3">
+                <button onclick="closeModal('manual-entry-modal')" class="px-4 py-2 border rounded-lg hover:bg-gray-100">Cancel</button>
+                <button id="manual-save-btn" onclick="saveManualEntry()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                    <i class="fas fa-save mr-1"></i>Add Entry
                 </button>
             </div>
         </div>
@@ -3323,6 +3399,94 @@
             } catch (error) {
                 console.error('Error:', error);
                 alert('Error updating entry');
+            }
+        }
+
+        function openManualEntryModal() {
+            // Populate worker dropdown (active workers only)
+            const workerSelect = document.getElementById('manual-worker');
+            const workers = (allWorkers || [])
+                .filter(w => w.is_active)
+                .sort((a, b) => `${a.first_name} ${a.surname}`.localeCompare(`${b.first_name} ${b.surname}`));
+            workerSelect.innerHTML = '<option value="">Select a worker...</option>' +
+                workers.map(w => `<option value="${w.id}">${w.first_name} ${w.surname}</option>`).join('');
+
+            // Populate job site dropdown (active sites, with client)
+            const siteSelect = document.getElementById('manual-jobsite');
+            siteSelect.innerHTML = '<option value="">Select a job site...</option>' +
+                (allJobSites || []).filter(js => js.is_active).map(js =>
+                    `<option value="${js.id}">${js.name} - ${js.client_name || 'No Client'}</option>`
+                ).join('');
+
+            // Reset fields
+            document.getElementById('manual-date').value = '';
+            document.getElementById('manual-start').value = '';
+            document.getElementById('manual-finish').value = '';
+            document.getElementById('manual-break').value = '30';
+            document.getElementById('manual-worked-as').value = '';
+            document.getElementById('manual-comments').value = '';
+            document.getElementById('manual-approved').checked = true;
+
+            openModal('manual-entry-modal');
+        }
+
+        async function saveManualEntry() {
+            const workerId = document.getElementById('manual-worker').value;
+            const jobSiteId = document.getElementById('manual-jobsite').value;
+            const entryDate = document.getElementById('manual-date').value;
+            const startTime = document.getElementById('manual-start').value;
+            const finishTime = document.getElementById('manual-finish').value;
+            const breakMins = document.getElementById('manual-break').value;
+            const workedAs = document.getElementById('manual-worked-as').value.trim();
+            const comments = document.getElementById('manual-comments').value.trim();
+            const markApproved = document.getElementById('manual-approved').checked;
+
+            if (!workerId) { alert('Please select a worker.'); return; }
+            if (!jobSiteId) { alert('Please select a job site.'); return; }
+            if (!entryDate) { alert('Please choose the date.'); return; }
+            if (!startTime || !finishTime) { alert('Please enter both start and finish times.'); return; }
+
+            const payload = {
+                worker_id: parseInt(workerId),
+                job_site_id: parseInt(jobSiteId),
+                entry_date: entryDate,
+                time_start: startTime,
+                time_finish: finishTime,
+                unpaid_break_minutes: parseInt(breakMins) || 0,
+                worked_as: workedAs || null,
+                comments: comments || null,
+                mark_approved: markApproved,
+            };
+
+            const btn = document.getElementById('manual-save-btn');
+            const prevHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Adding...';
+            try {
+                const response = await authFetch(`${API_BASE}/clock/admin/manual-entry`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    closeModal('manual-entry-modal');
+                    await loadTimesheets();
+                    alert(`Entry added for ${data.worker_name} (${data.day_of_week} ${data.entry_date})\n\n`
+                        + `Docket #${data.docket_number} · ${data.job_site}\n`
+                        + `Paid hours: ${(data.total_hours || 0).toFixed(2)}h\n`
+                        + `- Ordinary: ${(data.ordinary_hours || 0).toFixed(2)}h\n`
+                        + `- Overtime: ${(data.overtime_hours || 0).toFixed(2)}h\n`
+                        + `Status: ${data.entry_status}`);
+                } else {
+                    alert(data.detail || 'Error adding entry');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error adding entry');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = prevHtml;
             }
         }
 

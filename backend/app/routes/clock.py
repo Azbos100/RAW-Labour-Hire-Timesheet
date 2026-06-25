@@ -904,6 +904,181 @@ async def admin_clock_out(
     }
 
 
+# ==================== ADMIN: MANUAL (BACKDATED) DAY ENTRY ====================
+
+class AdminManualEntryRequest(BaseModel):
+    """Admin-entered day worked, e.g. backfilling days worked before the app
+    rollout, or a forgotten clock-in. Times are 'HH:MM' applied to entry_date."""
+    worker_id: int
+    entry_date: str            # 'YYYY-MM-DD'
+    job_site_id: int
+    time_start: str            # 'HH:MM'
+    time_finish: str           # 'HH:MM'
+    unpaid_break_minutes: Optional[int] = 30
+    worked_as: Optional[str] = None
+    comments: Optional[str] = None
+    mark_approved: bool = True
+
+
+@router.post("/admin/manual-entry")
+async def admin_manual_entry(
+    request: AdminManualEntryRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a backdated/manual day entry for a worker (admin).
+
+    Mirrors the clock-in/clock-out flow: finds or creates the worker's weekly
+    docket for the (client, job site) and adds a completed day entry, with hours
+    calculated exactly like a normal clock-out (break deducted, first 8h
+    ordinary, rest overtime).
+    """
+    # Worker
+    result = await db.execute(select(User).where(User.id == request.worker_id))
+    worker = result.scalar_one_or_none()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+
+    # Date
+    try:
+        entry_date = date.fromisoformat(request.entry_date)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid entry_date. Use YYYY-MM-DD.")
+
+    # Job site -> client (a docket must have a client)
+    result = await db.execute(select(JobSite).where(JobSite.id == request.job_site_id))
+    job_site = result.scalar_one_or_none()
+    if not job_site:
+        raise HTTPException(status_code=404, detail="Job site not found")
+    client_id = job_site.client_id
+    if not client_id:
+        raise HTTPException(
+            status_code=400,
+            detail="That job site has no client. Set a client on the site first "
+                   "(Clients & Job Sites), then add the entry.",
+        )
+
+    # Times -> datetimes on entry_date
+    def _parse_hhmm(label: str, value: str) -> datetime:
+        try:
+            hh, mm = map(int, value.strip().split(":"))
+            return datetime.combine(entry_date, datetime.min.time()).replace(hour=hh, minute=mm)
+        except (ValueError, AttributeError):
+            raise HTTPException(status_code=400, detail=f"Invalid {label}. Use HH:MM.")
+
+    start_dt = _parse_hhmm("time_start", request.time_start)
+    end_dt = _parse_hhmm("time_finish", request.time_finish)
+    if end_dt <= start_dt:  # overnight shift
+        end_dt = end_dt + timedelta(days=1)
+
+    # Find or create the weekly docket (per worker + client + job site)
+    week_start, week_end = get_week_dates(entry_date)
+    result = await db.execute(
+        select(Timesheet).where(
+            Timesheet.worker_id == worker.id,
+            Timesheet.week_starting == week_start,
+            Timesheet.client_id == client_id,
+            Timesheet.job_site_id == job_site.id,
+        )
+    )
+    timesheet = result.scalar_one_or_none()
+    if not timesheet:
+        from sqlalchemy import func, cast, Integer
+        result = await db.execute(select(func.max(cast(Timesheet.docket_number, Integer))))
+        max_docket = result.scalar()
+        new_docket = str((max_docket or 12537) + 1)
+        timesheet = Timesheet(
+            docket_number=new_docket,
+            worker_id=worker.id,
+            client_id=client_id,
+            job_site_id=job_site.id,
+            week_starting=week_start,
+            week_ending=week_end,
+            status=TimesheetStatus.DRAFT,
+        )
+        db.add(timesheet)
+        await db.flush()
+
+    # Guard against accidental duplicates for this docket + day
+    result = await db.execute(
+        select(TimesheetEntry).where(
+            TimesheetEntry.timesheet_id == timesheet.id,
+            TimesheetEntry.entry_date == entry_date,
+        )
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail=f"An entry already exists for {worker.first_name} {worker.surname} "
+                   f"at {job_site.name} on {entry_date.isoformat()}. Edit that entry instead.",
+        )
+
+    # Hours (same rules as clock-out)
+    unpaid_break = request.unpaid_break_minutes if request.unpaid_break_minutes is not None else 30
+    ordinary_hours, overtime_hours, gross_hours = calculate_hours(start_dt, end_dt, unpaid_break)
+    total_hours = ordinary_hours + overtime_hours
+
+    admin_note = "[Added by admin - manual entry]"
+    if request.comments and request.comments.strip():
+        admin_note += " " + request.comments.strip()
+
+    now_naive = get_melbourne_now().replace(tzinfo=None)
+    entry = TimesheetEntry(
+        timesheet_id=timesheet.id,
+        day_of_week=get_day_of_week(entry_date),
+        entry_date=entry_date,
+        job_site_id=job_site.id,
+        time_start=start_dt.time(),
+        time_finish=end_dt.time(),
+        clock_in_time=start_dt,
+        clock_out_time=end_dt,
+        clock_in_address="Added by admin (manual entry)",
+        clock_out_address="Added by admin (manual entry)",
+        worked_as=request.worked_as,
+        comments=admin_note,
+        unpaid_break_minutes=unpaid_break,
+        gross_hours=gross_hours,
+        ordinary_hours=ordinary_hours,
+        overtime_hours=overtime_hours,
+        total_hours=total_hours,
+        entry_status="approved" if request.mark_approved else "draft",
+        submitted_at=now_naive if request.mark_approved else None,
+        supervisor_name="Added by admin" if request.mark_approved else None,
+    )
+    db.add(entry)
+    await db.flush()
+
+    # Recompute totals + roll up status
+    entries_result = await db.execute(
+        select(TimesheetEntry).where(TimesheetEntry.timesheet_id == timesheet.id)
+    )
+    all_entries = entries_result.scalars().all()
+    timesheet.total_ordinary_hours = sum(e.ordinary_hours or 0 for e in all_entries)
+    timesheet.total_overtime_hours = sum(e.overtime_hours or 0 for e in all_entries)
+    timesheet.total_hours = timesheet.total_ordinary_hours + timesheet.total_overtime_hours
+    from ..services.timesheet_helpers import sync_timesheet_status
+    sync_timesheet_status(timesheet, all_entries)
+
+    await db.commit()
+    await db.refresh(entry)
+
+    return {
+        "message": "Manual entry added",
+        "entry_id": entry.id,
+        "timesheet_id": timesheet.id,
+        "docket_number": timesheet.docket_number,
+        "worker_name": f"{worker.first_name} {worker.surname}",
+        "entry_date": entry_date.isoformat(),
+        "day_of_week": entry.day_of_week,
+        "job_site": job_site.name,
+        "ordinary_hours": ordinary_hours,
+        "overtime_hours": overtime_hours,
+        "total_hours": total_hours,
+        "gross_hours": gross_hours,
+        "entry_status": entry.entry_status,
+        "weekly_total": timesheet.total_hours,
+    }
+
+
 # ==================== ADMIN: CALENDAR ====================
 
 @router.get("/admin/calendar")
