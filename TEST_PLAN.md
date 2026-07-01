@@ -235,7 +235,7 @@ Some admin API endpoints (`/api/users/admin/workers`, `/api/timesheets/admin/*`)
 | iOS Build | #13 (TestFlight) |
 | Android Build | versionCode 4 |
 | Database | PostgreSQL (Railway) |
-| SMS Provider | Twilio |
+| SMS Provider | Cellcast (Australian gateway) |
 | Push Notifications | Expo Push Service |
 
 ---

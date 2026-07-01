@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "673826984056",
+    "project_id": "raw-timesheet",
+    "storage_bucket": "raw-timesheet.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:673826984056:android:7a2502993d73087ea49d8d",
+        "android_client_info": {
+          "package_name": "com.rawlabourhire.rawtimesheet"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBl113onZgOt18GBebA4ZehHcDcGffl4lc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

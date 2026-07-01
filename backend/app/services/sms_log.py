@@ -17,7 +17,7 @@ async def record_sms_log(
     recipient_name: Optional[str] = None,
     worker_id: Optional[int] = None,
     error: Optional[str] = None,
-    twilio_sid: Optional[str] = None,
+    provider_message_id: Optional[str] = None,
 ) -> None:
     preview = (message_preview or "")[:500]
     async with AsyncSessionLocal() as db:
@@ -29,6 +29,6 @@ async def record_sms_log(
             message_preview=preview,
             success=bool(success),
             error=error,
-            twilio_sid=twilio_sid,
+            provider_message_id=provider_message_id,
         ))
         await db.commit()

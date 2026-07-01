@@ -1006,7 +1006,7 @@
                     </div>
                 </div>
 
-                <!-- Twilio Setup Info -->
+                <!-- SMS Send Log (Cellcast) -->
                 <div class="bg-white rounded-xl shadow overflow-hidden lg:col-span-2">
                     <div class="p-4 border-b flex flex-wrap items-center justify-between gap-3">
                         <h2 class="text-lg font-semibold flex items-center gap-2">
@@ -1065,26 +1065,27 @@
                     </div>
                 </div>
 
-                <!-- Twilio Setup Info -->
+                <!-- Cellcast SMS Setup Info -->
                 <div class="bg-white rounded-xl shadow overflow-hidden lg:col-span-2">
                     <div class="p-4 border-b">
                         <h2 class="text-lg font-semibold flex items-center gap-2">
                             <i class="fas fa-cog text-gray-600"></i>
-                            Twilio Configuration
+                            SMS Configuration (Cellcast)
                         </h2>
                     </div>
                     <div class="p-6">
                         <p class="text-gray-600 mb-4">
-                            SMS notifications are powered by Twilio. To enable SMS, set these environment variables on the server:
+                            Notifications go out as free in-app push first; SMS (powered by <b>Cellcast</b>, an
+                            Australian gateway billed in AUD) is the fallback for workers without the app. To enable
+                            SMS, set these environment variables on the server:
                         </p>
                         <div class="bg-gray-100 rounded-lg p-4 font-mono text-sm space-y-2">
-                            <p><span class="text-blue-600">TWILIO_ACCOUNT_SID</span>=your_account_sid</p>
-                            <p><span class="text-blue-600">TWILIO_AUTH_TOKEN</span>=your_auth_token</p>
-                            <p><span class="text-blue-600">TWILIO_PHONE_NUMBER</span>=+61xxxxxxxxx</p>
+                            <p><span class="text-blue-600">CELLCAST_API_KEY</span>=your_cellcast_appkey</p>
+                            <p><span class="text-blue-600">CELLCAST_SENDER_ID</span>=RAW Labour <span class="text-gray-400">(optional — costs more per SMS; leave blank for the cheapest shared number)</span></p>
                         </div>
                         <p class="text-sm text-gray-500 mt-4">
                             <i class="fas fa-external-link-alt mr-1"></i>
-                            <a href="https://www.twilio.com/console" target="_blank" class="text-blue-600 hover:underline">Get Twilio credentials</a>
+                            <a href="https://cellcast.com.au" target="_blank" class="text-blue-600 hover:underline">Get Cellcast credentials</a>
                         </p>
                     </div>
                 </div>

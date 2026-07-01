@@ -613,7 +613,7 @@ class SmsLog(Base):
     message_preview = Column(String(500))
     success = Column(Boolean, default=True)
     error = Column(Text)
-    twilio_sid = Column(String(64))
+    provider_message_id = Column(String(64))  # Cellcast message id
 
     worker = relationship("User", foreign_keys=[worker_id])
 
@@ -632,3 +632,21 @@ class AttendanceEvent(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     worker = relationship("User", foreign_keys=[worker_id])
+
+
+# ==================== PUSH RECEIPTS (deferred delivery verification) ====================
+
+class PushReceipt(Base):
+    """A pending Expo push receipt to verify ~15 min after sending.
+
+    Expo's immediate response only says it accepted the push; the *receipt*
+    (fetched later by ticket id) says whether it actually reached Apple/Google.
+    We record each accepted ticket here, then a scheduler job checks the receipts
+    and clears any token Expo reports as DeviceNotRegistered so future sends fall
+    back to SMS. Rows are deleted once processed."""
+    __tablename__ = "push_receipts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(String(80), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)

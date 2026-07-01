@@ -45,6 +45,17 @@ async def check_clock_out_reminders():
         print(f"[Scheduler] Error sending clock-out reminders: {e}")
 
 
+async def check_push_receipts():
+    """Verify Expo delivery receipts and clear any permanently-dead tokens so
+    future notifications fall back to SMS."""
+    from .push_receipts import check_pending_receipts
+
+    try:
+        await check_pending_receipts()
+    except Exception as e:
+        print(f"[Scheduler] Error checking push receipts: {e}")
+
+
 async def auto_archive_prior_pay_week():
     """
     Auto-archive approved timesheets from prior pay week (Fri→Thu).
@@ -86,7 +97,7 @@ def _parse_csv_phones(value):
 
 
 def _chunk_sms(text, limit=1400):
-    """Split a long SMS body into Twilio-safe chunks (max 1600 chars each).
+    """Split a long SMS body into gateway-safe chunks (max ~1400 chars each).
 
     Splits on line boundaries so a worker's line is never cut in half, and
     prefixes each part with "(i/n)" when more than one part is needed.
@@ -169,9 +180,20 @@ async def _deliver_notice(db, recipient_ids, extra_phones, title, body, data, sm
             if await _sms_once(r.phone, who, r.id):
                 sent += 1
         elif r.push_token:
-            result = await send_push_notification(r.push_token, title, body, data)
-            print(f"[Scheduler] {notice_label} push -> {who}: {result}")
-            sent += 1
+            from .push_notifications import ticket_status
+            from .push_receipts import handle_push_result
+            push_result = await send_push_notification(r.push_token, title, body, data)
+            push_ok = push_result.get("success") and ticket_status(push_result.get("result")) != "error"
+            # Record receipt (if accepted) or clear a dead token (blanks r.push_token).
+            await handle_push_result(r, push_result)
+            print(f"[Scheduler] {notice_label} push -> {who}: ok={push_ok}")
+            if push_ok:
+                sent += 1
+            elif can_sms and await _sms_once(r.phone, who, r.id):
+                # Push failed (e.g. dead token) — fall back to SMS like the worker path.
+                sent += 1
+            else:
+                print(f"[Scheduler] {notice_label}: push failed for {who} and no SMS fallback")
         elif can_sms:
             if await _sms_once(r.phone, who, r.id):
                 sent += 1
@@ -366,7 +388,7 @@ async def send_roster_digest():
             await _deliver_notice(
                 db, recipient_ids, extra_phones, title, body,
                 {"type": "roster_digest", "date": tomorrow.isoformat()},
-                sms_enabled, "Roster digest", prefer_sms=True,
+                sms_enabled, "Roster digest",
             )
     except Exception as e:
         print(f"[Scheduler] Error sending roster digest: {e}")
@@ -490,12 +512,23 @@ def setup_scheduler():
         name='Daily Roster Digest'
     )
 
+    # Push receipt verification: every 20 minutes, check delivery receipts for
+    # pushes sent >15 min ago and clear any dead tokens (self-healing fallback).
+    scheduler.add_job(
+        check_push_receipts,
+        CronTrigger(minute='*/20', timezone=TIMEZONE),
+        id='push_receipt_check',
+        replace_existing=True,
+        name='Push Receipt Check'
+    )
+
     print("[Scheduler] Initial reminders scheduled (defaults):")
     print("  - Clock-in reminder: 6:55 AM AEST/AEDT (Mon-Fri)")
     print("  - Clock-out reminder: 3:30 PM AEST/AEDT (Mon-Fri)")
     print("  - Weekly auto-archive: 7:00 AM AEST/AEDT (Fri)")
     print("  - Unaccepted allocations notice: 6:15 PM AEST/AEDT (Mon-Fri)")
     print("  - Daily roster digest: 7:00 PM AEST/AEDT (every day)")
+    print("  - Push receipt check: every 20 min")
 
 
 def update_clock_in_time(hour: int, minute: int):

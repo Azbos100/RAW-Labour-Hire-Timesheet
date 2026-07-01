@@ -259,7 +259,7 @@ export default function ProfileScreen() {
   // the OS level but the server never received their push token (e.g. token wasn't
   // saved at login), so admin sends never reach them.
   const registerAndSaveToken = async (): Promise<boolean> => {
-    const token = await registerForPushNotificationsAsync();
+    const token = await registerForPushNotificationsAsync(user?.id);
     if (token && user?.id) {
       return await savePushToken(user.id, token);
     }

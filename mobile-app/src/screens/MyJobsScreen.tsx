@@ -221,20 +221,18 @@ export default function MyJobsScreen({ navigation }: MyJobsScreenProps) {
 
   const formatTime = (value?: string | null) => {
     if (!value) return '--:--';
-    // Backend sends clock-in as plain HH:MM for current job cards
-    if (/^\d{1,2}:\d{2}$/.test(value)) return value;
-    let dateString = value;
-    if (!value.endsWith('Z') && !value.includes('+') && !value.includes('-', 10)) {
-      dateString = value + 'Z';
-    }
-    const date = new Date(dateString);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleTimeString('en-AU', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-      timeZone: 'Australia/Melbourne',
-    });
+    // Clock times are Melbourne wall-clock time (plain HH:MM, naive datetime, or a
+    // +10:00 datetime). Read the hours/minutes straight from the string so the time
+    // never shifts by the phone's timezone (avoids the old "+ 'Z'" +10h bug).
+    const timePart = value.includes('T') ? value.split('T')[1] : value;
+    const match = (timePart || '').match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return '--:--';
+    const hours = parseInt(match[1], 10);
+    const minutes = parseInt(match[2], 10);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return '--:--';
+    const period = hours >= 12 ? 'pm' : 'am';
+    const hour12 = hours % 12 === 0 ? 12 : hours % 12;
+    return `${hour12}:${String(minutes).padStart(2, '0')} ${period}`;
   };
 
   const renderJobCard = (job: JobAssignment, options: { showActions?: boolean; isCurrent?: boolean }) => {

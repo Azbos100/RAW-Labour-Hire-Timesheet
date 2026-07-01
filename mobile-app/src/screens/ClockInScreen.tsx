@@ -3,7 +3,7 @@
  * GPS-enabled clock in with automatic job site detection
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,9 +15,11 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  AppState,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { COLORS } from '../constants/colors';
@@ -45,8 +47,12 @@ interface AssignedJob {
   job_site_longitude?: number;
 }
 
-// GPS matching threshold in kilometers
+// GPS matching threshold in kilometers for auto-detecting an UNKNOWN nearby site.
 const GPS_MATCH_THRESHOLD_KM = 1;
+// More lenient radius for the worker's OWN admin-allocated site: we already know
+// where they're meant to be, so allow for GPS scatter / large sites (a real
+// clock-in once landed ~1.04km out and got dropped, falling back to a stale id).
+const ASSIGNED_SITE_THRESHOLD_KM = 2;
 
 // Calculate distance between two coordinates using Haversine formula
 function calculateDistance(
@@ -91,9 +97,17 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
   // Track if job sites have been fetched (even if empty)
   const [jobSitesFetched, setJobSitesFetched] = useState(false);
 
-  useEffect(() => {
+  // Re-fetch assignment + job sites + location from scratch. Used on first load,
+  // whenever the screen regains focus, and when the app returns to the foreground
+  // so we never clock in against a stale (e.g. yesterday's) cached assignment.
+  const refreshAll = useCallback(() => {
+    hasDetectedRef.current = false;
+    setDetectionStatus('loading');
+    setJobSitesFetched(false);
     loadData();
-    
+  }, [user?.id]);
+
+  useEffect(() => {
     // Failsafe: If detection is still "loading" after 10 seconds, set to no_match
     const timeout = setTimeout(() => {
       if (detectionStatus === 'loading' && !isLoadingLocation) {
@@ -102,9 +116,26 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
         setJobSitesFetched(true);
       }
     }, 10000);
-    
+
     return () => clearTimeout(timeout);
   }, []);
+
+  // Reload every time the screen comes into focus (covers navigating back to it).
+  useFocusEffect(
+    useCallback(() => {
+      refreshAll();
+    }, [refreshAll])
+  );
+
+  // Reload when the app returns to the foreground. Workers often leave the app
+  // open on this screen overnight; without this they'd clock in this morning
+  // using yesterday's assignment that was cached in memory.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshAll();
+    });
+    return () => sub.remove();
+  }, [refreshAll]);
   
   // Re-run detection when location AND job sites are ready
   useEffect(() => {
@@ -208,7 +239,7 @@ export default function ClockInScreen({ navigation }: ClockInScreenProps) {
       );
       console.log('[JobSite] Distance to assigned job:', distToAssigned.toFixed(2), 'km');
       
-      if (distToAssigned <= GPS_MATCH_THRESHOLD_KM) {
+      if (distToAssigned <= ASSIGNED_SITE_THRESHOLD_KM) {
         console.log('[JobSite] Detected assigned job:', assignedJob.job_site_name);
         setDetectedJobSite({
           id: assignedJob.job_site_id,

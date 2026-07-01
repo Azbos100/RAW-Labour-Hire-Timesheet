@@ -21,7 +21,7 @@ MELBOURNE_TZ = pytz.timezone('Australia/Melbourne')
 def get_melbourne_now():
     """Get current time in Melbourne, Australia (AEST/AEDT)"""
     return datetime.now(MELBOURNE_TZ)
-from ..models import User, TimesheetEntry, Timesheet, JobSite, Client, TimesheetStatus
+from ..models import User, TimesheetEntry, Timesheet, JobSite, Client, TimesheetStatus, WorkerAssignment
 from .auth import get_current_user, resolve_user_id
 
 router = APIRouter()
@@ -312,14 +312,37 @@ async def clock_in(
     job_site = None
     client_id = None
     
-    # Priority 1: Use provided job_site_id if valid
+    # Priority 1: Use the app-provided job_site_id — but ONLY if GPS agrees the
+    # worker is actually there. The app can send a STALE id (e.g. yesterday's job
+    # cached before a same-day re-allocation), which previously attributed a shift
+    # to a site 20+ km from where the worker physically clocked in. If the worker's
+    # GPS clearly isn't at the sent site, ignore the id and fall through to GPS
+    # auto-detect / today's admin allocation.
+    STALE_SITE_GUARD_KM = 3.0
     if request.job_site_id:
         result = await db.execute(
             select(JobSite).where(JobSite.id == request.job_site_id)
         )
-        job_site = result.scalar_one_or_none()
-        if job_site:
-            client_id = job_site.client_id
+        sent_site = result.scalar_one_or_none()
+        if sent_site:
+            far_from_sent = False
+            if (request.latitude and request.longitude
+                    and sent_site.latitude is not None and sent_site.longitude is not None):
+                try:
+                    dist_km = geodesic(
+                        (request.latitude, request.longitude),
+                        (sent_site.latitude, sent_site.longitude),
+                    ).kilometers
+                    if dist_km > STALE_SITE_GUARD_KM:
+                        far_from_sent = True
+                        print(f"[Clock-in] Ignoring stale job_site_id={sent_site.id} "
+                              f"({sent_site.name}): worker is {dist_km:.1f}km away — "
+                              f"resolving by GPS/allocation instead")
+                except Exception:
+                    far_from_sent = False
+            if not far_from_sent:
+                job_site = sent_site
+                client_id = sent_site.client_id
     
     # Priority 2: Auto-detect nearest job site within 1km using GPS
     if not client_id and request.latitude and request.longitude:
@@ -353,19 +376,29 @@ async def clock_in(
             client_id = nearest_site.client_id
             print(f"[Clock-in] Auto-detected job site: {nearest_site.name} ({nearest_distance:.2f}km away)")
     
-    # Priority 2.5: Use the worker's admin-assigned job site. This covers the
-    # common case where the app didn't pass a job_site_id and GPS just missed
-    # the 1km radius - we should still attribute the shift to where they were
-    # actually allocated (and to the correct client) rather than RAW General.
-    if not client_id and getattr(current_user, 'assigned_job_site_id', None):
-        result = await db.execute(
-            select(JobSite).where(JobSite.id == current_user.assigned_job_site_id)
-        )
-        assigned_site = result.scalar_one_or_none()
+    # Priority 2.5: Fall back to the worker's admin allocation for TODAY. This is
+    # the authoritative "where they were sent", and covers (a) the app sending a
+    # stale id we just rejected, and (b) GPS just missing the 1km auto-match radius.
+    # Prefer today's WorkerAssignment directly; fall back to the legacy synced field.
+    if not client_id:
+        assigned_site = (await db.execute(
+            select(JobSite)
+            .join(WorkerAssignment, WorkerAssignment.job_site_id == JobSite.id)
+            .where(
+                WorkerAssignment.worker_id == current_user.id,
+                WorkerAssignment.assignment_date == today,
+            )
+            .order_by(WorkerAssignment.id.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+        if assigned_site is None and getattr(current_user, 'assigned_job_site_id', None):
+            assigned_site = (await db.execute(
+                select(JobSite).where(JobSite.id == current_user.assigned_job_site_id)
+            )).scalar_one_or_none()
         if assigned_site:
             job_site = assigned_site
             client_id = assigned_site.client_id
-            print(f"[Clock-in] Using assigned job site: {assigned_site.name}")
+            print(f"[Clock-in] Using today's allocated job site: {assigned_site.name}")
 
     # Priority 3: Use default "RAW General Site" (ID=1) as fallback
     if not client_id:
@@ -457,7 +490,7 @@ async def clock_in(
         timesheet_id=timesheet.id,
         day_of_week=get_day_of_week(today),
         entry_date=today,
-        job_site_id=request.job_site_id or (job_site.id if job_site else None),
+        job_site_id=job_site_id,  # resolved site (after stale-id guard), matches the docket
         time_start=effective_clock_in.time(),  # Use effective time (rounded to shift start if early)
         clock_in_time=now,  # Store actual clock-in time for GPS tracking
         clock_in_latitude=request.latitude if request.latitude != 0 else None,

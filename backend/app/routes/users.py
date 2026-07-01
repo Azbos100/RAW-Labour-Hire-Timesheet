@@ -219,10 +219,14 @@ async def list_all_workers(
     workers_data = []
     for u in users:
         worker_assignments = assignments_map.get(u.id, [])
-        # Legacy single-slot field: earliest assignment from today onward
+        # Legacy single-slot field: prefer the earliest assignment from today onward;
+        # if the worker has no upcoming job, fall back to their MOST RECENT past
+        # assignment (worker_assignments is sorted oldest->newest, so [-1]), not the
+        # oldest. Using [0] made the Workers tab show a worker's first-ever job once all
+        # their assignments were in the past.
         assigned_job = next(
             (a for a in worker_assignments if a.get("assignment_date") and a["assignment_date"] >= today_assign.isoformat()),
-            worker_assignments[0] if worker_assignments else None,
+            worker_assignments[-1] if worker_assignments else None,
         )
         clock_in_status = clocked_in_users.get(u.id)
         
@@ -827,6 +831,19 @@ async def save_push_token(
     return {"message": "Push token saved", "user": user_name}
 
 
+@router.post("/{user_id}/push-debug")
+async def push_debug(user_id: int, report: dict, db: AsyncSession = Depends(get_db)):
+    """Diagnostic sink: the app reports WHY push registration succeeded/failed on a
+    device (permission status, device model, or the getExpoPushTokenAsync error) so
+    we can see it in the server logs. Temporary aid for tracking down phones that
+    never register a token."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    name = f"{user.first_name} {user.surname}" if user else f"id={user_id}"
+    print(f"[Push Debug] {name}: {report}")
+    return {"ok": True}
+
+
 # ==================== JOB ASSIGNMENT ENDPOINTS ====================
 
 class JobAssignment(BaseModel):
@@ -926,22 +943,19 @@ async def assign_worker_to_job(
             }
 
             async def send_assignment_notification():
-                await send_push_notification(
+                from ..services.push_receipts import handle_push_result
+                pr = await send_push_notification(
                     worker.push_token,
                     notification_title,
                     notification_body,
                     notification_data,
                 )
+                await handle_push_result(worker, pr)
 
             if background_tasks:
                 background_tasks.add_task(send_assignment_notification)
             else:
-                await send_push_notification(
-                    worker.push_token,
-                    notification_title,
-                    notification_body,
-                    notification_data,
-                )
+                await send_assignment_notification()
             notifications_sent.append("Push")
     else:
         if assignment.assignment_date:
@@ -1022,11 +1036,13 @@ async def assign_workers_bulk(
             notification_title = "New Job Assignment"
             notification_body = f"You've been assigned to {job_site.name} on {date_str} at {time_str}. Tap to accept or decline."
 
-            async def send_worker_push(token=worker.push_token, title=notification_title, body=notification_body):
-                await send_push_notification(
-                    token, title, body,
+            async def send_worker_push(w=worker, title=notification_title, body=notification_body):
+                from ..services.push_receipts import handle_push_result
+                pr = await send_push_notification(
+                    w.push_token, title, body,
                     {"type": "job_assignment", "assignment_date": assign_date.isoformat()},
                 )
+                await handle_push_result(w, pr)
 
             if background_tasks:
                 background_tasks.add_task(send_worker_push)

@@ -166,18 +166,19 @@ export default function TimesheetDetailScreen({ navigation, route }: TimesheetDe
 
   const formatTime = (timeString?: string) => {
     if (!timeString) return '--:--';
-    // Handle both time format (HH:MM:SS) and datetime format
-    if (timeString.includes('T')) {
-      // ISO datetime format - ensure UTC is properly handled
-      let dateString = timeString;
-      if (!timeString.endsWith('Z') && !timeString.includes('+') && !timeString.includes('-', 10)) {
-        dateString = timeString + 'Z';
-      }
-      const date = new Date(dateString);
-      return date.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: true });
-    }
-    // Time only format - take first 5 chars (HH:MM)
-    return timeString.substring(0, 5);
+    // Clock times from the API are Melbourne wall-clock time (stored naive, or sent
+    // with a +10:00 offset). Read the hours/minutes straight from the string so the
+    // displayed time never shifts by the phone's timezone. The old "+ 'Z'" hack treated
+    // a naive 07:00 as UTC and added +10h, turning a 7:00am–3:30pm day into 5:00pm–1:30am.
+    const timePart = timeString.includes('T') ? timeString.split('T')[1] : timeString;
+    const match = (timePart || '').match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return '--:--';
+    const hours = parseInt(match[1], 10);
+    const minutes = parseInt(match[2], 10);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return '--:--';
+    const period = hours >= 12 ? 'pm' : 'am';
+    const hour12 = hours % 12 === 0 ? 12 : hours % 12;
+    return `${hour12}:${String(minutes).padStart(2, '0')} ${period}`;
   };
 
   const formatHoursMinutes = (hours: number) => {

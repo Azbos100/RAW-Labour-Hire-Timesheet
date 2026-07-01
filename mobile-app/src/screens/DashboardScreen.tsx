@@ -156,17 +156,18 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
 
   const formatTime = (isoString?: string) => {
     if (!isoString) return '--:--';
-    // Ensure the timestamp is treated as UTC if no timezone specified
-    let dateString = isoString;
-    if (!isoString.endsWith('Z') && !isoString.includes('+') && !isoString.includes('-', 10)) {
-      dateString = isoString + 'Z';
-    }
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-AU', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
+    // Clock times are Melbourne wall-clock time (naive, or sent with a +10:00 offset).
+    // Read the hours/minutes straight from the string so the displayed time never
+    // shifts by the phone's timezone (avoids the old "+ 'Z'" +10h bug).
+    const timePart = isoString.includes('T') ? isoString.split('T')[1] : isoString;
+    const match = (timePart || '').match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return '--:--';
+    const hours = parseInt(match[1], 10);
+    const minutes = parseInt(match[2], 10);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return '--:--';
+    const period = hours >= 12 ? 'pm' : 'am';
+    const hour12 = hours % 12 === 0 ? 12 : hours % 12;
+    return `${hour12}:${String(minutes).padStart(2, '0')} ${period}`;
   };
 
   const formatHours = (hours: number) => {

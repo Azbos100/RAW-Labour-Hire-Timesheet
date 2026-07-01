@@ -23,8 +23,7 @@ oauthlib==3.2.2
 # PII encryption at rest (TFN / bank details)
 cryptography==42.0.5
 
-# SMS Notifications
-twilio==9.0.0
+# SMS Notifications (Cellcast — Australian gateway, called via httpx above)
 
 # Scheduler for automatic reminders
 apscheduler==3.10.4

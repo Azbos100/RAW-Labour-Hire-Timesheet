@@ -125,8 +125,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setAuthToken(null);
         } else {
           setToken(storedToken);
-          setUser(JSON.parse(storedUser));
+          const restoredUser = JSON.parse(storedUser);
+          setUser(restoredUser);
           setAuthToken(storedToken);
+          // Register/refresh the Expo push token on every app launch for an
+          // already-signed-in user. This previously only ran on login(), so
+          // anyone who stayed logged in — or whose first attempt failed before
+          // they granted notification permission — never had a token saved and
+          // silently received nothing (e.g. Josh McPherson).
+          registerForPushNotificationsAsync(restoredUser?.id).then(async (pushToken) => {
+            if (pushToken && restoredUser?.id) {
+              await savePushToken(restoredUser.id, pushToken);
+            }
+          }).catch(err => console.warn('Push token refresh failed:', err));
         }
       }
     } catch (error) {
@@ -163,7 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(userData);
 
       // Register for push notifications
-      registerForPushNotificationsAsync().then(async (pushToken) => {
+      registerForPushNotificationsAsync(userData.id).then(async (pushToken) => {
         if (pushToken && userData.id) {
           await savePushToken(userData.id, pushToken);
         }

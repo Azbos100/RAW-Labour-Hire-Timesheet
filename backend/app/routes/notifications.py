@@ -23,25 +23,82 @@ from ..services.sms import (
     timesheet_approved_message,
     timesheet_rejected_message
 )
+from ..services.push_notifications import send_push_notification
 
 router = APIRouter()
+
+
+def _expo_ticket_ok(result) -> bool:
+    """Expo returns {"data": {"status": "ok"|"error", ...}} per push. Treat an 'error'
+    ticket (e.g. DeviceNotRegistered for a reinstalled/expired token) as a push failure
+    so the caller falls back to SMS. Unknown shapes -> assume sent (don't double-send)."""
+    try:
+        data = (result or {}).get("data")
+        if isinstance(data, list):
+            data = data[0] if data else None
+        if isinstance(data, dict):
+            return data.get("status") != "error"
+    except Exception:
+        pass
+    return True
+
+
+async def notify_worker_push_first(
+    worker,
+    *,
+    title: str,
+    body: str,
+    data: Optional[dict],
+    sms_message: str,
+    message_type: str,
+    sms_enabled: bool,
+) -> str:
+    """Deliver a worker notification PUSH-FIRST, falling back to SMS only when there's
+    no usable push token (or push fails) and SMS is enabled.
+
+    Push (Expo) is free, so app users cost nothing; SMS (Cellcast) is the paid fallback
+    for workers who don't have the app installed. Returns the channel used:
+    'push', 'sms', or 'none'.
+    """
+    if getattr(worker, "push_token", None):
+        push_result = await send_push_notification(worker.push_token, title, body, data or {})
+        push_ok = push_result.get("success") and _expo_ticket_ok(push_result.get("result"))
+        # Records the receipt (for later verification) when accepted, or clears a
+        # dead token (DeviceNotRegistered) so this call falls through to SMS.
+        from ..services.push_receipts import handle_push_result
+        await handle_push_result(worker, push_result)
+        if push_ok:
+            return "push"
+        # Push failed / dead token (invalid, expired, network) -> fall through to SMS.
+
+    if sms_enabled and getattr(worker, "phone", None):
+        sms_result = await send_sms(
+            worker.phone,
+            sms_message,
+            recipient_name=f"{worker.first_name} {worker.surname}",
+            worker_id=worker.id,
+            message_type=message_type,
+        )
+        return "sms" if sms_result.get("success") else "none"
+
+    return "none"
 
 
 @router.get("/test-sms/{phone}")
 async def test_sms(phone: str):
     """Test SMS sending - debug endpoint"""
-    from ..services.sms import send_sms, format_phone_number, TWILIO_ACCOUNT_SID, TWILIO_PHONE_NUMBER, get_sender
-    
+    from ..services.sms import format_phone_number, is_sms_configured, get_sender
+
     formatted = format_phone_number(phone)
-    
+
     result = await send_sms(phone, "Test message from RAW Labour Hire", message_type="test")
-    
+
     return {
         "original_phone": phone,
         "formatted_phone": formatted,
-        "twilio_configured": bool(TWILIO_ACCOUNT_SID),
-        "twilio_from_number": TWILIO_PHONE_NUMBER,
-        "twilio_sender": get_sender(),
+        "provider": "cellcast",
+        "sms_configured": is_sms_configured(),
+        "sms_sender": get_sender() or "#SharedNum# (Cellcast shared number)",
         "result": result
     }
 
@@ -517,10 +574,10 @@ async def check_clock_in_reminders(
     
     if settings and not settings.clock_in_reminder_enabled:
         return {"message": "Clock-in reminders disabled", "sent": 0}
-    
-    if settings and not settings.sms_enabled:
-        return {"message": "SMS notifications disabled", "sent": 0}
-    
+
+    # Push (free) goes regardless; SMS is the paid fallback gated by this flag.
+    sms_enabled = settings.sms_enabled if settings else True
+
     # Get current time in Melbourne timezone
     melbourne_tz = pytz.timezone('Australia/Melbourne')
     now = dt.now(melbourne_tz)
@@ -534,15 +591,17 @@ async def check_clock_in_reminders(
     workers = workers_result.scalars().all()
     
     sent_count = 0
+    push_count = 0
     skipped_count = 0
     errors = []
     
     for worker in workers:
-        if not worker.phone:
+        # Need at least one channel: the app (push) or a phone (SMS fallback).
+        if not worker.push_token and not worker.phone:
             continue
         
         # Only remind workers who actually have a job assigned for today (and who
-        # haven't declined it). This stops idle/unassigned workers being texted.
+        # haven't declined it). This stops idle/unassigned workers being notified.
         if not worker_assigned_today(worker, today):
             skipped_count += 1
             continue
@@ -562,27 +621,29 @@ async def check_clock_in_reminders(
         has_clocked_in = entry_result.scalar_one_or_none() is not None
         
         if not has_clocked_in:
-            # Send reminder
-            message = clock_in_reminder_message(worker.first_name)
-            result = await send_sms(
-                worker.phone,
-                message,
-                recipient_name=f"{worker.first_name} {worker.surname}",
-                worker_id=worker.id,
+            channel = await notify_worker_push_first(
+                worker,
+                title="Clock-in reminder",
+                body=f"Hi {worker.first_name}, remember to clock in for your shift in the RAW Timesheet app.",
+                data={"type": "clock_in_reminder"},
+                sms_message=clock_in_reminder_message(worker.first_name),
                 message_type="clock_in_reminder",
+                sms_enabled=sms_enabled,
             )
-            
-            if result["success"]:
+            if channel == "push":
+                push_count += 1
+            elif channel == "sms":
                 sent_count += 1
             else:
                 errors.append({
                     "worker": f"{worker.first_name} {worker.surname}",
-                    "error": result.get("error")
+                    "error": "no push token and SMS unavailable/disabled"
                 })
     
     return {
-        "message": f"Clock-in reminders sent",
+        "message": "Clock-in reminders sent",
         "sent": sent_count,
+        "push": push_count,
         "skipped": skipped_count,
         "errors": errors if errors else None
     }
@@ -605,10 +666,10 @@ async def check_clock_out_reminders(
     
     if settings and not settings.clock_out_reminder_enabled:
         return {"message": "Clock-out reminders disabled", "sent": 0}
-    
-    if settings and not settings.sms_enabled:
-        return {"message": "SMS notifications disabled", "sent": 0}
-    
+
+    # Push (free) goes regardless; SMS is the paid fallback gated by this flag.
+    sms_enabled = settings.sms_enabled if settings else True
+
     # Get current time in Melbourne timezone
     melbourne_tz = pytz.timezone('Australia/Melbourne')
     now = dt.now(melbourne_tz)
@@ -632,11 +693,13 @@ async def check_clock_out_reminders(
     entries = entries_result.all()
     
     sent_count = 0
+    push_count = 0
     skipped_count = 0
     errors = []
     
     for entry, worker in entries:
-        if not worker.phone:
+        # Need at least one channel: the app (push) or a phone (SMS fallback).
+        if not worker.push_token and not worker.phone:
             continue
         
         # Skip workers in overtime mode - they're staying back intentionally
@@ -649,27 +712,29 @@ async def check_clock_out_reminders(
             skipped_count += 1
             continue
         
-        # Send reminder
-        message = clock_out_reminder_message(worker.first_name)
-        result = await send_sms(
-            worker.phone,
-            message,
-            recipient_name=f"{worker.first_name} {worker.surname}",
-            worker_id=worker.id,
+        channel = await notify_worker_push_first(
+            worker,
+            title="Clock-out reminder",
+            body=f"Hi {worker.first_name}, don't forget to clock out in the RAW Timesheet app before you leave site.",
+            data={"type": "clock_out_reminder"},
+            sms_message=clock_out_reminder_message(worker.first_name),
             message_type="clock_out_reminder",
+            sms_enabled=sms_enabled,
         )
-        
-        if result["success"]:
+        if channel == "push":
+            push_count += 1
+        elif channel == "sms":
             sent_count += 1
         else:
             errors.append({
                 "worker": f"{worker.first_name} {worker.surname}",
-                "error": result.get("error")
+                "error": "no push token and SMS unavailable/disabled"
             })
     
     return {
-        "message": f"Clock-out reminders sent",
+        "message": "Clock-out reminders sent",
         "sent": sent_count,
+        "push": push_count,
         "skipped": skipped_count,
         "errors": errors if errors else None
     }
@@ -696,26 +761,32 @@ async def send_timesheet_notification(
     
     timesheet, worker = row
     
-    if not worker.phone:
-        return {"message": "Worker has no phone number", "sent": False}
+    if not worker.push_token and not worker.phone:
+        return {"message": "Worker has no app (push) or phone number", "sent": False}
     
     if notification_type == "approved":
         message = timesheet_approved_message(worker.first_name, timesheet.docket_number)
+        push_title = "Timesheet approved"
+        push_body = f"Your timesheet #{timesheet.docket_number} has been approved."
     elif notification_type == "rejected":
         message = timesheet_rejected_message(worker.first_name, timesheet.docket_number)
+        push_title = "Timesheet needs attention"
+        push_body = f"Your timesheet #{timesheet.docket_number} needs attention — open the RAW Timesheet app."
     else:
         raise HTTPException(status_code=400, detail="Invalid notification type")
     
-    sms_result = await send_sms(
-        worker.phone,
-        message,
-        recipient_name=f"{worker.first_name} {worker.surname}",
-        worker_id=worker.id,
+    channel = await notify_worker_push_first(
+        worker,
+        title=push_title,
+        body=push_body,
+        data={"type": f"timesheet_{notification_type}", "timesheet_id": timesheet.id},
+        sms_message=message,
         message_type=f"timesheet_{notification_type}",
+        sms_enabled=True,
     )
     
     return {
-        "message": "Notification sent" if sms_result["success"] else "Failed to send",
-        "sent": sms_result["success"],
-        "error": sms_result.get("error")
+        "message": "Notification sent" if channel != "none" else "Failed to send",
+        "sent": channel != "none",
+        "channel": channel,
     }

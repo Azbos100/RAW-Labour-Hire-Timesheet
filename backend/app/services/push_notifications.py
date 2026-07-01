@@ -7,6 +7,68 @@ import httpx
 from typing import List, Optional
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
+EXPO_RECEIPT_URL = "https://exp.host/--/api/v2/push/getReceipts"
+
+# Expo error codes that mean the token is permanently invalid (app uninstalled /
+# reinstalled / token expired). When we see one, clear the stored token so future
+# notifications go straight to SMS and the app re-registers a fresh token on launch.
+DEAD_TOKEN_ERRORS = {"DeviceNotRegistered"}
+
+
+def _ticket(result) -> Optional[dict]:
+    """Pull the single push ticket dict out of an Expo /send response."""
+    data = (result or {}).get("data")
+    if isinstance(data, list):
+        return data[0] if data else None
+    if isinstance(data, dict):
+        return data
+    return None
+
+
+def ticket_status(result) -> Optional[str]:
+    """'ok' or 'error' for a /send response, or None if unknown."""
+    t = _ticket(result)
+    return t.get("status") if isinstance(t, dict) else None
+
+
+def ticket_error_code(result) -> Optional[str]:
+    """Expo error tickets: {"status":"error","details":{"error":"DeviceNotRegistered"}}."""
+    t = _ticket(result)
+    if isinstance(t, dict) and t.get("status") == "error":
+        return (t.get("details") or {}).get("error") or "error"
+    return None
+
+
+def ticket_id(result) -> Optional[str]:
+    """The receipt id for a successfully-accepted ('ok') push, else None."""
+    t = _ticket(result)
+    if isinstance(t, dict) and t.get("status") == "ok":
+        return t.get("id")
+    return None
+
+
+def is_dead_token_result(push_result) -> bool:
+    """True when the send result shows a permanently-invalid token."""
+    return ticket_error_code((push_result or {}).get("result")) in DEAD_TOKEN_ERRORS
+
+
+async def get_push_receipts(receipt_ids: List[str]) -> dict:
+    """Fetch delivery receipts for the given ticket ids. Returns a dict keyed by
+    ticket id (only ids whose receipt is ready are present)."""
+    if not receipt_ids:
+        return {}
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.post(
+                EXPO_RECEIPT_URL,
+                json={"ids": receipt_ids},
+                headers={"Accept": "application/json", "Content-Type": "application/json"},
+            )
+        body = resp.json()
+        return (body or {}).get("data") or {}
+    except Exception as e:
+        print(f"Push receipt fetch error: {e}")
+        return {}
 
 
 async def send_push_notification(

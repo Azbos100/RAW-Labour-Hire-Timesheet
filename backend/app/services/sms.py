@@ -1,35 +1,43 @@
 """
 RAW Labour Hire - SMS Notification Service
-Uses Twilio for sending SMS messages
+Uses Cellcast (Australian SMS gateway, AUD-billed) for sending SMS messages.
+
+SMS is the paid FALLBACK channel — notifications are sent as free in-app push first.
+Public surface: send_sms / send_sms_sync / format_phone_number / brand_message /
+get_sender + message templates.
 """
 
 import os
 from typing import Optional
-from twilio.rest import Client
-from twilio.base.exceptions import TwilioRestException
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")  # Your Twilio phone number
-# Optional alphanumeric Sender ID (e.g. "RAW Labour"). Max 11 chars, must contain a
-# letter. When set, the SMS shows this name as the sender instead of a phone number.
-# NOTE: alphanumeric sender IDs are ONE-WAY only - recipients cannot reply.
-TWILIO_SENDER_ID = os.getenv("TWILIO_SENDER_ID")
+
+import httpx
+
+# Cellcast v3 REST API. Auth via APPKEY header. Docs: cellcast.com.au/api
+CELLCAST_SEND_URL = "https://cellcast.com.au/api/v3/send-sms"
+CELLCAST_API_KEY = os.getenv("CELLCAST_API_KEY")  # APPKEY from the Cellcast dashboard
+
+# Optional custom Sender ID (e.g. "RAW Labour"). Max 11 chars (alpha) or 16 digits.
+# IMPORTANT: a custom sender ID costs 1.3 credits/SMS on Cellcast vs 1 credit for the
+# shared number, and is ONE-WAY (recipients can't reply). Leave blank to use the shared
+# number (cheapest) — the company name is added to the body anyway (see brand_message).
+CELLCAST_SENDER_ID = os.getenv("CELLCAST_SENDER_ID")
+
+REQUEST_TIMEOUT = 20.0
 
 # Default company name for messages
 COMPANY_NAME = "RAW Labour Hire"
 
 # Footer for automated, no-reply messages so recipients know how to reach us
-# (alphanumeric sender IDs can't receive replies).
+# (shared numbers / alphanumeric sender IDs can't reliably receive replies).
 CONTACT_FOOTER = "Reply not monitored - call or text Josh McPherson 0424 142 040"
 
 
 def brand_message(message: str) -> str:
     """Make sure an outgoing SMS identifies RAW Labour Hire.
 
-    Alphanumeric sender IDs (showing "RAW Labour" instead of a number) aren't
-    available on every account/route, so the recipient may just see an unknown
-    number. Adding the company name to the body guarantees they know who it's from.
-    Skips adding it if the message already mentions the company.
+    When sending from the shared number (or an unfamiliar number) the recipient may
+    just see an unknown sender, so adding the company name to the body guarantees they
+    know who it's from. Skips adding it if the message already mentions the company.
     """
     msg = (message or "").strip()
     if "raw labour" not in msg.lower():
@@ -38,33 +46,25 @@ def brand_message(message: str) -> str:
 
 
 def get_sender() -> Optional[str]:
-    """The 'from' value for outbound SMS: alphanumeric Sender ID if configured,
-    otherwise the Twilio phone number."""
-    return (TWILIO_SENDER_ID.strip() if TWILIO_SENDER_ID and TWILIO_SENDER_ID.strip()
-            else TWILIO_PHONE_NUMBER)
+    """The custom Sender ID for outbound SMS, or None to use Cellcast's shared number
+    (cheapest). Returns None when no sender ID is configured."""
+    s = (CELLCAST_SENDER_ID or "").strip()
+    return s or None
 
 
-def get_twilio_client() -> Optional[Client]:
-    """Get Twilio client if credentials are configured"""
-    if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN]) or not get_sender():
-        print("[SMS] Twilio not configured - missing credentials")
-        return None
-    
-    try:
-        return Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-    except Exception as e:
-        print(f"[SMS] Error creating Twilio client: {e}")
-        return None
+def is_sms_configured() -> bool:
+    """True when Cellcast credentials are present."""
+    return bool(CELLCAST_API_KEY)
 
 
 def format_phone_number(phone: str) -> str:
     """Format Australian phone number to E.164 format"""
     if not phone:
         return ""
-    
+
     # Remove spaces, dashes, and brackets
     phone = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-    
+
     # Handle Australian numbers
     if phone.startswith("04"):
         # Convert 04xx to +614xx
@@ -75,13 +75,59 @@ def format_phone_number(phone: str) -> str:
         return "+" + phone
     elif phone.startswith("0"):
         return "+61" + phone[1:]
-    
+
     # If already has + prefix, return as is
     if phone.startswith("+"):
         return phone
-    
+
     # Default: assume Australian and add +61
     return "+61" + phone
+
+
+def _headers() -> dict:
+    return {
+        "APPKEY": CELLCAST_API_KEY or "",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+
+
+def _build_payload(message: str, formatted_phone: str, message_type: str) -> dict:
+    payload = {
+        "sms_text": message,
+        "numbers": [formatted_phone],
+        "source": "RAW-Timesheet",
+    }
+    sender = get_sender()
+    if sender:
+        payload["from"] = sender
+    # custom_string allows letters/numbers/dashes only — sanitise the message_type.
+    tag = "".join(c if (c.isalnum() or c == "-") else "-" for c in (message_type or "custom"))
+    if tag:
+        payload["custom_string"] = tag[:50]
+    return payload
+
+
+def _parse_response(status_code: int, body: dict) -> dict:
+    """Map a Cellcast response into our standard {success, message_sid|error} result."""
+    meta = (body or {}).get("meta") or {}
+    status = meta.get("status")
+
+    if status_code == 200 and status == "SUCCESS":
+        data = (body or {}).get("data") or {}
+        messages = data.get("messages") if isinstance(data, dict) else None
+        message_id = None
+        if messages:
+            message_id = (messages[0] or {}).get("message_id")
+        low_alert = (body or {}).get("low_sms_alert")
+        if low_alert:
+            print(f"[SMS] Cellcast low-credit warning: {low_alert}")
+        return {"success": True, "message_sid": message_id}
+
+    # Error path (AUTH_FAILED / RECIPIENTS_ERROR / FIELD_INVALID / OVER_LIMIT / etc.)
+    detail = (body or {}).get("msg") or status or f"HTTP {status_code}"
+    error = f"{status}: {detail}" if status and status != detail else str(detail)
+    return {"success": False, "error": error}
 
 
 async def send_sms(
@@ -93,14 +139,13 @@ async def send_sms(
     message_type: str = "custom",
 ) -> dict:
     """
-    Send an SMS message and record it in sms_logs for the admin audit trail.
+    Send an SMS message via Cellcast and record it in sms_logs for the admin audit trail.
     """
     from .sms_log import record_sms_log
 
-    client = get_twilio_client()
     formatted_phone = format_phone_number(to_phone)
 
-    if not client:
+    if not is_sms_configured():
         result = {"success": False, "error": "SMS service not configured"}
         await record_sms_log(
             recipient_phone=formatted_phone or to_phone or "",
@@ -127,34 +172,22 @@ async def send_sms(
         return result
 
     try:
-        sender = get_sender()
-        try:
-            message_obj = client.messages.create(
-                body=message,
-                from_=sender,
-                to=formatted_phone
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+            resp = await client.post(
+                CELLCAST_SEND_URL,
+                headers=_headers(),
+                json=_build_payload(message, formatted_phone, message_type),
             )
-        except TwilioRestException as e:
-            if sender != TWILIO_PHONE_NUMBER and TWILIO_PHONE_NUMBER:
-                print(f"[SMS] Sender '{sender}' rejected ({e.code}); retrying with number.")
-                message_obj = client.messages.create(
-                    body=message,
-                    from_=TWILIO_PHONE_NUMBER,
-                    to=formatted_phone
-                )
-            else:
-                raise
-
-        print(f"[SMS] Sent to {formatted_phone}: {message[:50]}...")
-        result = {
-            "success": True,
-            "message_sid": message_obj.sid,
-            "to": formatted_phone,
-        }
-
-    except TwilioRestException as e:
-        print(f"[SMS] Twilio error: {e}")
-        result = {"success": False, "error": str(e), "to": formatted_phone}
+        try:
+            body = resp.json()
+        except Exception:
+            body = {}
+        result = _parse_response(resp.status_code, body)
+        result["to"] = formatted_phone
+        if result.get("success"):
+            print(f"[SMS] Sent to {formatted_phone}: {message[:50]}...")
+        else:
+            print(f"[SMS] Cellcast error to {formatted_phone}: {result.get('error')}")
     except Exception as e:
         print(f"[SMS] Error sending SMS: {e}")
         result = {"success": False, "error": str(e), "to": formatted_phone}
@@ -167,7 +200,7 @@ async def send_sms(
         message_preview=message,
         success=result.get("success", False),
         error=result.get("error"),
-        twilio_sid=result.get("message_sid"),
+        provider_message_id=result.get("message_sid"),
     )
     return result
 
@@ -184,7 +217,6 @@ def send_sms_sync(
     import asyncio
     from .sms_log import record_sms_log
 
-    client = get_twilio_client()
     formatted_phone = format_phone_number(to_phone)
 
     def _log(result: dict) -> None:
@@ -196,7 +228,7 @@ def send_sms_sync(
             message_preview=message,
             success=result.get("success", False),
             error=result.get("error"),
-            twilio_sid=result.get("message_sid"),
+            provider_message_id=result.get("message_sid"),
         )
         try:
             loop = asyncio.get_running_loop()
@@ -204,7 +236,7 @@ def send_sms_sync(
         except RuntimeError:
             asyncio.run(coro)
 
-    if not client:
+    if not is_sms_configured():
         result = {"success": False, "error": "SMS service not configured"}
         _log(result)
         return result
@@ -214,26 +246,18 @@ def send_sms_sync(
         return result
 
     try:
-        sender = get_sender()
-        try:
-            message_obj = client.messages.create(
-                body=message,
-                from_=sender,
-                to=formatted_phone
+        with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
+            resp = client.post(
+                CELLCAST_SEND_URL,
+                headers=_headers(),
+                json=_build_payload(message, formatted_phone, message_type),
             )
-        except TwilioRestException as e:
-            if sender != TWILIO_PHONE_NUMBER and TWILIO_PHONE_NUMBER:
-                print(f"[SMS] Sender '{sender}' rejected ({e.code}); retrying with number.")
-                message_obj = client.messages.create(
-                    body=message,
-                    from_=TWILIO_PHONE_NUMBER,
-                    to=formatted_phone
-                )
-            else:
-                raise
-        result = {"success": True, "message_sid": message_obj.sid, "to": formatted_phone}
-    except TwilioRestException as e:
-        result = {"success": False, "error": str(e), "to": formatted_phone}
+        try:
+            body = resp.json()
+        except Exception:
+            body = {}
+        result = _parse_response(resp.status_code, body)
+        result["to"] = formatted_phone
     except Exception as e:
         result = {"success": False, "error": str(e), "to": formatted_phone}
 

@@ -73,8 +73,30 @@ export async function openAppNotificationSettings(): Promise<void> {
 /**
  * Register for push notifications and get the Expo push token
  */
-export async function registerForPushNotificationsAsync(): Promise<string | null> {
+/**
+ * Report why push registration succeeded/failed to the backend so it shows up in
+ * server logs. Fire-and-forget; never throws. (Temporary diagnostic aid.)
+ */
+export async function reportPushDebug(userId: number | undefined, info: Record<string, any>): Promise<void> {
+  try {
+    await api.post(`/users/${userId ?? 0}/push-debug`, info);
+  } catch {
+    // ignore — diagnostics must never break the app
+  }
+}
+
+export async function registerForPushNotificationsAsync(debugUserId?: number): Promise<string | null> {
   let token: string | null = null;
+
+  const diag: Record<string, any> = {
+    isDevice: Device.isDevice,
+    brand: Device.brand,
+    model: Device.modelName,
+    os: Device.osName,
+    osVersion: Device.osVersion,
+    appVersion: Constants.expoConfig?.version,
+    runtimeVersion: (Constants as any).expoConfig?.runtimeVersion ?? null,
+  };
 
   // Create the Android channel first so the app shows up in notification
   // settings even before/without permission being granted.
@@ -83,37 +105,50 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   // Must be a physical device
   if (!Device.isDevice) {
     console.log('Push notifications require a physical device');
+    diag.result = 'not_physical_device';
+    reportPushDebug(debugUserId, diag);
     return null;
   }
 
   // Check existing permissions
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
+  diag.permExisting = existingStatus;
 
   // Request permission if not granted
   if (existingStatus !== 'granted') {
     const { status } = await Notifications.requestPermissionsAsync();
     finalStatus = status;
   }
+  diag.permFinal = finalStatus;
 
   if (finalStatus !== 'granted') {
     console.log('Push notification permission not granted');
+    diag.result = 'permission_denied';
+    reportPushDebug(debugUserId, diag);
     return null;
   }
 
   // Get the Expo push token
   try {
     const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    diag.projectId = projectId ?? null;
     const tokenData = await Notifications.getExpoPushTokenAsync({
       projectId: projectId,
     });
     token = tokenData.data;
     console.log('Push token:', token);
-  } catch (error) {
+    diag.result = 'ok';
+    diag.tokenPrefix = token ? token.slice(0, 22) : null;
+  } catch (error: any) {
     console.error('Error getting push token:', error);
+    diag.result = 'get_token_error';
+    diag.error = String(error?.message || error);
+    reportPushDebug(debugUserId, diag);
     return null;
   }
 
+  reportPushDebug(debugUserId, diag);
   return token;
 }
 

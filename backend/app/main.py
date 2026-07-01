@@ -241,7 +241,7 @@ async def lifespan(app: FastAPI):
                     message_preview VARCHAR(500),
                     success BOOLEAN DEFAULT TRUE,
                     error TEXT,
-                    twilio_sid VARCHAR(64)
+                    provider_message_id VARCHAR(64)
                 );
             """))
             await conn.execute(text("""
@@ -249,6 +249,23 @@ async def lifespan(app: FastAPI):
             """))
             await conn.execute(text("""
                 CREATE INDEX IF NOT EXISTS ix_sms_logs_message_type ON sms_logs(message_type);
+            """))
+            # Rename the legacy Twilio column on existing DBs. Guarded so it's a true
+            # no-op on later restarts (a bare RENAME would error and poison the shared
+            # migration transaction).
+            await conn.execute(text("""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'sms_logs' AND column_name = 'twilio_sid'
+                    ) AND NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'sms_logs' AND column_name = 'provider_message_id'
+                    ) THEN
+                        ALTER TABLE sms_logs RENAME COLUMN twilio_sid TO provider_message_id;
+                    END IF;
+                END $$;
             """))
         except Exception as e:
             print(f"Migration note (sms_logs): {e}")
